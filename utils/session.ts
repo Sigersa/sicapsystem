@@ -1,0 +1,1 @@
+export const SESSION_DURATION = 15 * 60 * 1000;

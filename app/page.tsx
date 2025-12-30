@@ -14,11 +14,25 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>();
+  const { 
+    register, 
+    handleSubmit, 
+    formState: { errors } 
+  } = useForm<LoginForm>({
+    defaultValues: {
+      username: '',
+      password: ''
+    }
+  });
 
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     setError(null);
+
+    console.log('Enviando datos:', {
+      username: data.username,
+      passwordLength: data.password.length
+    });
 
     try {
       const response = await fetch('/api/auth/login', {
@@ -26,24 +40,35 @@ export default function Login() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
+        credentials: 'include', // Importante para cookies
+        body: JSON.stringify({
+          username: data.username.trim(),
+          password: data.password // No hacer trim aquí, se hace en el backend
+        }),
       });
 
       const result = await response.json();
+      console.log('Respuesta del servidor:', result);
 
       if (!response.ok) {
         throw new Error(result.error || 'Error en la autenticación');
       }
 
       if (result.success) {
+        console.log('✅ Login exitoso, redirigiendo a:', result.redirectTo);
+        
         // Guardar datos de usuario en localStorage
         localStorage.setItem('user', JSON.stringify(result.user));
+        localStorage.setItem('sessionExpiresAt', (Date.now() + 15 * 60 * 1000).toString());
         
         // Redirigir según el tipo de usuario
         router.push(result.redirectTo);
+      } else {
+        throw new Error('Respuesta del servidor no fue exitosa');
       }
     } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesión');
+      const errorMessage = err.message || 'Error al iniciar sesión. Verifique sus credenciales.';
+      setError(errorMessage);
       console.error('Login error:', err);
     } finally {
       setIsLoading(false);
@@ -64,10 +89,13 @@ export default function Login() {
                 width={36}
                 height={36}
                 className="object-contain p-1" 
+                priority
               />
             </div>
             <div>
-              <h1 className="text-xl font-semibold text-gray-800 tracking-tight">SIGERSA<span className="font-light">INNOVACIONES</span></h1>
+              <h1 className="text-xl font-semibold text-gray-800 tracking-tight">
+                SIGERSA<span className="font-light">INNOVACIONES</span>
+              </h1>
               <p className="text-xs text-gray-600 tracking-widest">INNOVANDO HACIA EL FUTURO</p>
             </div>
           </div>
@@ -80,8 +108,11 @@ export default function Login() {
 
         {/* Mostrar error */}
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-            {error}
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm animate-fade-in">
+            <div className="flex items-center">
+              <div className="mr-2">⚠️</div>
+              <div>{error}</div>
+            </div>
           </div>
         )}
 
@@ -99,13 +130,22 @@ export default function Login() {
               </div>
               <input
                 type="text"
-                {...register('username', { required: 'Usuario es requerido' })}
-                className="w-full pl-10 pr-3 py-3 bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0"
+                {...register('username', { 
+                  required: 'Usuario es requerido',
+                  minLength: {
+                    value: 3,
+                    message: 'Usuario debe tener al menos 3 caracteres'
+                  }
+                })}
+                className="w-full pl-10 pr-3 py-3 bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-2 focus:ring-[#2358a2]/20 transition-all"
                 placeholder="Ingrese su usuario"
+                autoComplete="username"
               />
             </div>
             {errors.username && (
-              <p className="mt-1 text-xs text-red-600">{errors.username.message}</p>
+              <p className="mt-1 text-xs text-red-600 animate-fade-in">
+                {errors.username.message}
+              </p>
             )}
           </div>
 
@@ -120,13 +160,22 @@ export default function Login() {
               </div>
               <input
                 type="password"
-                {...register('password', { required: 'Contraseña es requerida' })}
-                className="w-full pl-10 pr-3 py-3 bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 font-mono"
+                {...register('password', { 
+                  required: 'Contraseña es requerida',
+                  minLength: {
+                    value: 6,
+                    message: 'Contraseña debe tener al menos 6 caracteres'
+                  }
+                })}
+                className="w-full pl-10 pr-3 py-3 bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-2 focus:ring-[#2358a2]/20 transition-all"
                 placeholder="••••••••••••"
+                autoComplete="current-password"
               />
             </div>
             {errors.password && (
-              <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>
+              <p className="mt-1 text-xs text-red-600 animate-fade-in">
+                {errors.password.message}
+              </p>
             )}
           </div>
 
@@ -134,7 +183,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-[#2358a2] text-white py-3.5 px-4 rounded font-medium hover:bg-[#1d4a8a] focus:outline-none focus:ring-1 focus:ring-[#2358a2] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full bg-[#2358a2] text-white py-3.5 px-4 rounded font-medium hover:bg-[#1d4a8a] focus:outline-none focus:ring-2 focus:ring-[#2358a2] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
           >
             {isLoading ? (
               <div className="flex items-center justify-center">
@@ -152,6 +201,9 @@ export default function Login() {
         <div className="mt-12 text-center space-y-4">
           <p className="text-xs text-gray-500 tracking-wide">
             © 2025 Sigersa Innovaciones S.A. de C.V. Todos los derechos reservados.
+          </p>
+          <p className="text-xs text-gray-400">
+            Versión 1.0.0
           </p>
         </div>
 
