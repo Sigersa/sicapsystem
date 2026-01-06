@@ -18,7 +18,7 @@ export default function AdministrativePersonnelDashboard() {
     const userData = localStorage.getItem('user');
     
     if (!userData) {
-      router.push('/login');
+      router.push('/');
       return;
     }
 
@@ -26,7 +26,7 @@ export default function AdministrativePersonnelDashboard() {
     
     // Verificar tipo de usuario
     if (parsedUser.UserTypeID !== 2) {
-      router.push('/login');
+      router.push('/');
       return;
     }
 
@@ -35,7 +35,7 @@ export default function AdministrativePersonnelDashboard() {
 
   const handleLogout = () => {
     localStorage.removeItem('user');
-    router.push('/login');
+    router.push('/');
   };
 
   if (!user) {
