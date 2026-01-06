@@ -2,8 +2,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import SessionTimer from '@/components/SessionTimer';
-import AppHeader from '@/components/AppHeader';
-import { User, Lock, Edit, Trash2, Plus, AlertTriangle, X, Search, RefreshCw } from 'lucide-react';
+import AppHeader from '@/components/header-system-admin-dashboard';
+import { User, Lock, AlertTriangle, X, Search, RefreshCw } from 'lucide-react';
 
 type UserData = {
   SystemUserID: number;
@@ -81,18 +81,15 @@ const generateRandomSymbol = (): string => {
 
 // Función para obtener solo el primer nombre
 const getFirstNameOnly = (fullName: string): string => {
-  // Divide el nombre por espacios y toma solo el primer elemento
   const names = fullName.trim().split(' ');
   return names[0];
 };
 
-// Función para generar el nombre de usuario automáticamente - CORREGIDO
+// Función para generar el nombre de usuario automáticamente
 const generateUsername = (firstName: string, lastName: string, middleName: string): string => {
-  // Obtener solo el primer nombre
   const firstOnly = getFirstNameOnly(firstName);
   const firstInitial = firstOnly.charAt(0).toUpperCase();
   const lastInitial = lastName.charAt(0).toUpperCase();
-  // CORRECCIÓN: Usar el apellido completo en lugar de solo los primeros 4 caracteres
   const surname = middleName || lastName;
   const randomNumbers = generateRandomNumbers().substring(0, 2);
   const randomLetter = generateRandomLetter();
@@ -102,7 +99,6 @@ const generateUsername = (firstName: string, lastName: string, middleName: strin
 
 // Función para generar la contraseña automáticamente
 const generatePassword = (firstName: string, lastName: string, middleName: string): string => {
-  // Obtener solo el primer nombre
   const firstOnly = getFirstNameOnly(firstName);
   const secondPart = lastName;
   const randomNumbers = generateRandomNumbers();
@@ -136,20 +132,60 @@ export default function SystemAdminDashboard() {
   const [newGeneratedPassword, setNewGeneratedPassword] = useState<string>('');
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (!userData) return router.push('/');
+    const checkSession = async () => {
+      try {
+        const res = await fetch('/api/auth/me', {
+          credentials: 'include'
+        });
 
-    const parsedUser = JSON.parse(userData);
-    if (parsedUser.UserTypeID !== 1) return router.push('/');
+        if (!res.ok) {
+          console.log('Sesión no válida, redirigiendo...');
+          router.push('/');
+          return;
+        }
 
-    setUser(parsedUser);
-    fetchUserTypes();
-    fetchUsers();
+        const data = await res.json();
+        console.log('Datos de sesión:', data); // Para debug
+
+        if (!data.user || !data.user.UserTypeID) {
+          console.log('Estructura de datos incorrecta');
+          router.push('/');
+          return;
+        }
+
+        if (data.user.UserTypeID !== 1) {
+          console.log('Usuario no es administrador');
+          router.push('/');
+          return;
+        }
+
+        setUser({
+          SystemUserID: data.user.SystemUserID,
+          UserName: data.user.UserName,
+          UserTypeID: data.user.UserTypeID,
+          UserType: '',
+          FirstName: '',
+          LastName: '',
+          MiddleName: '',
+          Email: ''
+        });
+
+        // Cargar tipos de usuario y usuarios
+        fetchUserTypes();
+        fetchUsers();
+
+      } catch (error) {
+        console.error('Error verificando sesión:', error);
+        router.push('/');
+      }
+    };
+
+    checkSession();
   }, [router]);
 
   const fetchUserTypes = async () => {
     try {
-      const res = await fetch('/api/user-types');
+      const res = await fetch('/api/catalogs/user-types');
       if (res.ok) {
         const data = await res.json();
         setUserTypes(data);
@@ -161,7 +197,7 @@ export default function SystemAdminDashboard() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch('/api/system-admin-dashboard/crud-users/get-post');
       if (res.ok) {
         const data = await res.json();
         setUsers(data);
@@ -169,12 +205,6 @@ export default function SystemAdminDashboard() {
     } catch (error) {
       console.error('Error fetching users:', error);
     }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('sessionExpiresAt');
-    router.push('/');
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -287,12 +317,10 @@ export default function SystemAdminDashboard() {
         submitData.UserName = generatedCredentials.username;
         submitData.Password = generatedCredentials.password;
       } else {
-        // Si estamos editando y hay una nueva contraseña generada
         if (newGeneratedPassword) {
           submitData.Password = newGeneratedPassword;
         }
         
-        // Si no hay contraseña (ni nueva ni existente), eliminamos el campo
         if (!submitData.Password) {
           const { Password, ...dataWithoutPassword } = submitData;
           submitData = dataWithoutPassword;
@@ -300,8 +328,8 @@ export default function SystemAdminDashboard() {
       }
 
       const url = editingUser
-        ? `/api/users/${editingUser.SystemUserID}`
-        : `/api/users`;
+        ? `/api/system-admin-dashboard/crud-users/put-delete/${editingUser.SystemUserID}`
+        : `/api/system-admin-dashboard/crud-users/get-post`;
 
       const method = editingUser ? 'PUT' : 'POST';
 
@@ -343,7 +371,9 @@ export default function SystemAdminDashboard() {
     setDeleteError(null);
     
     try {
-      const res = await fetch(`/api/users/${userToDelete.SystemUserID}`, { method: 'DELETE' });
+      const res = await fetch(`/api/system-admin-dashboard/crud-users/put-delete/${userToDelete.SystemUserID}`, { 
+        method: 'DELETE' 
+      });
       
       if (res.ok) {
         await fetchUsers();
@@ -401,7 +431,7 @@ export default function SystemAdminDashboard() {
         <div className="mb-6 sm:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-sm sm:text-base font-medium text-gray-700 mb-1 sm:mb-2 tracking-wide uppercase">Gestión de Usuarios</h1>
+              <h1 className="text-xl font-semibold text-gray-800 tracking-tight">GESTIÓN DE USUARIOS</h1>
               <p className="text-xs sm:text-sm text-gray-600">
                 Administre los usuarios del sistema y sus permisos
               </p>
@@ -418,7 +448,7 @@ export default function SystemAdminDashboard() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 sm:py-3 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-[#2358a2] focus:border-[#2358a2] text-xs sm:text-sm h-full"
+                  className="block w-full pl-10 pr-3 py-2 sm:py-2.5 sm:text-sm border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-[#2358a2] focus:border-[#2358a2] text-xs sm:text-sm h-full"
                   placeholder="Buscar usuarios..."
                 />
                 {searchQuery && (
@@ -435,7 +465,7 @@ export default function SystemAdminDashboard() {
               {/* BOTÓN CREAR USUARIO */}
               <button
                 onClick={openCreate}
-                className="inline-flex items-center justify-center px-3 py-2 sm:px-4 sm:py-2.5 bg-[#2358a2] border border-transparent rounded-md font-medium text-white hover:bg-[#1d4a8a] focus:outline-none focus:ring-offset-2 focus:ring-[#2358a2] transition-colors text-xs sm:text-base whitespace-nowrap"
+                className="inline-flex items-center justify-center px-3 py-2 sm:px-4 sm:py-2 bg-[#2358a2] border border-transparent rounded-md font-medium text-white hover:bg-[#1d4a8a] focus:outline-none focus:ring-offset-2 focus:ring-[#2358a2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs sm:text-sm w-full sm:w-auto"
               >
                 CREAR USUARIO
               </button>
@@ -454,8 +484,8 @@ export default function SystemAdminDashboard() {
         </div>
 
         {/* TABLE */}
-        <div className="bg-white shadow-sm ring-1 ring-gray-200 rounded-lg overflow-hidden">
-          <div className="overflow-x-auto -mx-3 sm:mx-0">
+        <div className="bg-white shadow-sm ring-1 ring-gray-200 rounded overflow-hidden">
+          <div className="overflow-x-auto -mx-2 sm:mx-0">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -485,7 +515,7 @@ export default function SystemAdminDashboard() {
                       </div>
                     </td>
                     <td className="px-3 sm:px-6 py-2 sm:py-4 align-middle">
-                      <div className="text-xs sm:text-sm text-gray-600">
+                      <div className="text-gray-600 text-xs sm:text-sm">
                         <span className="block sm:inline">{u.FirstName}</span>{' '}
                         <span className="block sm:inline">{u.LastName}</span>
                         {u.MiddleName && (
@@ -524,25 +554,6 @@ export default function SystemAdminDashboard() {
               </tbody>
             </table>
           </div>
-          
-          {filteredUsers.length === 0 && (
-            <div className="text-center py-8 sm:py-12 px-4">
-              <div className="text-gray-400 mb-3 sm:mb-4">
-                <User className="h-8 w-8 sm:h-12 sm:w-12 mx-auto" />
-              </div>
-              <p className="text-gray-500 text-sm sm:text-base">
-                {searchQuery ? 'No se encontraron usuarios que coincidan con la búsqueda' : 'No hay usuarios registrados'}
-              </p>
-              {!searchQuery && (
-                <button
-                  onClick={openCreate}
-                  className="mt-3 sm:mt-4 inline-flex items-center justify-center px-3 py-2 sm:px-4 sm:py-2 bg-[#2358a2] border border-transparent rounded-md font-medium text-white hover:bg-[#1d4a8a] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2358a2] transition-colors text-sm sm:text-base"
-                >
-                  Crear primer usuario
-                </button>
-              )}
-            </div>
-          )}
         </div>
       </main>
 
@@ -594,23 +605,23 @@ export default function SystemAdminDashboard() {
 
                 {/* Mostrar credenciales generadas para creación */}
                 {!editingUser && generatedCredentials && (
-                  <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <h4 className="text-xs sm:text-sm font-medium text-blue-800 mb-2">CREDENCIALES GENERADAS</h4>
+                  <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">CREDENCIALES GENERADAS</h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                       <div>
-                        <p className="text-xs text-blue-600 mb-1">USUARIO:</p>
+                        <p className="text-sm text-gray-700 mb-1">USUARIO:</p>
                         <div className="flex items-center space-x-2">
-                          <User className="h-3 w-3 sm:h-4 sm:w-4 text-blue-500" />
-                          <code className="text-xs sm:text-sm font-mono bg-white px-2 py-1.5 sm:px-3 sm:py-2 rounded border border-blue-200 text-blue-700 w-full overflow-x-auto">
+                          <User className="h-3 w-3 sm:h-4 sm:w-4 text-gray-700" />
+                          <code className="text-xs sm:text-sm font-mono bg-white px-2 py-1.5 sm:px-3 sm:py-2 rounded border border-gray-200 text-gray-700 w-full overflow-x-auto">
                             {generatedCredentials.username}
                           </code>
                         </div>
                       </div>
                       <div>
-                        <p className="text-xs text-blue-600 mb-1">CONTRASEÑA:</p>
+                        <p className="text-sm text-gray-700 mb-1">CONTRASEÑA:</p>
                         <div className="flex items-center space-x-2">
-                          <Lock className="h-3 w-3 sm:h-4 sm:w-4 text-blue-500" />
-                          <code className="text-xs sm:text-sm font-mono bg-white px-2 py-1.5 sm:px-3 sm:py-2 rounded border border-blue-200 text-blue-700 w-full overflow-x-auto">
+                          <Lock className="h-3 w-3 sm:h-4 sm:w-4 text-gray-700" />
+                          <code className="text-xs sm:text-sm font-mono bg-white px-2 py-1.5 sm:px-3 sm:py-2 rounded border border-gray-200 text-gray-700 w-full overflow-x-auto">
                             {generatedCredentials.password}
                           </code>
                         </div>
@@ -621,18 +632,18 @@ export default function SystemAdminDashboard() {
 
                 {/* Mostrar nueva contraseña generada para edición */}
                 {editingUser && newGeneratedPassword && (
-                  <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <h4 className="text-xs sm:text-sm font-medium text-green-800 mb-2">NUEVA CONTRASEÑA GENERADA</h4>
+                  <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">NUEVA CONTRASEÑA GENERADA</h4>
                     <div>
-                      <p className="text-xs text-green-600 mb-1">CONTRASEÑA:</p>
+                      <p className="text-xs text-gray-600 mb-1">CONTRASEÑA:</p>
                       <div className="flex items-center space-x-2">
-                        <Lock className="h-3 w-3 sm:h-4 sm:w-4 text-green-500" />
-                        <code className="text-xs sm:text-sm font-mono bg-white px-2 py-1.5 sm:px-3 sm:py-2 rounded border border-green-200 text-green-700 w-full overflow-x-auto">
+                        <Lock className="h-3 w-3 sm:h-4 sm:w-4 text-gray-500" />
+                        <code className="text-xs sm:text-sm font-mono bg-white px-2 py-1.5 sm:px-3 sm:py-2 rounded border border-gray-200 text-gray-700 w-full overflow-x-auto">
                           {newGeneratedPassword}
                         </code>
                       </div>
                     </div>
-                    <p className="text-xs text-green-600 mt-2">
+                    <p className="text-xs text-gray-600 mt-2">
                       <strong>Nota:</strong> Esta contraseña se asignará al usuario al guardar los cambios.
                     </p>
                   </div>
@@ -649,7 +660,7 @@ export default function SystemAdminDashboard() {
                       name="FirstName"
                       value={formData.FirstName}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 sm:py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 text-xs sm:text-sm"
+                      className="pl-3 w-full pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
                       placeholder="Ingrese el nombre"
                       required
                     />
@@ -665,7 +676,7 @@ export default function SystemAdminDashboard() {
                       name="LastName"
                       value={formData.LastName}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 sm:py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 text-xs sm:text-sm"
+                      className="w-full pl-3 pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
                       placeholder="Ingrese el apellido paterno"
                       required
                     />
@@ -681,7 +692,7 @@ export default function SystemAdminDashboard() {
                       name="MiddleName"
                       value={formData.MiddleName}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 sm:py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 text-xs sm:text-sm"
+                      className="w-full pl-3 pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
                       placeholder="Ingrese el apellido materno"
                     />
                   </div>
@@ -696,7 +707,7 @@ export default function SystemAdminDashboard() {
                       name="Email"
                       value={formData.Email}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 sm:py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 text-xs sm:text-sm"
+                      className="w-full pl-3 pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
                       placeholder="correo@ejemplo.com"
                       required
                     />
@@ -712,7 +723,7 @@ export default function SystemAdminDashboard() {
                       name="UserName"
                       value={formData.UserName}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 sm:py-2.5 bg-gray-50 border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 text-xs sm:text-sm"
+                      className="w-full pl-3 pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
                       placeholder="Se generará automáticamente"
                       readOnly={!editingUser}
                       required
@@ -729,7 +740,7 @@ export default function SystemAdminDashboard() {
                         <button
                           type="button"
                           onClick={generateNewPassword}
-                          className="inline-flex items-center justify-center px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm bg-[#2358a2] text-white rounded hover:bg-[#1d4a8a] transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2358a2]"
+                          className="inline-flex items-center justify-center px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm bg-[#2358a2] text-white rounded hover:bg-[#1d4a8a] transition-colors focus:outline-none focus:ring-0 focus:ring-offset-2 focus:ring-[#2358a2]"
                         >
                           <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                           GENERAR NUEVA
@@ -741,7 +752,7 @@ export default function SystemAdminDashboard() {
                           name="Password"
                           value={formData.Password}
                           onChange={handleInputChange}
-                          className="w-full px-3 py-2 sm:py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 font-mono text-xs sm:text-sm"
+                          className="w-full pl-3 pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
                           placeholder="Dejar vacío para mantener la contraseña actual"
                         />
                         {formData.Password && (
@@ -771,7 +782,7 @@ export default function SystemAdminDashboard() {
                       name="UserTypeID"
                       value={formData.UserTypeID}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 sm:py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 text-xs sm:text-sm"
+                      className="w-full pl-3 pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
                       required
                     >
                       <option value="">Seleccione un tipo</option>
@@ -897,14 +908,14 @@ export default function SystemAdminDashboard() {
                   type="button"
                   onClick={closeDeleteModal}
                   disabled={deleteLoading}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-gray-50 focus:ring-offset-2 focus:ring-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+                  className="px-3 py-2 sm:py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-gray-50 focus:ring-offset-2 focus:ring-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={handleDelete}
                   disabled={deleteLoading}
-                  className="inline-flex items-center justify-center px-4 py-2 bg-red-600 border border-transparent rounded-md font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-offset-2 focus:ring-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+                  className="inline-flex items-center justify-center px-3 py-2 sm:px-4 sm:py-2 bg-red-600 border border-transparent rounded-md font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-offset-2 focus:ring-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs sm:text-sm w-full sm:w-auto"
                 >
                   {deleteLoading ? (
                     <>
