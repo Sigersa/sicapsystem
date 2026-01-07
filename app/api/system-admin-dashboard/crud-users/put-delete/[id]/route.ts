@@ -1,15 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getConnection } from "@/lib/db";
+import { validateAndRenewSession } from "@/lib/auth";
 
-
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+/* ======================
+   PUT -> EDITAR USUARIOS
+=======================*/
+export async function PUT( request: NextRequest, { params }: { params: { id: string } }) {
   let connection;
 
   try {
+    const sessionId = request.cookies.get("session")?.value;
+
+    if (!sessionId) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
+    const user = await validateAndRenewSession(sessionId);
+
+    if (!user || user.UserTypeID !== 1) {
+      return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
+    } 
+
     const { id } = await params;
     const data = await request.json();
     
@@ -80,7 +91,9 @@ export async function PUT(
 } 
 
 
-
+/*==========================
+   DELETE -> ELIMINAR USUARIO
+==========================*/
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
@@ -88,6 +101,18 @@ export async function DELETE(
   let connection;
 
   try {
+    const sessionId = _request.cookies.get("session")?.value;
+
+    if (!sessionId) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
+
+    const user = await validateAndRenewSession(sessionId);
+
+    if (!user || user.UserTypeID !== 1 ){
+      return NextResponse.json({ error: "Acceso dengado" }, { status: 403 });
+    }
+
     const { id } = await params;
     connection = await getConnection();
     await connection.beginTransaction();
