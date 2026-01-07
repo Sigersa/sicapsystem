@@ -134,35 +134,31 @@ export default function SystemAdminDashboard() {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const res = await fetch('/api/auth/me', {
+        const res = await fetch('/api/auth/validate-session', {
           credentials: 'include'
         });
 
         if (!res.ok) {
-          console.log('Sesión no válida, redirigiendo...');
-          router.push('/');
+          router.replace('/');
           return;
         }
 
         const data = await res.json();
-        console.log('Datos de sesión:', data); // Para debug
 
-        if (!data.user || !data.user.UserTypeID) {
-          console.log('Estructura de datos incorrecta');
-          router.push('/');
+        if (!data?.valid || !data?.user) {
+          router.replace('/');
           return;
         }
 
-        if (data.user.UserTypeID !== 1) {
-          console.log('Usuario no es administrador');
-          router.push('/');
+        if (data.role !== 1) {
+          router.replace('/unauthorized');
           return;
         }
 
         setUser({
           SystemUserID: data.user.SystemUserID,
           UserName: data.user.UserName,
-          UserTypeID: data.user.UserTypeID,
+          UserTypeID: data.role,
           UserType: '',
           FirstName: '',
           LastName: '',
@@ -170,18 +166,22 @@ export default function SystemAdminDashboard() {
           Email: ''
         });
 
-        // Cargar tipos de usuario y usuarios
-        fetchUserTypes();
-        fetchUsers();
+        await Promise.all([
+          fetchUsers(),
+          fetchUserTypes()
+        ]);
+
+        setLoading(false);
 
       } catch (error) {
-        console.error('Error verificando sesión:', error);
-        router.push('/');
+        console.error('Session check error:', error);
+        router.replace('/');
       }
     };
 
     checkSession();
   }, [router]);
+
 
   const fetchUserTypes = async () => {
     try {
@@ -419,7 +419,7 @@ export default function SystemAdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <SessionTimer />
+      
 
       {/* HEADER */}
       <AppHeader 
