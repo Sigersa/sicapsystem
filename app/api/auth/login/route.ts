@@ -48,7 +48,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Crear sesión
     const sessionId = crypto.randomUUID();
 
     await connection.execute(
