@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { getConnection } from '@/lib/db';
 
+const SESSION_DURATION_MINUTES = 15;
+
 export async function POST(request: NextRequest) {
   let connection;
 
@@ -18,23 +20,22 @@ export async function POST(request: NextRequest) {
 
     connection = await getConnection();
 
-    const [rows] = await connection.execute(
+    const [rows]: any = await connection.execute(
       `SELECT SystemUserID, UserName, Password, UserTypeID
        FROM systemusers 
        WHERE UserName = ?`,
       [username.trim()]
     );
 
-    const users = rows as any[];
 
-    if (users.length === 0) {
+    if (rows.length === 0) {
       return NextResponse.json(
         { error: 'Usuario o contraseña incorrectos' },
         { status: 401 }
       );
     }
 
-    const user = users[0];
+    const user = rows[0];
 
     const isValid = user.Password.startsWith('$2')
       ? await bcrypt.compare(password, user.Password)
@@ -49,12 +50,11 @@ export async function POST(request: NextRequest) {
 
     // Crear sesión
     const sessionId = crypto.randomUUID();
-    const expiresMinutes = 15;
 
     await connection.execute(
       `INSERT INTO sessions (id, user_id, expires_at)
        VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))`,
-      [sessionId, user.SystemUserID, expiresMinutes]
+      [sessionId, user.SystemUserID, SESSION_DURATION_MINUTES]
     );
 
     const redirectTo =
@@ -73,12 +73,11 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 60 * expiresMinutes,
+      maxAge: 60 * SESSION_DURATION_MINUTES,
       path: '/'
     });
 
     return response;
-
   } catch (error) {
     console.error("Error en el inicio de sesión:", error);
     return NextResponse.json(
@@ -86,6 +85,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   } finally {
-    if (connection) await connection.release();
+    if (connection) connection.release();
   }
 }
