@@ -1,90 +1,128 @@
 'use client';
-import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import AppHeader from '@/components/header/2/2';
+import Footer from '@/components/footer';
+import { UserPlus, Users, FileText} from 'lucide-react';
+import { useSessionManager } from '@/hooks/useSessionManager/2';
+import { useInactivityManager } from '@/hooks/useInactivityManager';
 
-type User = {
-  SystemUserID: number;
-  UserName: string;
-  UserTypeID: number;
-  UserType: string;
+type MenuItem = {
+  id: number;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  href: string;
 };
 
-export default function AdministrativePersonnelDashboard() {
-  const [user, setUser] = useState<User | null>(null);
+export default function SystemAdminDashboard() {
   const router = useRouter();
+  const { user, loading: sessionLoading } = useSessionManager();
+  useInactivityManager();
 
-  useEffect(() => {
-    // Verificar si hay usuario autenticado
-    const userData = localStorage.getItem('user');
-    
-    if (!userData) {
-      router.push('/');
-      return;
+  const menuItems: MenuItem[] = [
+    {
+      id: 1,
+      title: 'INGRESO / CONTRATACIÓN',
+      description: 'Gestión de nuevos empleados y contratos',
+      icon: <UserPlus className="h-6 w-6" />,
+      href: '/system-admin-dashboard/ingreso-contratacion'
+    },
+    {
+      id: 2,
+      title: 'GESTIÓN DEL PERSONAL',
+      description: 'Administración de empleados activos',
+      icon: <Users className="h-6 w-6" />,
+      href: '/system-admin-dashboard/gestion-personal'
+    },
+    {
+      id: 3,
+      title: 'BAJA / TERMINACIÓN LABORAL',
+      description: 'Procesos de terminación laboral',
+      icon: <FileText className="h-6 w-6" />,
+      href: '/system-admin-dashboard/baja-terminacion'
     }
+  ];
 
-    const parsedUser = JSON.parse(userData);
-    
-    // Verificar tipo de usuario
-    if (parsedUser.UserTypeID !== 2) {
-      router.push('/');
-      return;
-    }
-
-    setUser(parsedUser);
-  }, [router]);
-
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    router.push('/');
+  const handleMenuItemClick = (href: string) => {
+    router.push(href);
   };
 
-  if (!user) {
+   // Mostrar loading mientras se verifica la sesión
+  if (sessionLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#2358a2]"></div>
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#3a6ea5] mx-auto"></div>
+          <p className="mt-4 text-gray-700 font-medium">Verificando sesión...</p>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Panel de Personal Administrativo</h1>
-              <p className="text-gray-600">Bienvenido, {user.UserName}</p>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-            >
-              Cerrar Sesión
-            </button>
-          </div>
-        </div>
-      </header>
+  // Si no hay usuario (sesión inválida), no renderizar nada
+  if (!user) {
+    return null;
+  }
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">Funciones de Personal Administrativo</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-              <h3 className="font-medium text-lg mb-2">Gestión de Documentos</h3>
-              <p className="text-gray-600">Administrar documentos administrativos</p>
-            </div>
-            <div className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-              <h3 className="font-medium text-lg mb-2">Registro de Actividades</h3>
-              <p className="text-gray-600">Registrar actividades diarias</p>
-            </div>
-            <div className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-              <h3 className="font-medium text-lg mb-2">Consultas</h3>
-              <p className="text-gray-600">Consultar información del sistema</p>
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {/* HEADER */}
+      <AppHeader 
+        title="PANEL ADMINISTRATIVO"
+      />
+
+      {/* CONTENT */}
+      <main className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5] w-full">
+              <h1 className="text-xl font-bold text-white tracking-tight">MENÚ PRINCIPAL</h1>
+              <p className="text-sm text-gray-200 mt-1">
+                Seleccione una opción para acceder a las funciones del sistema
+              </p>
             </div>
           </div>
         </div>
+
+        {/* MENÚ DE OPCIONES */}
+        <div className="bg-white rounded-lg shadow border border-gray-300 p-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {menuItems
+              .map((item) => (
+                <div
+                  key={item.id}
+                  className="relative border-2 border-gray-300 rounded-lg p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-[#3a6ea5] bg-white group"
+                  onClick={() => handleMenuItemClick(item.href)}
+                >
+                  {/* Icono */}
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="p-2 rounded border border-gray-300 bg-gray-100 group-hover:bg-[#3a6ea5] group-hover:border-[#3a6ea5] transition-colors">
+                      <div className="text-gray-700 group-hover:text-white transition-colors">
+                        {item.icon}
+                      </div>
+                    </div>
+                    <div className="h-5 w-5 text-gray-400 group-hover:text-[#3a6ea5] transition-colors opacity-0 group-hover:opacity-100">
+                      →
+                    </div>
+                  </div>
+                  
+                  {/* Contenido */}
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900 mb-1 uppercase">
+                      {item.title}
+                    </h3>
+                    <p className="text-xs text-gray-600 font-medium">
+                      {item.description}
+                    </p>
+                  </div>
+                  
+                  {/* Estado activo */}
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-transparent group-hover:bg-[#3a6ea5] rounded-b-lg transition-colors"></div>
+                </div>
+              ))}
+          </div>
+        </div>
+        <Footer/>
       </main>
     </div>
   );
