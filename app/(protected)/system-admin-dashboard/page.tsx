@@ -1,9 +1,11 @@
 'use client';
-import React, { useEffect, useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
-import SessionTimer from '@/components/SessionTimer';
-import AppHeader from '@/components/header-system-admin-dashboard';
-import { User, Lock, AlertTriangle, X, Search, RefreshCw } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import AppHeader from '@/components/header/1/1';
+import { User, Lock, AlertTriangle, X, Search, RefreshCw, Edit2, Trash2 } from 'lucide-react';
+import Footer from '@/components/footer';
+import { useSessionManager } from '@/hooks/useSessionManager/1';
+import { useInactivityManager } from '@/hooks/useInactivityManager';
+import { useUserData } from '@/hooks/useUserData';
 
 type UserData = {
   SystemUserID: number;
@@ -34,31 +36,31 @@ const emptyForm = {
 const getUserTypeColor = (userTypeID: number) => {
   switch (userTypeID) {
     case 1: 
-      return 'bg-blue-100 text-blue-800';
+      return 'bg-blue-200 text-blue-900 border border-blue-400';
     case 2: 
-      return 'bg-green-100 text-green-800';
+      return 'bg-green-200 text-green-900 border border-green-400';
     case 3: 
-      return 'bg-purple-100 text-purple-800';
+      return 'bg-purple-200 text-purple-900 border border-purple-400';
     case 4: 
-      return 'bg-yellow-100 text-yellow-800';
+      return 'bg-yellow-200 text-yellow-900 border border-yellow-400';
     case 5: 
-      return 'bg-gray-100 text-gray-800';
+      return 'bg-gray-200 text-gray-900 border border-gray-400';
     case 6: 
-      return 'bg-indigo-100 text-indigo-800';
+      return 'bg-indigo-200 text-indigo-900 border border-indigo-400';
     case 7: 
-      return 'bg-pink-100 text-pink-800';
+      return 'bg-pink-200 text-pink-900 border border-pink-400';
     case 8: 
-      return 'bg-orange-100 text-orange-800';
+      return 'bg-orange-200 text-orange-900 border border-orange-400';
     case 9: 
-      return 'bg-teal-100 text-teal-800';
+      return 'bg-teal-200 text-teal-900 border border-teal-400';
     case 10: 
-      return 'bg-cyan-100 text-cyan-800';
+      return 'bg-cyan-200 text-cyan-900 border border-cyan-400';
     case 11: 
-      return 'bg-lime-100 text-lime-800';
+      return 'bg-lime-200 text-lime-900 border border-lime-400';
     case 12: 
-      return 'bg-fuchsia-100 text-fuchsia-800';
+      return 'bg-fuchsia-200 text-fuchsia-900 border border-fuchsia-400';
     default:
-      return 'bg-blue-100 text-blue-800';
+      return 'bg-blue-200 text-blue-900 border border-blue-400';
   }
 };
 
@@ -109,13 +111,19 @@ const generatePassword = (firstName: string, lastName: string, middleName: strin
 };
 
 export default function SystemAdminDashboard() {
-  const router = useRouter();
+  // Usar hooks personalizados
+  const { user, loading: sessionLoading } = useSessionManager();
+  useInactivityManager();
+  const { 
+    users, 
+    userTypes, 
+    dataLoading, 
+    error: dataError,
+    fetchUsers,
+    refreshData 
+  } = useUserData();
 
-  const [user, setUser] = useState<UserData | null>(null);
-  const [users, setUsers] = useState<UserData[]>([]);
-  const [userTypes, setUserTypes] = useState<UserType[]>([]);
   const [formData, setFormData] = useState<any>(emptyForm);
-
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
@@ -130,82 +138,6 @@ export default function SystemAdminDashboard() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showPasswordField, setShowPasswordField] = useState(false);
   const [newGeneratedPassword, setNewGeneratedPassword] = useState<string>('');
-
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const res = await fetch('/api/auth/validate-session', {
-          credentials: 'include'
-        });
-
-        if (!res.ok) {
-          router.replace('/');
-          return;
-        }
-
-        const data = await res.json();
-
-        if (!data?.valid || !data?.user) {
-          router.replace('/');
-          return;
-        }
-
-        if (data.role !== 1) {
-          router.replace('/unauthorized');
-          return;
-        }
-
-        setUser({
-          SystemUserID: data.user.SystemUserID,
-          UserName: data.user.UserName,
-          UserTypeID: data.role,
-          UserType: '',
-          FirstName: '',
-          LastName: '',
-          MiddleName: '',
-          Email: ''
-        });
-
-        await Promise.all([
-          fetchUsers(),
-          fetchUserTypes()
-        ]);
-
-        setLoading(false);
-
-      } catch (error) {
-        console.error('Session check error:', error);
-        router.replace('/');
-      }
-    };
-
-    checkSession();
-  }, [router]);
-
-
-  const fetchUserTypes = async () => {
-    try {
-      const res = await fetch('/api/catalogs/user-types');
-      if (res.ok) {
-        const data = await res.json();
-        setUserTypes(data);
-      }
-    } catch (error) {
-      console.error('Error fetching user types:', error);
-    }
-  };
-
-  const fetchUsers = async () => {
-    try {
-      const res = await fetch('/api/system-admin-dashboard/crud-users/get-post');
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(data);
-      }
-    } catch (error) {
-      console.error('Error fetching users:', error);
-    }
-  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -346,7 +278,9 @@ export default function SystemAdminDashboard() {
       }
 
       setSuccess(editingUser ? 'Usuario actualizado correctamente' : 'Usuario creado correctamente');
-      await fetchUsers();
+      
+      // Refrescar datos
+      await refreshData();
 
       setTimeout(() => {
         setShowModal(false);
@@ -376,7 +310,8 @@ export default function SystemAdminDashboard() {
       });
       
       if (res.ok) {
-        await fetchUsers();
+        // Refrescar datos usando el hook
+        await refreshData();
         closeDeleteModal();
       } else {
         const data = await res.json();
@@ -406,49 +341,55 @@ export default function SystemAdminDashboard() {
     );
   }, [users, searchQuery]);
 
-  if (!user) {
+  // Mostrar loading mientras se verifica la sesión
+  if (sessionLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#2358a2] mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#3a6ea5] mx-auto"></div>
+          <p className="mt-4 text-gray-700 font-medium">Verificando sesión...</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      
+  // Si no hay usuario (sesión inválida), no renderizar nada
+  if (!user) {
+    return null;
+  }
 
+  return (
+    <div className="min-h-screen bg-gray-100">
       {/* HEADER */}
       <AppHeader 
-        title="Panel de Control del Sistema"
+        title="PANEL DE CONTROL DEL SISTEMA"
       />
 
       {/* CONTENT */}
       <main className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
         <div className="mb-6 sm:mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-xl font-semibold text-gray-800 tracking-tight">GESTIÓN DE USUARIOS</h1>
-              <p className="text-xs sm:text-sm text-gray-600">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5] w-full">
+              <h1 className="text-xl font-bold text-white tracking-tight">GESTIÓN DE USUARIOS</h1>
+              <p className="text-sm text-gray-200 mt-1">
                 Administre los usuarios del sistema y sus permisos
               </p>
             </div>
-            
-            {/* Contenedor para barra de búsqueda y botón */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+          </div>
+          
+          {/* Contenedor para barra de búsqueda y botón */}
+          <div className="bg-white p-4 rounded-lg shadow border border-gray-100 mb-6">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full">
               {/* BARRA DE BÚSQUEDA */}
-              <div className="relative flex-grow sm:flex-grow-0 sm:w-64">
+              <div className="relative flex-grow">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Search className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                  <Search className="h-4 w-4 sm:h-5 sm:w-5 text-gray-300" />
                 </div>
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 sm:py-2.5 sm:text-sm border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-[#2358a2] focus:border-[#2358a2] text-xs sm:text-sm h-full"
+                  className="block w-full pl-10 pr-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:border-[#3a6ea5] bg-white placeholder-gray-500 leading-5"
                   placeholder="Buscar usuarios..."
                 />
                 {searchQuery && (
@@ -457,7 +398,7 @@ export default function SystemAdminDashboard() {
                     className="absolute inset-y-0 right-0 pr-3 flex items-center"
                     aria-label="Limpiar búsqueda"
                   >
-                    <X className="h-4 w-4 text-gray-400 hover:text-gray-600" />
+                    <X className="h-4 w-4 text-gray-500 hover:text-gray-700" />
                   </button>
                 )}
               </div>
@@ -465,194 +406,251 @@ export default function SystemAdminDashboard() {
               {/* BOTÓN CREAR USUARIO */}
               <button
                 onClick={openCreate}
-                className="inline-flex items-center justify-center px-3 py-2 sm:px-4 sm:py-2 bg-[#2358a2] border border-transparent rounded-md font-medium text-white hover:bg-[#1d4a8a] focus:outline-none focus:ring-offset-2 focus:ring-[#2358a2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs sm:text-sm w-full sm:w-auto"
+                className="inline-flex items-center justify-center px-4 py-2.5 bg-[#3a6ea5] border border-[#3a6ea5] rounded font-bold text-white hover:bg-[#2a4a75] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow hover:shadow-md text-sm w-full sm:w-auto"
               >
                 CREAR USUARIO
               </button>
             </div>
-          </div>
 
-          {/* Contador de resultados */}
-          {searchQuery && (
-            <div className="mt-4">
-              <p className="text-xs text-gray-500">
-                Mostrando {filteredUsers.length} de {users.length} usuarios
-                {filteredUsers.length === 0 && ' - No se encontraron resultados'}
-              </p>
-            </div>
-          )}
+            {/* Mostrar errores de datos */}
+            {dataError && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded">
+                <p className="text-sm text-red-700 flex items-center">
+                  <AlertTriangle className="h-4 w-4 mr-2" />
+                  {dataError}
+                </p>
+              </div>
+            )}
+
+            {/* Contador de resultados */}
+            {searchQuery && (
+              <div className="mt-4">
+                <p className="text-xs text-gray-600 bg-gray-100 p-2 rounded border border-gray-300">
+                  Mostrando <span className="font-bold">{filteredUsers.length}</span> de <span className="font-bold">{users.length}</span> usuarios
+                  {filteredUsers.length === 0 && ' - No se encontraron resultados'}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* TABLE */}
-        <div className="bg-white shadow-sm ring-1 ring-gray-200 rounded overflow-hidden">
-          <div className="overflow-x-auto -mx-2 sm:mx-0">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="text-xs sm:text-sm font-medium text-gray-700 px-3 sm:px-6 py-2 sm:py-3.5 tracking-wide uppercase text-left align-middle whitespace-nowrap">
-                    Nombre de Usuario
-                  </th>
-                  <th scope="col" className="text-xs sm:text-sm font-medium text-gray-700 px-3 sm:px-6 py-2 sm:py-3.5 tracking-wide uppercase text-left align-middle whitespace-nowrap">
-                    Nombre Completo
-                  </th>
-                  <th scope="col" className="hidden md:table-cell text-xs sm:text-sm font-medium text-gray-700 px-3 sm:px-6 py-2 sm:py-3.5 tracking-wide uppercase text-left align-middle whitespace-nowrap">
-                    Correo
-                  </th>
-                  <th scope="col" className="text-xs sm:text-sm font-medium text-gray-700 px-3 sm:px-6 py-2 sm:py-3.5 tracking-wide uppercase text-left align-middle whitespace-nowrap">
-                    Tipo de Usuario
-                  </th>
-                  <th scope="col" className="text-xs sm:text-sm font-medium text-gray-700 px-3 sm:px-6 py-2 sm:py-3.5 tracking-wide uppercase text-left align-middle whitespace-nowrap">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredUsers.map((u) => (
-                  <tr key={u.SystemUserID} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-3 sm:px-6 py-2 sm:py-4 align-middle">
-                      <div className="text-xs sm:text-sm text-gray-600 font-medium">
-                        {u.UserName}
-                      </div>
-                    </td>
-                    <td className="px-3 sm:px-6 py-2 sm:py-4 align-middle">
-                      <div className="text-gray-600 text-xs sm:text-sm">
-                        <span className="block sm:inline">{u.FirstName}</span>{' '}
-                        <span className="block sm:inline">{u.LastName}</span>
-                        {u.MiddleName && (
-                          <span className="block sm:inline"> {u.MiddleName}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="hidden md:table-cell px-3 sm:px-6 py-2 sm:py-4 align-middle">
-                      <div className="text-xs sm:text-sm text-gray-600 truncate max-w-[200px]">{u.Email}</div>
-                    </td>
-                    <td className="px-3 sm:px-6 py-2 sm:py-4 align-middle">
-                      <span className={`inline-flex items-center px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${getUserTypeColor(u.UserTypeID)}`}>
-                        {u.UserType}
-                      </span>
-                    </td>
-                    <td className="px-3 sm:px-6 py-2 sm:py-4 align-middle">
-                      <div className="flex items-center space-x-2 sm:space-x-3">
-                        <button
-                          onClick={() => openEdit(u)}
-                          className="inline-flex items-center text-[#2358a2] hover:text-[#1d4a8a] transition-colors text-xs sm:text-sm"
-                          aria-label="Editar usuario"
-                        >
-                          <span className="hidden sm:inline">Editar</span>
-                        </button>
-                        <button
-                          onClick={() => openDelete(u)}
-                          className="inline-flex items-center text-red-600 hover:text-red-800 transition-colors text-xs sm:text-sm"
-                          aria-label="Eliminar usuario"
-                        >
-                          <span className="hidden sm:inline">Eliminar</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {dataLoading ? (
+          <div className="bg-white rounded-lg shadow border border-gray-300 p-8 flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mx-auto"></div>
+              <p className="mt-4 text-gray-700 font-medium">Cargando usuarios...</p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-300">
+                <thead className="bg-gray-200">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300">
+                      Nombre de Usuario
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300">
+                      Nombre Completo
+                    </th>
+                    <th scope="col" className="hidden md:table-cell px-6 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300">
+                      Correo
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300">
+                      Tipo de Usuario
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">
+                      Acciones
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-300">
+                  {filteredUsers.map((u, index) => (
+                    <tr 
+                      key={u.SystemUserID} 
+                      className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 border-b border-gray-300`}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap border-r border-gray-300">
+                        <div className="flex items-center">
+                          <div className="text-sm text-gray-600 truncate max-w-[200px] flex items-center">
+                            {u.UserName}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap border-r border-gray-300">
+                        <div className="text-sm text-gray-600 truncate max-w-[200px] flex items-center">
+                          {u.FirstName} {' '}
+                          {u.LastName} {' '}
+                          {u.MiddleName} 
+                        </div>
+                      </td>
+                      <td className="hidden md:table-cell px-6 py-4 whitespace-nowrap border-r border-gray-300">
+                        <div className="text-sm text-gray-600 truncate max-w-[200px] flex items-center">
+                          {u.Email}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap border-r border-gray-300">
+                        <span className={`inline-flex items-center px-3 py-1.5 rounded text-xs font-bold whitespace-nowrap ${getUserTypeColor(u.UserTypeID)}`}>
+                          {u.UserType}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => openEdit(u)}
+                            className="inline-flex items-center px-3 py-1.5 bg-yellow-100 text-yellow-900 border border-yellow-400 rounded hover:bg-yellow-200 transition-colors text-sm font-medium shadow-sm"
+                            aria-label="Editar usuario"
+                          >
+                            <Edit2 className="h-3 w-3 mr-1" />
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => openDelete(u)}
+                            className="inline-flex items-center px-3 py-1.5 bg-red-100 text-red-900 border border-red-400 rounded hover:bg-red-200 transition-colors text-sm font-medium shadow-sm"
+                            aria-label="Eliminar usuario"
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        <Footer/>
       </main>
 
       {/* MODAL DE CREACIÓN/EDICIÓN */}
       {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 backdrop-blur bg-black/10">
-          <div className="bg-white w-full max-w-2xl rounded-lg shadow-xl max-h-[90vh] overflow-y-auto m-2">
-            <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/30">
+          <div className="bg-white w-full max-w-2xl rounded-lg shadow-lg border border-gray-300 max-h-[90vh] overflow-y-auto">
+            <form onSubmit={handleSubmit} className="space-y-1">
               {/* Modal Header */}
-              <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-gray-200">
+              <div className="px-6 pt-4 pb-3 border-b-2 border-gray-300 bg-gray-200">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2 sm:space-x-3">
+                  <div className="flex items-center">
                     <div>
-                      <h3 className="text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2 tracking-wide uppercase">
-                        {editingUser ? 'Editar Usuario' : 'Crear Usuario'}
+                      <h3 className="text-lg font-bold text-gray-900 tracking-tight">
+                        {editingUser ? 'EDITAR USUARIO' : 'CREAR NUEVO USUARIO'}
                       </h3>
-                      <p className="text-xs sm:text-sm text-gray-600">
-                        {editingUser ? 'Edite los campos del usuario' : 'Complete los campos para generar credenciales automáticamente'}
+                      <p className="mt-0.5 text-sm text-gray-700">
+                        {editingUser ? 'Modifique los datos del usuario' : 'Complete los campos para crear un nuevo usuario'}
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
-                    className="text-gray-400 hover:text-gray-500 transition-colors"
+                    className="text-gray-600 hover:text-gray-900 transition-colors bg-gray-300 hover:bg-gray-400 rounded p-1 border border-gray-500"
                     aria-label="Cerrar modal"
                   >
-                    <span className="sr-only">Cerrar</span>
-                    <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                    <X className="h-5 w-5" />
                   </button>
                 </div>
               </div>
 
               {/* Modal Body */}
-              <div className="px-4 sm:px-6 pb-4 sm:pb-6">
+              <div className="px-6 pb-4 pt-4">
                 {error && (
-                  <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-red-50 border border-red-200 rounded text-red-700 text-xs sm:text-sm">
-                    {error}
+                  <div className="mb-4 p-3 bg-red-100 border-1 border-red-300 rounded text-red-900 text-sm font-medium">
+                    <div className="flex items-center">
+                      <AlertTriangle className="h-4 w-4 mr-2" />
+                      {error}
+                    </div>
                   </div>
                 )}
                 
                 {success && (
-                  <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-green-50 border border-green-200 rounded text-green-700 text-xs sm:text-sm">
-                    {success}
+                  <div className="mb-4 p-3 bg-green-100 border-1 border-green-300 rounded text-green-900 text-sm font-medium">
+                    <div className="flex items-center">
+                      <div className="h-4 w-4 bg-green-500 rounded-full mr-2"></div>
+                      {success}
+                    </div>
                   </div>
                 )}
 
-                {/* Mostrar credenciales generadas para creación */}
+                {/* Mostrar credenciales generadas */}
                 {!editingUser && generatedCredentials && (
-                  <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                    <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">CREDENCIALES GENERADAS</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                  <div className="mb-6 p-4 bg-blue-50 border-1 border-blue-300 rounded-lg">
+                    <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center">
+                      <Lock className="h-4 w-4 mr-2 text-blue-700" />
+                      CREDENCIALES GENERADAS
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <p className="text-sm text-gray-700 mb-1">USUARIO:</p>
-                        <div className="flex items-center space-x-2">
-                          <User className="h-3 w-3 sm:h-4 sm:w-4 text-gray-700" />
-                          <code className="text-xs sm:text-sm font-mono bg-white px-2 py-1.5 sm:px-3 sm:py-2 rounded border border-gray-200 text-gray-700 w-full overflow-x-auto">
-                            {generatedCredentials.username}
-                          </code>
+                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                          USUARIO
+                        </label>
+                        <div className="flex items-center relative">
+                          <div className="absolute left-3">
+                            <User className="h-4 w-4 text-gray-600" />
+                          </div>
+                          <input
+                            type="text"
+                            value={generatedCredentials.username}
+                            readOnly
+                            className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none font-mono font-bold"
+                          />
                         </div>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-700 mb-1">CONTRASEÑA:</p>
-                        <div className="flex items-center space-x-2">
-                          <Lock className="h-3 w-3 sm:h-4 sm:w-4 text-gray-700" />
-                          <code className="text-xs sm:text-sm font-mono bg-white px-2 py-1.5 sm:px-3 sm:py-2 rounded border border-gray-200 text-gray-700 w-full overflow-x-auto">
-                            {generatedCredentials.password}
-                          </code>
+                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                          CONTRASEÑA
+                        </label>
+                        <div className="flex items-center relative">
+                          <div className="absolute left-3">
+                            <Lock className="h-4 w-4 text-gray-600" />
+                          </div>
+                          <input
+                            type="text"
+                            value={generatedCredentials.password}
+                            readOnly
+                            className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none font-mono font-bold"
+                          />
                         </div>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Mostrar nueva contraseña generada para edición */}
+                {/* Mostrar nueva contraseña generada */}
                 {editingUser && newGeneratedPassword && (
-                  <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                    <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">NUEVA CONTRASEÑA GENERADA</h4>
+                  <div className="mb-6 p-4 bg-yellow-50 border-1 border-yellow-300 rounded-lg">
+                    <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center">
+                      <RefreshCw className="h-4 w-4 mr-2 text-yellow-700" />
+                      NUEVA CONTRASEÑA GENERADA
+                    </h4>
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">CONTRASEÑA:</p>
-                      <div className="flex items-center space-x-2">
-                        <Lock className="h-3 w-3 sm:h-4 sm:w-4 text-gray-500" />
-                        <code className="text-xs sm:text-sm font-mono bg-white px-2 py-1.5 sm:px-3 sm:py-2 rounded border border-gray-200 text-gray-700 w-full overflow-x-auto">
-                          {newGeneratedPassword}
-                        </code>
+                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                        CONTRASEÑA
+                      </label>
+                      <div className="flex items-center relative">
+                        <div className="absolute left-3">
+                          <Lock className="h-4 w-4 text-gray-600" />
+                        </div>
+                        <input
+                          type={showPasswordField ? "text" : "password"}
+                          value={newGeneratedPassword}
+                          readOnly
+                          className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none font-mono font-bold"
+                        />
                       </div>
                     </div>
-                    <p className="text-xs text-gray-600 mt-2">
+                    <p className="mt-2 text-xs text-gray-700 font-medium">
                       <strong>Nota:</strong> Esta contraseña se asignará al usuario al guardar los cambios.
                     </p>
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Nombre */}
-                  <div className="col-span-full sm:col-span-1">
-                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2 tracking-wide uppercase">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       NOMBRE
                     </label>
                     <input
@@ -660,15 +658,15 @@ export default function SystemAdminDashboard() {
                       name="FirstName"
                       value={formData.FirstName}
                       onChange={handleInputChange}
-                      className="pl-3 w-full pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                       placeholder="Ingrese el nombre"
                       required
                     />
                   </div>
 
                   {/* Apellido Paterno */}
-                  <div className="col-span-full sm:col-span-1">
-                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2 tracking-wide uppercase">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       APELLIDO PATERNO
                     </label>
                     <input
@@ -676,15 +674,15 @@ export default function SystemAdminDashboard() {
                       name="LastName"
                       value={formData.LastName}
                       onChange={handleInputChange}
-                      className="w-full pl-3 pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                       placeholder="Ingrese el apellido paterno"
                       required
                     />
                   </div>
 
                   {/* Apellido Materno */}
-                  <div className="col-span-full sm:col-span-1">
-                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2 tracking-wide uppercase">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       APELLIDO MATERNO
                     </label>
                     <input
@@ -692,14 +690,14 @@ export default function SystemAdminDashboard() {
                       name="MiddleName"
                       value={formData.MiddleName}
                       onChange={handleInputChange}
-                      className="w-full pl-3 pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                       placeholder="Ingrese el apellido materno"
                     />
                   </div>
 
                   {/* Email */}
-                  <div className="col-span-full sm:col-span-1">
-                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2 tracking-wide uppercase">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       CORREO ELECTRÓNICO
                     </label>
                     <input
@@ -707,15 +705,15 @@ export default function SystemAdminDashboard() {
                       name="Email"
                       value={formData.Email}
                       onChange={handleInputChange}
-                      className="w-full pl-3 pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                       placeholder="correo@ejemplo.com"
                       required
                     />
                   </div>
 
                   {/* Usuario */}
-                  <div className="col-span-full sm:col-span-1">
-                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2 tracking-wide uppercase">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       USUARIO
                     </label>
                     <input
@@ -723,7 +721,7 @@ export default function SystemAdminDashboard() {
                       name="UserName"
                       value={formData.UserName}
                       onChange={handleInputChange}
-                      className="w-full pl-3 pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                       placeholder="Se generará automáticamente"
                       readOnly={!editingUser}
                       required
@@ -732,17 +730,17 @@ export default function SystemAdminDashboard() {
 
                   {/* Contraseña para edición */}
                   {editingUser && (
-                    <div className="col-span-full sm:col-span-1">
-                      <div className="flex justify-between items-center mb-1 sm:mb-2">
-                        <label className="block text-xs sm:text-sm font-medium text-gray-700 tracking-wide uppercase">
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="block text-xs font-bold text-gray-700 uppercase">
                           CONTRASEÑA
                         </label>
                         <button
                           type="button"
                           onClick={generateNewPassword}
-                          className="inline-flex items-center justify-center px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm bg-[#2358a2] text-white rounded hover:bg-[#1d4a8a] transition-colors focus:outline-none focus:ring-0 focus:ring-offset-2 focus:ring-[#2358a2]"
+                          className="inline-flex items-center justify-center px-3 py-1.5 text-xs bg-[#3a6ea5] text-white rounded hover:bg-[#2a4a75] transition-colors border border-[#3a6ea5] font-bold"
                         >
-                          <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                          <RefreshCw className="h-3 w-3 mr-2" />
                           GENERAR NUEVA
                         </button>
                       </div>
@@ -752,7 +750,7 @@ export default function SystemAdminDashboard() {
                           name="Password"
                           value={formData.Password}
                           onChange={handleInputChange}
-                          className="w-full pl-3 pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
+                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                           placeholder="Dejar vacío para mantener la contraseña actual"
                         />
                         {formData.Password && (
@@ -762,9 +760,9 @@ export default function SystemAdminDashboard() {
                               id="showPassword"
                               checked={showPasswordField}
                               onChange={() => setShowPasswordField(!showPasswordField)}
-                              className="h-4 w-4 text-[#2358a2] focus:ring-[#2358a2] border-gray-300 rounded"
+                              className="h-4 w-4 text-[#3a6ea5] focus:ring-[#3a6ea5] border border-gray-400 rounded"
                             />
-                            <label htmlFor="showPassword" className="ml-2 text-xs text-gray-600">
+                            <label htmlFor="showPassword" className="ml-2 text-xs text-gray-700 font-medium">
                               Mostrar contraseña
                             </label>
                           </div>
@@ -774,15 +772,15 @@ export default function SystemAdminDashboard() {
                   )}
 
                   {/* Tipo de Usuario */}
-                  <div className="col-span-full sm:col-span-1">
-                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2 tracking-wide uppercase">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       TIPO DE USUARIO
                     </label>
                     <select
                       name="UserTypeID"
                       value={formData.UserTypeID}
                       onChange={handleInputChange}
-                      className="w-full pl-3 pr-3 py-2 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#2358a2] focus:ring-0 transition-all"
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                       required
                     >
                       <option value="">Seleccione un tipo</option>
@@ -797,8 +795,8 @@ export default function SystemAdminDashboard() {
               </div>
 
               {/* Modal Footer */}
-              <div className="px-4 sm:px-6 py-3 sm:py-4 bg-gray-50 rounded-b-lg border-t border-gray-200">
-                <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-3 gap-2 sm:gap-0">
+              <div className="px-6 py-4 bg-gray-200 rounded-b-lg border-t-2 border-gray-300">
+                <div className="flex justify-end space-x-3">
                   <button
                     type="button"
                     onClick={() => {
@@ -807,18 +805,18 @@ export default function SystemAdminDashboard() {
                       setNewGeneratedPassword('');
                       setShowPasswordField(false);
                     }}
-                    className="px-3 py-2 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-50 transition-colors w-full sm:w-auto"
+                    className="px-5 py-2.5 text-sm font-bold text-gray-900 bg-gray-300 border border-gray-400 rounded hover:bg-gray-400 focus:outline-none transition-colors"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="inline-flex items-center justify-center px-3 py-2 sm:px-4 sm:py-2 bg-[#2358a2] border border-transparent rounded-md font-medium text-white hover:bg-[#1d4a8a] focus:outline-none focus:ring-offset-2 focus:ring-[#2358a2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs sm:text-sm w-full sm:w-auto"
+                    className="px-5 py-2.5 bg-[#3a6ea5] border border-[#3a6ea5] rounded font-bold text-white hover:bg-[#2a4a75] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                   >
                     {loading ? (
                       <>
-                        <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-white mr-2"></div>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 inline-block"></div>
                         GUARDANDO...
                       </>
                     ) : editingUser ? (
@@ -836,65 +834,70 @@ export default function SystemAdminDashboard() {
 
       {/* MODAL DE CONFIRMACIÓN PARA ELIMINAR */}
       {showDeleteModal && userToDelete && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 backdrop-blur bg-black/10">
-          <div className="bg-white w-full max-w-md rounded-lg shadow-xl m-2">
-            <div className="p-4 sm:p-6">
-              {/* Header */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-3">
-                  <div>
-                    <h3 className="text-sm sm:text-base font-medium text-gray-900 tracking-wide uppercase">
-                      CONFIRMAR ELIMINACIÓN
-                    </h3>
-                    <p className="text-xs sm:text-sm text-gray-500">
-                      Esta acción no se puede deshacer
-                    </p>
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/30">
+          <div className="bg-white w-full max-w-md rounded-lg shadow-lg border-2 border-gray-400">
+            <div className="space-y-1">
+              {/* Header*/}
+              <div className="px-6 pt-4 pb-3 rounded-t-lg border-b-1 border-gray-300 bg-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900 tracking-tight">
+                        CONFIRMAR ELIMINACIÓN
+                      </h3>
+                      <p className="mt-0.5 text-sm text-gray-700">
+                        Esta acción no se puede deshacer
+                      </p>
+                    </div>
                   </div>
+                  <button
+                    onClick={closeDeleteModal}
+                    className="text-gray-600 hover:text-gray-900 transition-colors bg-gray-300 hover:bg-gray-400 rounded p-1 border border-gray-500"
+                    aria-label="Cerrar modal"
+                    disabled={deleteLoading}
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
                 </div>
-                <button
-                  onClick={closeDeleteModal}
-                  className="text-gray-400 hover:text-gray-500 transition-colors"
-                  aria-label="Cerrar modal"
-                  disabled={deleteLoading}
-                >
-                  <X className="h-5 w-5" />
-                </button>
               </div>
 
               {/* Content */}
-              <div className="mb-6">
+              <div className="px-6 pb-4 pt-4">
                 {deleteError && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-xs sm:text-sm">
-                    {deleteError}
+                  <div className="mb-4 p-3 bg-red-100 border-2 border-red-400 rounded text-red-900 text-sm font-medium">
+                    <div className="flex items-center">
+                      <AlertTriangle className="h-4 w-4 mr-2" />
+                      {deleteError}
+                    </div>
                   </div>
                 )}
                 
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                  <p className="text-sm font-medium text-red-800 mb-2">
+                <div className="mb-6 p-4 bg-red-50 border border-red-300 rounded-lg">
+                  <p className="text-sm font-bold text-red-900 mb-3">
                     ¿Está seguro de eliminar al siguiente usuario?
                   </p>
-                  <div className="space-y-2 text-sm text-gray-700">
-                    <div className="flex">
-                      <span className="font-medium w-24">Usuario:</span>
-                      <span className="font-mono">{userToDelete.UserName}</span>
+                  <div className="space-y-3 text-sm text-gray-900">
+                    <div className="flex items-center bg-white p-2 rounded border border-gray-400">
+                      <span className="font-bold w-24">Usuario:</span>
+                      <span className="font-mono bg-gray-100 px-2 py-1 rounded border border-gray-300 ml-2">{userToDelete.UserName}</span>
                     </div>
-                    <div className="flex">
-                      <span className="font-medium w-24">Nombre:</span>
-                      <span>{userToDelete.FirstName} {userToDelete.LastName} {userToDelete.MiddleName}</span>
+                    <div className="flex items-center bg-white p-2 rounded border border-gray-400">
+                      <span className="font-bold w-24">Nombre:</span>
+                      <span className="ml-2">{userToDelete.FirstName} {userToDelete.LastName} {userToDelete.MiddleName}</span>
                     </div>
-                    <div className="flex">
-                      <span className="font-medium w-24">Tipo:</span>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getUserTypeColor(userToDelete.UserTypeID)}`}>
+                    <div className="flex items-center bg-white p-2 rounded border border-gray-400">
+                      <span className="font-bold w-24">Tipo:</span>
+                      <span className={`inline-flex items-center px-3 py-1 rounded text-xs font-bold ml-2 ${getUserTypeColor(userToDelete.UserTypeID)}`}>
                         {userToDelete.UserType}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <div className="p-4 bg-yellow-50 border border-yellow-300 rounded-lg">
                   <div className="flex">
-                    <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" />
-                    <p className="text-xs text-yellow-700">
+                    <AlertTriangle className="h-5 w-5 text-yellow-700 mt-0.5 mr-3 flex-shrink-0" />
+                    <p className="text-sm text-yellow-900 font-medium">
                       <strong>Advertencia:</strong> Esta acción eliminará permanentemente al usuario del sistema. 
                       Todos los datos asociados al usuario serán eliminados y no podrán recuperarse.
                     </p>
@@ -903,31 +906,31 @@ export default function SystemAdminDashboard() {
               </div>
 
               {/* Footer */}
-              <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-3 gap-2 sm:gap-0">
-                <button
-                  type="button"
-                  onClick={closeDeleteModal}
-                  disabled={deleteLoading}
-                  className="px-3 py-2 sm:py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-gray-50 focus:ring-offset-2 focus:ring-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={deleteLoading}
-                  className="inline-flex items-center justify-center px-3 py-2 sm:px-4 sm:py-2 bg-red-600 border border-transparent rounded-md font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-offset-2 focus:ring-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs sm:text-sm w-full sm:w-auto"
-                >
-                  {deleteLoading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      ELIMINANDO...
-                    </>
-                  ) : (
-                    <>
-                      ELIMINAR USUARIO
-                    </>
-                  )}
-                </button>
+              <div className="px-6 py-4 bg-gray-200 rounded-b-lg border-t-2 border-gray-300">
+                <div className="flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={closeDeleteModal}
+                    disabled={deleteLoading}
+                    className="px-5 py-2.5 text-sm font-bold text-gray-900 bg-gray-300 border border-gray-400 rounded hover:bg-gray-400 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleteLoading}
+                    className="px-5 py-2.5 bg-red-600 border border-red-600 rounded font-bold text-white hover:bg-red-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                  >
+                    {deleteLoading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 inline-block"></div>
+                        ELIMINANDO...
+                      </>
+                    ) : (
+                      'ELIMINAR USUARIO'
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
