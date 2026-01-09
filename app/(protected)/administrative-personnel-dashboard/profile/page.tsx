@@ -273,7 +273,7 @@ export default function UserProfilePage() {
                     <div className="p-4 bg-gray-50 border border-gray-300 rounded-lg">
                       <h3 className="font-bold text-gray-900 mb-2">SICAP -  Sistema Integral de Control Administrativo y de Procesos</h3>
                       <p className="text-sm text-gray-700">
-                        Sistema web especializado en la gestión integral del capital humano, diseñada para optimzar
+                        Sistema web especializado en la gestión integral del capital humano, diseñada para optimizar
                          procesos administrativos, control de personal, nómina, capacitación y desarrollo del 
                          talento organizacional.
                       </p>
