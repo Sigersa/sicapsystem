@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     if (session) {
       connection = await getConnection();
       await connection.execute(
-        'DELETE FROM sessions WHERE id = ?',
+        'DELETE FROM sessions WHERE SessionID = ?',
         [session]
       );
     }
