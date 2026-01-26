@@ -94,12 +94,12 @@ export default function UserProfilePage() {
   };
 
   // Mostrar loading mientras se verifica la sesión
-  if (sessionLoading || loading) {
+   if (sessionLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#3a6ea5] mx-auto"></div>
-          <p className="mt-4 text-gray-700 font-medium">Cargando información del perfil...</p>
+          <p className="mt-4 text-gray-700 font-medium">Verificando sesión...</p>
         </div>
       </div>
     );
