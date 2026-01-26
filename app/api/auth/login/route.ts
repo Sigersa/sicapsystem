@@ -51,15 +51,31 @@ export async function POST(request: NextRequest) {
     const sessionId = crypto.randomUUID();
 
     await connection.execute(
-      `INSERT INTO sessions (id, user_id, expires_at)
+      `INSERT INTO sessions (SessionID, SystemUserID, ExpiresAt)
        VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))`,
       [sessionId, user.SystemUserID, SESSION_DURATION_MINUTES]
     );
 
-    const redirectTo =
-      user.UserTypeID === 1
-        ? '/system-admin-dashboard'
-        : '/administrative-personnel-dashboard';
+  // Lógica de redirección según el tipo de usuario
+    let redirectTo = '/';
+    
+    switch (user.UserTypeID) {
+      case 1:
+        redirectTo = '/system-admin-dashboard';
+        break;
+      case 2:
+        redirectTo = '/administrative-personnel-dashboard';
+        break;
+      case 3:
+        redirectTo = '/collaborator-dashboard';
+        break;
+      case 4:
+        redirectTo = '/applicant-dashboard';
+        break;
+      default:
+        redirectTo = '/';
+    }
+
 
     const response = NextResponse.json(
       { success: true, redirectTo },
