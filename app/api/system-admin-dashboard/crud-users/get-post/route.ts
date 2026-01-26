@@ -29,16 +29,19 @@ export async function GET(req: NextRequest) {
         su.SystemUserID,
         su.UserName,
         su.UserTypeID,
+        su.EmployeeID,
         ut.Type AS UserType,
-        ud.FirstName,
-        ud.LastName,
-        ud.MiddleName,
-        ud.Email
+        COALESCE(
+          CONCAT(bp.FirstName, ' ', bp.LastName, ' ', IFNULL(bp.MiddleName, '')),
+          CONCAT(pp.FirstName, ' ', pp.LastName, ' ', IFNULL(pp.MiddleName, ''))
+        ) AS EmployeeName
       FROM systemusers su
-      INNER JOIN userdetails ud 
-        ON su.SystemUserID = ud.SystemUserID
       INNER JOIN userstypes ut 
         ON su.UserTypeID = ut.UserTypeID
+      INNER JOIN employees e 
+        ON su.EmployeeID = e.EmployeeID
+      LEFT JOIN basepersonnel bp ON e.BasePersonnelID = bp.BasePersonnelID
+      LEFT JOIN projectpersonnel pp ON e.ProjectPersonnelID = pp.ProjectPersonnelID
       ORDER BY su.SystemUserID
     `);
 
@@ -84,25 +87,10 @@ export async function POST(req: NextRequest) {
     const [result]: any = await connection.execute(
       `
       INSERT INTO systemusers 
-        (UserName, Password, UserTypeID, CreationDate) 
-      VALUES (?, ?, ?, NOW())
+        (UserName, Password, UserTypeID, EmployeeID, CreationDate) 
+      VALUES (?, ?, ?, ?, NOW())
       `,
-      [data.UserName, hashedPassword, data.UserTypeID]
-    );
-
-    await connection.execute(
-      `
-      INSERT INTO userdetails 
-        (SystemUserID, FirstName, LastName, MiddleName, Email) 
-      VALUES (?, ?, ?, ?, ?)
-      `,
-      [
-        result.insertId,
-        data.FirstName,
-        data.LastName,
-        data.MiddleName || "",
-        data.Email
-      ]
+      [data.UserName, hashedPassword, data.UserTypeID, data.EmployeeID]
     );
 
     await connection.commit();
