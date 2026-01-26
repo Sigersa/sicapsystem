@@ -13,6 +13,8 @@ export function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     '/system-admin-dashboard/:path*',
-    '/administrative-personnel-dashboard/:path*'
+    '/administrative-personnel-dashboard/:path*',
+    '/collaborator-dashboard/:path*',
+    '/applicant-dashboard/:path*'
   ]
 };
