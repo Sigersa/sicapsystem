@@ -6,10 +6,9 @@ type UserData = {
   UserName: string;
   UserTypeID: number;
   UserType: string;
-  FirstName: string;
-  LastName: string;
-  MiddleName: string;
-  Email: string;
+  EmployeeID: number;
+  EmployeeName: string;
+  EmployeeEmail: string;
 };
 
 type UserType = {
@@ -44,7 +43,7 @@ export const useUserData = () => {
   const fetchUsers = useCallback(async () => {
     try {
       setError(null);
-      const res = await fetch('/api/system-admin-dashboard/crud-users/get-post');
+      const res = await fetch('/api/system-admin-dashboard/crud-users');
       
       if (!res.ok) {
         throw new Error(`Error ${res.status}: ${res.statusText}`);
@@ -73,6 +72,7 @@ export const useUserData = () => {
       ]);
     } catch (error) {
       console.error('Error loading all data:', error);
+      setError('Error al cargar los datos');
     } finally {
       setDataLoading(false);
     }
