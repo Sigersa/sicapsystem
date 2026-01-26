@@ -28,9 +28,9 @@ export async function GET(request: NextRequest) {
          ud.Email
        FROM sessions s
        INNER JOIN systemusers su
-       ON su.SystemUserID = s.user_id 
+       ON su.SystemUserID = s.SystemUserID 
        LEFT JOIN userdetails ud ON su.SystemUserID = ud.SystemUserID
-       WHERE s.id = ? AND s.expires_at > NOW()`,
+       WHERE s.SessionID = ? AND s.ExpiresAt > NOW()`,
       [session]
     );
 
