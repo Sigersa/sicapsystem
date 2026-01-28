@@ -16,20 +16,21 @@ export async function GET(request: NextRequest) {
 
     connection = await getConnection();
 
+    // Consulta actualizada para usar las nuevas tablas
     const [rows] = await connection.execute(
       `SELECT 
          su.SystemUserID,
          su.UserName,
          su.CreationDate,
          su.UserTypeID,
-         ud.FirstName,
-         ud.LastName,
-         ud.MiddleName,
-         ud.Email
+         bp.FirstName,
+         bp.LastName,
+         bp.MiddleName,
+         pi.Email
        FROM sessions s
-       INNER JOIN systemusers su
-       ON su.SystemUserID = s.SystemUserID 
-       LEFT JOIN userdetails ud ON su.SystemUserID = ud.SystemUserID
+       INNER JOIN systemusers su ON su.SystemUserID = s.SystemUserID 
+       LEFT JOIN basepersonnel bp ON su.SystemUserID = bp.BasePersonnelID
+       LEFT JOIN basepersonnelpersonalinfo pi ON bp.BasePersonnelID = pi.BasePersonnelID
        WHERE s.SessionID = ? AND s.ExpiresAt > NOW()`,
       [session]
     );
@@ -45,6 +46,18 @@ export async function GET(request: NextRequest) {
 
     const user = users[0];
 
+    // Construir el nombre completo considerando valores nulos
+    const firstName = user.FirstName || '';
+    const lastName = user.LastName || '';
+    const middleName = user.MiddleName || '';
+    
+    let fullName = '';
+    if (firstName && lastName) {
+      fullName = middleName ? `${firstName} ${lastName} ${middleName}` : `${firstName} ${lastName}`;
+    } else {
+      fullName = user.UserName;
+    }
+
     return NextResponse.json({
       success: true,
       user: {
@@ -53,14 +66,13 @@ export async function GET(request: NextRequest) {
         FirstName: user.FirstName,
         LastName: user.LastName,
         MiddleName: user.MiddleName,
-        FullName: `${user.FirstName || ''} ${user.LastName || ''}`.trim() || user.UserName,
+        FullName: fullName.trim(),
         Email: user.Email,
         UserTypeID: user.UserTypeID,
         CreationDate: user.CreationDate
       }
     },
-    { status: 200 }
-  );
+    { status: 200 });
 
   } catch (error) {
     console.error('Get profile error:', error);
