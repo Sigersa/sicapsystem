@@ -117,33 +117,30 @@ export default function SystemAdminDashboard() {
   const [newGeneratedPassword, setNewGeneratedPassword] = useState<string>('');
 
   // Cargar empleados disponibles
-  // En el useEffect que carga empleados
-useEffect(() => {
-  const fetchEmployees = async () => {
-    setLoadingEmployees(true);
-    try {
-      const res = await fetch('/api/system-admin-dashboard/employees');
-      console.log('Respuesta de empleados:', res.status, res.ok);
-      
-      if (res.ok) {
-        const data = await res.json();
-        console.log('Empleados cargados:', data);
-        setEmployees(data);
-      } else {
-        const errorText = await res.text();
-        console.error('Error en respuesta:', errorText);
-        throw new Error(`Error ${res.status}: ${res.statusText}`);
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      setLoadingEmployees(true);
+      try {
+        const res = await fetch('/api/system-admin-dashboard/employees');
+        
+        if (res.ok) {
+          const data = await res.json();
+          setEmployees(data);
+        } else {
+          const errorText = await res.text();
+          console.error('Error en respuesta:', errorText);
+          throw new Error(`Error ${res.status}: ${res.statusText}`);
+        }
+      } catch (error) {
+        console.error('Error al cargar empleados:', error);
+        setError('Error al cargar la lista de empleados');
+      } finally {
+        setLoadingEmployees(false);
       }
-    } catch (error) {
-      console.error('Error al cargar empleados:', error);
-      setError('Error al cargar la lista de empleados');
-    } finally {
-      setLoadingEmployees(false);
-    }
-  };
+    };
 
-  fetchEmployees();
-}, []);
+    fetchEmployees();
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
