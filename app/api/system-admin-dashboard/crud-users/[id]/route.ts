@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
 
-// Asegurar que los parámetros se exporten correctamente
 export async function PUT(
   request: NextRequest, 
   context: { params: Promise<{ id: string }> }
@@ -229,13 +228,7 @@ export async function DELETE(
       );
     }
 
-    // Primero eliminar de userdetails (debido a la restricción de clave foránea)
-    await connection.execute(
-      "DELETE FROM userdetails WHERE SystemUserID = ?",
-      [id]
-    );
-
-    // Luego eliminar de systemusers
+    // Eliminar de systemusers
     const [result]: any = await connection.execute(
       "DELETE FROM systemusers WHERE SystemUserID = ?",
       [id]
