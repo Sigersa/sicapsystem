@@ -20,22 +20,21 @@ export async function GET(req: NextRequest) {
 
     connection = await getConnection();
 
-    // Obtener todos los empleados con su información de basepersonnel o projectpersonnel
+    // Obtener empleados base personnel que no tienen usuario (solo base personnel, sin proyectos)
     const [rows]: any = await connection.execute(`
       SELECT 
         e.EmployeeID,
-        COALESCE(
-          CONCAT(bp.FirstName, ' ', bp.LastName, ' ', IFNULL(bp.MiddleName, '')),
-          CONCAT(pp.FirstName, ' ', pp.LastName, ' ', IFNULL(pp.MiddleName, ''))
-        ) AS FullName,
-        COALESCE(bpi.Email) AS Email
+        CONCAT(bp.FirstName, ' ', bp.LastName, ' ', IFNULL(bp.MiddleName, '')) AS FullName,
+        bpi.Email
       FROM employees e
-      LEFT JOIN basepersonnel bp ON e.BasePersonnelID = bp.BasePersonnelID
-      LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
-      LEFT JOIN projectpersonnel pp ON e.ProjectPersonnelID = pp.ProjectPersonnelID
-      LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
-      WHERE e.EmployeeID IS NOT NULL
-      ORDER BY e.EmployeeID
+      INNER JOIN basepersonnel bp 
+        ON e.BasePersonnelID = bp.BasePersonnelID
+      LEFT JOIN basepersonnelpersonalinfo bpi 
+        ON bp.BasePersonnelID = bpi.BasePersonnelID
+      LEFT JOIN systemusers su 
+        ON e.EmployeeID = su.EmployeeID
+      WHERE su.SystemUserID IS NULL
+      ORDER BY bp.LastName, bp.FirstName
     `);
 
     return NextResponse.json(rows, { status: 200 });
