@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
     connection = await getConnection();
 
-    // Consulta mejorada para incluir correo electrónico
+    // Consulta mejorada - solo con base personnel (sin proyectos)
     const [rows]: any = await connection.execute(`
       SELECT 
         su.SystemUserID,
@@ -32,21 +32,17 @@ export async function GET(req: NextRequest) {
         su.UserTypeID,
         su.EmployeeID,
         ut.Type AS UserType,
-        COALESCE(
-          CONCAT(bp.FirstName, ' ', bp.LastName, ' ', IFNULL(bp.MiddleName, '')),
-          CONCAT(pp.FirstName, ' ', pp.LastName, ' ', IFNULL(pp.MiddleName, ''))
-        ) AS EmployeeName,
-        COALESCE(bpi.Email, ud.Email) AS EmployeeEmail
+        CONCAT(bp.FirstName, ' ', bp.LastName, ' ', IFNULL(bp.MiddleName, '')) AS EmployeeName,
+        bpi.Email AS EmployeeEmail
       FROM systemusers su
       INNER JOIN userstypes ut 
         ON su.UserTypeID = ut.UserTypeID
       INNER JOIN employees e 
         ON su.EmployeeID = e.EmployeeID
-      LEFT JOIN basepersonnel bp ON e.BasePersonnelID = bp.BasePersonnelID
-      LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
-      LEFT JOIN projectpersonnel pp ON e.ProjectPersonnelID = pp.ProjectPersonnelID
-      LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
-      LEFT JOIN userdetails ud ON su.SystemUserID = ud.SystemUserID
+      INNER JOIN basepersonnel bp 
+        ON e.BasePersonnelID = bp.BasePersonnelID
+      LEFT JOIN basepersonnelpersonalinfo bpi 
+        ON bp.BasePersonnelID = bpi.BasePersonnelID
       ORDER BY su.SystemUserID DESC
     `);
 
@@ -144,16 +140,6 @@ export async function POST(req: NextRequest) {
     );
 
     const systemUserID = result.insertId;
-
-    // Insertar en userdetails con información básica
-    await connection.execute(
-      `
-      INSERT INTO userdetails 
-        (SystemUserID, FirstName, LastName, MiddleName, Email) 
-      VALUES (?, 'Usuario', 'Nuevo', '', '')
-      `,
-      [systemUserID]
-    );
 
     await connection.commit();
 
