@@ -3,11 +3,11 @@ import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
-import { useState, ChangeEvent, FormEvent, useEffect } from 'react';
-import { User, Calendar, CheckCircle, X } from 'lucide-react';
+import { useState, ChangeEvent, FormEvent } from 'react';
+import { User, Calendar, CheckCircle, X, Briefcase, Users } from 'lucide-react';
 
-// Definir el tipo para el formulario
-type FormData = {
+// Definir el tipo para el formulario base
+type FormDataBase = {
   nombre: string;
   apellidoPaterno: string;
   apellidoMaterno: string;
@@ -38,9 +38,18 @@ type FormData = {
   nci: string;
   umf: string;
   salaryIMSS: string;
+  nombreProyecto: string; // Solo para personal de proyecto
 };
 
-// Tipo para beneficiarios
+// Tipo para formulario de proyecto
+type FormDataProyecto = FormDataBase & {
+  nombreProyecto: string;
+};
+
+// Tipo para formulario base (sin fechaFinContrato y nombreProyecto)
+type FormDataPersonalBase = Omit<FormDataBase, 'fechaFinContrato' | 'nombreProyecto'>;
+
+// Tipo para beneficiario
 type Beneficiario = {
   nombre: string;
   apellidoPaterno: string;
@@ -48,6 +57,9 @@ type Beneficiario = {
   parentesco: string;
   porcentaje: string;
 };
+
+// Tipo para pestaña activa
+type TabType = 'proyecto' | 'base';
 
 // Mapa de nombres de campos para mensajes de error
 const fieldNames: Record<string, string> = {
@@ -74,8 +86,11 @@ export default function SystemAdminDashboard() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
 
-  // Estados para el formulario
-  const [formData, setFormData] = useState<FormData>({
+  // Estado para la pestaña activa
+  const [activeTab, setActiveTab] = useState<TabType>('proyecto');
+
+  // Estados para el formulario de proyecto
+  const [formDataProyecto, setFormDataProyecto] = useState<FormDataProyecto>({
     nombre: '',
     apellidoPaterno: '',
     apellidoMaterno: '',
@@ -105,19 +120,59 @@ export default function SystemAdminDashboard() {
     codigoPostal: '',
     nci: '',
     umf: '',
+    salaryIMSS: '',
+    nombreProyecto: ''
+  });
+
+  // Estados para el formulario de personal base
+  const [formDataBase, setFormDataBase] = useState<FormDataPersonalBase>({
+    nombre: '',
+    apellidoPaterno: '',
+    apellidoMaterno: '',
+    nss: '',
+    curp: '',
+    rfc: '',
+    fechaNacimiento: '',
+    genero: '',
+    nacionalidad: '',
+    estadoCivil: '',
+    telefono: '',
+    email: '',
+    puesto: '',
+    departamento: '',
+    fechaIngreso: '',
+    salario: '',
+    horarioLaboral: '',
+    tipoContrato: '',
+    fechaInicioContrato: '',
+    calle: '',
+    numeroExterior: '',
+    numeroInterior: '',
+    colonia: '',
+    municipio: '',
+    estado: '',
+    codigoPostal: '',
+    nci: '',
+    umf: '',
     salaryIMSS: ''
   });
 
-  // Estado para beneficiarios
-  const [beneficiarios, setBeneficiarios] = useState<Beneficiario[]>([
-    {
-      nombre: '',
-      apellidoPaterno: '',
-      apellidoMaterno: '',
-      parentesco: '',
-      porcentaje: ''
-    }
-  ]);
+  // Estados para beneficiarios
+  const [beneficiarioProyecto, setBeneficiarioProyecto] = useState<Beneficiario>({
+    nombre: '',
+    apellidoPaterno: '',
+    apellidoMaterno: '',
+    parentesco: '',
+    porcentaje: ''
+  });
+
+  const [beneficiarioBase, setBeneficiarioBase] = useState<Beneficiario>({
+    nombre: '',
+    apellidoPaterno: '',
+    apellidoMaterno: '',
+    parentesco: '',
+    porcentaje: ''
+  });
 
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -125,60 +180,78 @@ export default function SystemAdminDashboard() {
   const [errorMessage, setErrorMessage] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  // Manejar cambios en los inputs del formulario principal
+  // Obtener el formulario activo según la pestaña
+  const getActiveFormData = () => {
+    return activeTab === 'proyecto' ? formDataProyecto : formDataBase;
+  };
+
+  const getActiveBeneficiario = () => {
+    return activeTab === 'proyecto' ? beneficiarioProyecto : beneficiarioBase;
+  };
+
+  // Manejar cambios en los inputs del formulario activo
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  // Manejar cambios en los inputs de beneficiarios
-  const handleBeneficiarioChange = (index: number, field: keyof Beneficiario, value: string) => {
-    const newBeneficiarios = [...beneficiarios];
-    newBeneficiarios[index] = {
-      ...newBeneficiarios[index],
-      [field]: value
-    };
-    setBeneficiarios(newBeneficiarios);
-  };
-
-  // Agregar nuevo beneficiario
-  const agregarBeneficiario = () => {
-    setBeneficiarios([
-      ...beneficiarios,
-      {
-        nombre: '',
-        apellidoPaterno: '',
-        apellidoMaterno: '',
-        parentesco: '',
-        porcentaje: ''
-      }
-    ]);
-  };
-
-  // Eliminar beneficiario
-  const eliminarBeneficiario = (index: number) => {
-    if (beneficiarios.length > 1) {
-      const newBeneficiarios = beneficiarios.filter((_, i) => i !== index);
-      setBeneficiarios(newBeneficiarios);
+    
+    if (activeTab === 'proyecto') {
+      setFormDataProyecto(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    } else {
+      setFormDataBase(prev => ({
+        ...prev,
+        [name]: value
+      }));
     }
   };
 
-  // Validar formulario
+  // Manejar cambios en el beneficiario del formulario activo
+  const handleBeneficiarioChange = (field: keyof Beneficiario, value: string) => {
+    if (activeTab === 'proyecto') {
+      setBeneficiarioProyecto(prev => ({
+        ...prev,
+        [field]: value
+      }));
+    } else {
+      setBeneficiarioBase(prev => ({
+        ...prev,
+        [field]: value
+      }));
+    }
+  };
+
+  // Validar formulario según la pestaña activa
   const validateForm = () => {
-    const requiredFields: (keyof FormData)[] = [
+    const formData = getActiveFormData();
+    const beneficiario = getActiveBeneficiario();
+
+    // Campos requeridos para ambos tipos
+    const requiredFieldsBase = [
       'nombre', 'apellidoPaterno', 'nss', 'curp', 'rfc',
       'fechaNacimiento', 'telefono', 'email', 'puesto',
       'fechaIngreso', 'salario', 'calle', 'numeroExterior',
       'colonia', 'municipio', 'estado', 'codigoPostal'
     ];
 
-    // Validar campos requeridos
-    for (const field of requiredFields) {
-      if (!formData[field]?.trim()) {
-        setErrorMessage(`El campo ${fieldNames[field]} es requerido`);
+    // Campos adicionales requeridos solo para proyecto
+    if (activeTab === 'proyecto') {
+      const proyectoData = formData as FormDataProyecto;
+      if (!proyectoData.nombreProyecto?.trim()) {
+        setErrorMessage('El nombre del proyecto es requerido');
+        return false;
+      }
+      if (!proyectoData.fechaFinContrato?.trim()) {
+        setErrorMessage('La fecha de fin de contrato es requerida para personal de proyecto');
+        return false;
+      }
+    }
+
+    // Validar campos requeridos del formulario principal
+    for (const field of requiredFieldsBase) {
+      if (!formData[field as keyof typeof formData]?.trim()) {
+        const fieldName = fieldNames[field] || field;
+        setErrorMessage(`El campo ${fieldName} es requerido`);
         return false;
       }
     }
@@ -207,19 +280,123 @@ export default function SystemAdminDashboard() {
       return false;
     }
 
-    // Validar porcentaje total de beneficiarios (debe sumar 100%)
-    const porcentajeTotal = beneficiarios.reduce((total, beneficiario) => {
-      return total + (parseFloat(beneficiario.porcentaje) || 0);
-    }, 0);
-
-    if (beneficiarios.some(b => b.nombre || b.apellidoPaterno)) {
-      if (Math.abs(porcentajeTotal - 100) > 0.01) {
-        setErrorMessage('El porcentaje total de los beneficiarios debe sumar 100%');
+    // Validar que si se llena algún campo de beneficiario, todos los requeridos estén completos
+    if (beneficiario.nombre || beneficiario.apellidoPaterno || beneficiario.porcentaje) {
+      if (!beneficiario.nombre.trim()) {
+        setErrorMessage('El nombre del beneficiario es requerido');
+        return false;
+      }
+      if (!beneficiario.apellidoPaterno.trim()) {
+        setErrorMessage('El apellido paterno del beneficiario es requerido');
+        return false;
+      }
+      if (!beneficiario.parentesco) {
+        setErrorMessage('El parentesco del beneficiario es requerido');
+        return false;
+      }
+      if (!beneficiario.porcentaje) {
+        setErrorMessage('El porcentaje del beneficiario es requerido');
+        return false;
+      }
+      
+      // Validar que el porcentaje sea 100% (solo un beneficiario)
+      const porcentaje = parseFloat(beneficiario.porcentaje) || 0;
+      if (Math.abs(porcentaje - 100) > 0.01) {
+        setErrorMessage('El porcentaje del beneficiario debe ser 100% (solo se permite un beneficiario)');
         return false;
       }
     }
 
     return true;
+  };
+
+  // Limpiar todos los formularios
+  const limpiarTodosFormularios = () => {
+    // Limpiar formulario de proyecto
+    setFormDataProyecto({
+      nombre: '',
+      apellidoPaterno: '',
+      apellidoMaterno: '',
+      nss: '',
+      curp: '',
+      rfc: '',
+      fechaNacimiento: '',
+      genero: '',
+      nacionalidad: '',
+      estadoCivil: '',
+      telefono: '',
+      email: '',
+      puesto: '',
+      departamento: '',
+      fechaIngreso: '',
+      salario: '',
+      horarioLaboral: '',
+      tipoContrato: '',
+      fechaInicioContrato: '',
+      fechaFinContrato: '',
+      calle: '',
+      numeroExterior: '',
+      numeroInterior: '',
+      colonia: '',
+      municipio: '',
+      estado: '',
+      codigoPostal: '',
+      nci: '',
+      umf: '',
+      salaryIMSS: '',
+      nombreProyecto: ''
+    });
+    setBeneficiarioProyecto({
+      nombre: '',
+      apellidoPaterno: '',
+      apellidoMaterno: '',
+      parentesco: '',
+      porcentaje: ''
+    });
+
+    // Limpiar formulario de personal base
+    setFormDataBase({
+      nombre: '',
+      apellidoPaterno: '',
+      apellidoMaterno: '',
+      nss: '',
+      curp: '',
+      rfc: '',
+      fechaNacimiento: '',
+      genero: '',
+      nacionalidad: '',
+      estadoCivil: '',
+      telefono: '',
+      email: '',
+      puesto: '',
+      departamento: '',
+      fechaIngreso: '',
+      salario: '',
+      horarioLaboral: '',
+      tipoContrato: '',
+      fechaInicioContrato: '',
+      calle: '',
+      numeroExterior: '',
+      numeroInterior: '',
+      colonia: '',
+      municipio: '',
+      estado: '',
+      codigoPostal: '',
+      nci: '',
+      umf: '',
+      salaryIMSS: ''
+    });
+    setBeneficiarioBase({
+      nombre: '',
+      apellidoPaterno: '',
+      apellidoMaterno: '',
+      parentesco: '',
+      porcentaje: ''
+    });
+
+    setSuccessMessage('');
+    setErrorMessage('');
+    setShowSuccessModal(false);
   };
 
   // Manejar envío del formulario
@@ -236,14 +413,17 @@ export default function SystemAdminDashboard() {
     setLoading(true);
 
     try {
-      // Filtrar solo beneficiarios que tienen datos
-      const beneficiariosFiltrados = beneficiarios.filter(b => 
-        b.nombre.trim() && b.apellidoPaterno.trim()
-      );
+      const formData = getActiveFormData();
+      const beneficiario = getActiveBeneficiario();
 
-      // Crear objeto con formato correcto para las tablas
-      const formDataToSend = {
-        // Información personal
+      // Solo incluir beneficiario si tiene datos
+      const beneficiariosFiltrados = beneficiario.nombre.trim() && beneficiario.apellidoPaterno.trim()
+        ? [beneficiario]
+        : [];
+
+      // Crear objeto con formato correcto según el tipo de personal
+      const formDataToSend: any = {
+        // Información personal (común para ambos)
         nombre: formData.nombre,
         apellidoPaterno: formData.apellidoPaterno,
         apellidoMaterno: formData.apellidoMaterno,
@@ -276,16 +456,27 @@ export default function SystemAdminDashboard() {
         fechaIngreso: formData.fechaIngreso,
         salario: formData.salario,
         horarioLaboral: formData.horarioLaboral,
-        tipoContrato: formData.tipoContrato,
         
         // Información de contrato
         fechaInicioContrato: formData.fechaInicioContrato,
-        fechaFinContrato: formData.fechaFinContrato,
         salaryIMSS: formData.salaryIMSS,
+        
+        // Tipo de personal
+        tipoPersonal: activeTab === 'proyecto' ? 'proyecto' : 'base',
         
         // Beneficiarios
         beneficiarios: beneficiariosFiltrados
       };
+
+      // Agregar campos específicos según el tipo
+      if (activeTab === 'proyecto') {
+        const proyectoData = formData as FormDataProyecto;
+        formDataToSend.fechaFinContrato = proyectoData.fechaFinContrato;
+        formDataToSend.nombreProyecto = proyectoData.nombreProyecto;
+        formDataToSend.tipoContrato = proyectoData.tipoContrato;
+      } else {
+        formDataToSend.tipoContrato = formData.tipoContrato;
+      }
 
       const response = await fetch('/api/empleados/registrar', {
         method: 'POST',
@@ -303,52 +494,93 @@ export default function SystemAdminDashboard() {
           empleadoId: result.empleadoId,
           nombre: `${formData.nombre} ${formData.apellidoPaterno} ${formData.apellidoMaterno}`,
           puesto: formData.puesto,
+          tipoPersonal: activeTab === 'proyecto' ? 'Personal de Proyecto' : 'Personal Base',
           fechaRegistro: new Date().toLocaleDateString('es-MX')
         });
         setShowSuccessModal(true);
         
-        // Limpiar formulario después de éxito
-        setFormData({
-          nombre: '',
-          apellidoPaterno: '',
-          apellidoMaterno: '',
-          nss: '',
-          curp: '',
-          rfc: '',
-          fechaNacimiento: '',
-          genero: '',
-          nacionalidad: '',
-          estadoCivil: '',
-          telefono: '',
-          email: '',
-          puesto: '',
-          departamento: '',
-          fechaIngreso: '',
-          salario: '',
-          horarioLaboral: '',
-          tipoContrato: '',
-          fechaInicioContrato: '',
-          fechaFinContrato: '',
-          calle: '',
-          numeroExterior: '',
-          numeroInterior: '',
-          colonia: '',
-          municipio: '',
-          estado: '',
-          codigoPostal: '',
-          nci: '',
-          umf: '',
-          salaryIMSS: ''
-        });
-
-        // Limpiar beneficiarios
-        setBeneficiarios([{
-          nombre: '',
-          apellidoPaterno: '',
-          apellidoMaterno: '',
-          parentesco: '',
-          porcentaje: ''
-        }]);
+        // Limpiar solo el formulario activo después de éxito
+        if (activeTab === 'proyecto') {
+          setFormDataProyecto({
+            nombre: '',
+            apellidoPaterno: '',
+            apellidoMaterno: '',
+            nss: '',
+            curp: '',
+            rfc: '',
+            fechaNacimiento: '',
+            genero: '',
+            nacionalidad: '',
+            estadoCivil: '',
+            telefono: '',
+            email: '',
+            puesto: '',
+            departamento: '',
+            fechaIngreso: '',
+            salario: '',
+            horarioLaboral: '',
+            tipoContrato: '',
+            fechaInicioContrato: '',
+            fechaFinContrato: '',
+            calle: '',
+            numeroExterior: '',
+            numeroInterior: '',
+            colonia: '',
+            municipio: '',
+            estado: '',
+            codigoPostal: '',
+            nci: '',
+            umf: '',
+            salaryIMSS: '',
+            nombreProyecto: ''
+          });
+          setBeneficiarioProyecto({
+            nombre: '',
+            apellidoPaterno: '',
+            apellidoMaterno: '',
+            parentesco: '',
+            porcentaje: ''
+          });
+        } else {
+          setFormDataBase({
+            nombre: '',
+            apellidoPaterno: '',
+            apellidoMaterno: '',
+            nss: '',
+            curp: '',
+            rfc: '',
+            fechaNacimiento: '',
+            genero: '',
+            nacionalidad: '',
+            estadoCivil: '',
+            telefono: '',
+            email: '',
+            puesto: '',
+            departamento: '',
+            fechaIngreso: '',
+            salario: '',
+            horarioLaboral: '',
+            tipoContrato: '',
+            fechaInicioContrato: '',
+            calle: '',
+            numeroExterior: '',
+            numeroInterior: '',
+            colonia: '',
+            municipio: '',
+            estado: '',
+            codigoPostal: '',
+            nci: '',
+            umf: '',
+            salaryIMSS: ''
+          });
+          setBeneficiarioBase({
+            nombre: '',
+            apellidoPaterno: '',
+            apellidoMaterno: '',
+            parentesco: '',
+            porcentaje: ''
+          });
+        }
       } else {
         setErrorMessage(result.message || 'ERROR AL REGISTRAR EL EMPLEADO. POR FAVOR, INTENTE NUEVAMENTE.');
       }
@@ -360,7 +592,7 @@ export default function SystemAdminDashboard() {
     }
   };
 
-  // Cerrar modal manualmente (se eliminó el cierre automático)
+  // Cerrar modal
   const closeModal = () => {
     setShowSuccessModal(false);
   };
@@ -382,6 +614,690 @@ export default function SystemAdminDashboard() {
     return null;
   }
 
+  // Renderizar el formulario correspondiente
+  const renderFormulario = () => {
+    const formData = getActiveFormData();
+    const beneficiario = getActiveBeneficiario();
+
+    return (
+      <form onSubmit={handleSubmit}>
+        {/* TARJETA DE INFORMACIÓN PERSONAL */}
+        <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden mb-6">
+          <div className="bg-gray-200 px-6 py-4 border-b-2 border-gray-300">
+            <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+              INFORMACIÓN PERSONAL
+            </h2>
+          </div>
+          
+          <div className="p-6">
+            <div className="space-y-6">
+              {/* Nombre completo */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    NOMBRE(S) *
+                  </label>
+                  <input
+                    type="text"
+                    name="nombre"
+                    value={formData.nombre}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder='Ingrese el nombre (s)'
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    APELLIDO PATERNO *
+                  </label>
+                  <input
+                    type="text"
+                    name="apellidoPaterno"
+                    value={formData.apellidoPaterno}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder='Ingrese el apellido paterno'
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    APELLIDO MATERNO *
+                  </label>
+                  <input
+                    type="text"
+                    name="apellidoMaterno"
+                    value={formData.apellidoMaterno}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder='Ingrese el apellido materno'
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    FECHA DE NACIMIENTO *
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                      <Calendar className="h-4 w-4 text-gray-600" />
+                    </div>
+                    <input
+                      type="date"
+                      name="fechaNacimiento"
+                      value={formData.fechaNacimiento}
+                      onChange={handleInputChange}
+                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Documentos de identificación */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    ESTADO CIVIL *
+                  </label>
+                  <select
+                    name="estadoCivil"
+                    value={formData.estadoCivil}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  >
+                    <option value="">Seleccione un tipo</option>
+                    <option value="soltero">Soltero (a)</option>
+                    <option value="casado">Casado (a)</option>
+                    <option value="divorciado">Divorciado (a)</option>
+                    <option value="viudo">Viudo (a)</option>
+                    <option value="union_libre">Unión Libre</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    GÉNERO *
+                  </label>
+                  <select
+                    name="genero"
+                    value={formData.genero}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  >
+                    <option value="">Seleccione un tipo</option>
+                    <option value="masculino">Masculino</option>
+                    <option value="femenino">Femenino</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    TELÉFONO *
+                  </label>
+                  <input
+                    type="text"
+                    name="telefono"
+                    value={formData.telefono}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese el teléfono"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    EMAIL *
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese el email"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    NSS *
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                      <User className="h-4 w-4 text-gray-600" />
+                    </div>
+                    <input
+                      type="text"
+                      name="nss"
+                      value={formData.nss}
+                      onChange={handleInputChange}
+                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      placeholder="Ingrese el NSS"
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    CURP *
+                  </label>
+                  <input
+                    type="text"
+                    name="curp"
+                    value={formData.curp}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium uppercase"
+                    placeholder="Ingrese el CURP"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    RFC *
+                  </label>
+                  <input
+                    type="text"
+                    name="rfc"
+                    value={formData.rfc}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium uppercase"
+                    placeholder="Ingrese el RFC"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    NÚMERO DE CONVENIO DE INFONAVIT *
+                  </label>
+                  <input
+                    type="text"
+                    name="nci"
+                    value={formData.nci}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese NCI"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Dirección */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    CALLE *
+                  </label>
+                  <input
+                    type="text"
+                    name="calle"
+                    value={formData.calle}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese la calle"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    NO. EXTERIOR *
+                  </label>
+                  <input
+                    type="text"
+                    name="numeroExterior"
+                    value={formData.numeroExterior}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese el número exterior"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    NO. INTERIOR *
+                  </label>
+                  <input
+                    type="text"
+                    name="numeroInterior"
+                    value={formData.numeroInterior}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese el número interior"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    COLONIA *
+                  </label>
+                  <input
+                    type="text"
+                    name="colonia"
+                    value={formData.colonia}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese la colonia"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    MUNICIPIO *
+                  </label>
+                  <input
+                    type="text"
+                    name="municipio"
+                    value={formData.municipio}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese el municipio"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    ESTADO *
+                  </label>
+                  <select
+                    name="estado"
+                    value={formData.estado}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    required
+                  >
+                    <option value="">Selecciona un estado</option>
+                    <option value="Aguascalientes">Aguascalientes</option>
+                    <option value="Baja California">Baja California</option>
+                    <option value="Baja California Sur">Baja California Sur</option>
+                    <option value="Campeche">Campeche</option>
+                    <option value="Chiapas">Chiapas</option>
+                    <option value="Chihuahua">Chihuahua</option>
+                    <option value="Ciudad de México">Ciudad de México</option>
+                    <option value="Coahuila">Coahuila</option>
+                    <option value="Colima">Colima</option>
+                    <option value="Durango">Durango</option>
+                    <option value="Estado de México">Estado de México</option>
+                    <option value="Guanajuato">Guanajuato</option>
+                    <option value="Guerrero">Guerrero</option>
+                    <option value="Hidalgo">Hidalgo</option>
+                    <option value="Jalisco">Jalisco</option>
+                    <option value="Michoacán">Michoacán</option>
+                    <option value="Morelos">Morelos</option>
+                    <option value="Nayarit">Nayarit</option>
+                    <option value="Nuevo León">Nuevo León</option>
+                    <option value="Oaxaca">Oaxaca</option>
+                    <option value="Puebla">Puebla</option>
+                    <option value="Querétaro">Querétaro</option>
+                    <option value="Quintana Roo">Quintana Roo</option>
+                    <option value="San Luis Potosí">San Luis Potosí</option>
+                    <option value="Sinaloa">Sinaloa</option>
+                    <option value="Sonora">Sonora</option>
+                    <option value="Tabasco">Tabasco</option>
+                    <option value="Tamaulipas">Tamaulipas</option>
+                    <option value="Tlaxcala">Tlaxcala</option>
+                    <option value="Veracruz">Veracruz</option>
+                    <option value="Yucatán">Yucatán</option>
+                    <option value="Zacatecas">Zacatecas</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    CÓDIGO POSTAL *
+                  </label>
+                  <input
+                    type="text"
+                    name="codigoPostal"
+                    value={formData.codigoPostal}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese el código postal"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    NACIONALIDAD *
+                  </label>
+                  <select
+                    name="nacionalidad"
+                    value={formData.nacionalidad}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  >
+                    <option value="">Seleccione un tipo</option>
+                    <option value="mexicana">Mexicana</option>
+                    <option value="extranjera">Extranjera</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    NÚMERO DE UNIDAD DE MEDICINA FAMILIAR *
+                  </label>
+                  <input
+                    type="text"
+                    name="umf"
+                    value={formData.umf}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese UMF"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* TARJETA DE DATOS LABORALES */}
+        <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden mb-6">
+          <div className="bg-gray-200 px-6 py-4 border-b-2 border-gray-300">
+            <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+              INFORMACIÓN LABORAL
+            </h2>
+          </div>
+          
+          <div className="p-6">
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    FECHA DE INGRESO *
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                      <Calendar className="h-4 w-4 text-gray-600" />
+                    </div>
+                    <input
+                      type="date"
+                      name="fechaIngreso"
+                      value={formData.fechaIngreso}
+                      onChange={handleInputChange}
+                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    PUESTO *
+                  </label>
+                  <input
+                    type="text"
+                    name="puesto"
+                    value={formData.puesto}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese el puesto"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    ÁREA *
+                  </label>
+                  <input
+                    type="text"
+                    name="departamento"
+                    value={formData.departamento}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese el área"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    SALARIO *
+                  </label>
+                  <input
+                    type="text"
+                    name="salario"
+                    value={formData.salario}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese el salario"
+                    required
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    HORARIO LABORAL
+                  </label>
+                  <select
+                    name="horarioLaboral"
+                    value={formData.horarioLaboral}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  >
+                    <option value="">Seleccione un tipo</option>
+                    <option value="08:15 am a 06:00 pm">08:15 am a 06:00 pm</option>
+                    <option value="OTRO">Otro</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    FECHA DE INICIO CONTRATO *
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                      <Calendar className="h-4 w-4 text-gray-600" />
+                    </div>
+                    <input
+                      type="date"
+                      name="fechaInicioContrato"
+                      value={formData.fechaInicioContrato}
+                      onChange={handleInputChange}
+                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    />
+                  </div>
+                </div>
+                
+                {/* Solo mostrar fecha de fin de contrato para personal de proyecto */}
+                {activeTab === 'proyecto' && (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      FECHA DE FIN CONTRATO *
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                        <Calendar className="h-4 w-4 text-gray-600" />
+                      </div>
+                      <input
+                        type="date"
+                        name="fechaFinContrato"
+                        value={(formData as FormDataProyecto).fechaFinContrato}
+                        onChange={handleInputChange}
+                        className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Nombre del proyecto solo para personal de proyecto */}
+                {activeTab === 'proyecto' ? (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      NOMBRE DEL PROYECTO *
+                    </label>
+                    <input
+                      type="text"
+                      name="nombreProyecto"
+                      value={(formData as FormDataProyecto).nombreProyecto}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      placeholder="Ingrese el nombre del proyecto"
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      SALARIO IMSS *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        name="salaryIMSS"
+                        value={formData.salaryIMSS}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                        placeholder="Ingrese el salario para IMSS"
+                        step="0.01"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Salario IMSS para personal de proyecto en una fila separada */}
+              {activeTab === 'proyecto' && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      SALARIO IMSS *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        name="salaryIMSS"
+                        value={formData.salaryIMSS}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                        placeholder="Ingrese el salario para IMSS"
+                        step="0.01"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* TARJETA DE BENEFICIARIO (SOLO UNO) */}
+        <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden mb-6">
+          <div className="bg-gray-200 px-6 py-4 border-b-2 border-gray-300">
+            <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+              BENEFICIARIO 
+            </h2>
+          </div>
+          
+          <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    NOMBRE (S) *
+                  </label>
+                  <input
+                    type="text"
+                    value={beneficiario.nombre}
+                    onChange={(e) => handleBeneficiarioChange('nombre', e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese el nombre del beneficiario"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    APELLIDO PATERNO *
+                  </label>
+                  <input
+                    type="text"
+                    value={beneficiario.apellidoPaterno}
+                    onChange={(e) => handleBeneficiarioChange('apellidoPaterno', e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese el apellido paterno"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    APELLIDO MATERNO *
+                  </label>
+                  <input
+                    type="text"
+                    value={beneficiario.apellidoMaterno}
+                    onChange={(e) => handleBeneficiarioChange('apellidoMaterno', e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="Ingrese el apellido materno"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    PARENTESCO *
+                  </label>
+                  <select
+                    value={beneficiario.parentesco}
+                    onChange={(e) => handleBeneficiarioChange('parentesco', e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  >
+                    <option value="">Seleccionar</option>
+                    <option value="conyuge">Cónyuge</option>
+                    <option value="hijo">Hijo (a)</option>
+                    <option value="padre">Padre</option>
+                    <option value="madre">Madre</option>
+                    <option value="hermano">Hermano (a)</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    PORCENTAJE (%) *
+                  </label>
+                  <input
+                    type="text"
+                    value={beneficiario.porcentaje}
+                    onChange={(e) => handleBeneficiarioChange('porcentaje', e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    placeholder="100"
+                    required
+                  />
+                </div>
+              </div>
+          </div>
+        </div>
+      </form>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* HEADER */}
@@ -389,62 +1305,65 @@ export default function SystemAdminDashboard() {
         title="PANEL ADMINISTRATIVO"
       />
 
-     {/* MODAL DE CONFIRMACIÓN EXITOSA */}
-{showSuccessModal && (
-  <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/30">
-    <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative">
-      {/* Botón de cerrar en la esquina superior derecha */}
-      <button
-        onClick={closeModal}
-        className="absolute -top-2 -right-2 bg-white rounded-full p-1 shadow-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all duration-200 z-10"
-        aria-label="Cerrar modal"
-      >
-        <X className="h-5 w-5" />
-      </button>
-      
-      <div className="p-6 pt-7"> {/* Añadido pt-7 para dar espacio a la X */}
-        <div className="flex flex-col items-center text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-            <CheckCircle className="h-10 w-10 text-green-600" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">
-            ¡REGISTRO EXITOSO!
-          </h3>
-          <p className="text-gray-600 mb-4">
-            El empleado ha sido registrado correctamente en el sistema.
-          </p>
-          
-          {successDetails && (
-            <div className="bg-gray-50 rounded-lg p-4 w-full mb-4">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="text-left font-medium text-gray-700">ID Empleado:</div>
-                <div className="text-right font-bold text-[#3a6ea5]">{successDetails.empleadoId}</div>
-                
-                <div className="text-left font-medium text-gray-700">Nombre:</div>
-                <div className="text-right truncate">{successDetails.nombre}</div>
-                
-                <div className="text-left font-medium text-gray-700">Puesto:</div>
-                <div className="text-right">{successDetails.puesto}</div>
-                
-                <div className="text-left font-medium text-gray-700">Fecha de Registro:</div>
-                <div className="text-right">{successDetails.fechaRegistro}</div>
-              </div>
-            </div>
-          )}
-          
-          <div className="flex justify-center space-x-3 w-full">
+      {/* MODAL DE CONFIRMACIÓN EXITOSA - CORREGIDO */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/30">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative">
             <button
               onClick={closeModal}
-              className="px-6 py-2 bg-[#3a6ea5] text-white font-medium rounded-md hover:bg-[#2d5592] transition-colors"
+              className="absolute -top-2 -right-2 bg-white rounded-full p-1 shadow-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all duration-200 z-10"
+              aria-label="Cerrar modal"
             >
-              Aceptar
+              <X className="h-5 w-5" />
             </button>
+            
+            <div className="p-6 pt-7">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                  {/* Icono con color verde forzado para ambos casos */}
+                  <CheckCircle className="h-10 w-10 !text-green-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  ¡REGISTRO EXITOSO!
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  El empleado ha sido registrado correctamente en el sistema.
+                </p>
+                
+                {successDetails && (
+                  <div className="bg-gray-50 rounded-lg p-4 w-full mb-4">
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="text-left font-medium text-gray-700">ID Empleado:</div>
+                      <div className="text-right font-bold text-[#3a6ea5]">{successDetails.empleadoId}</div>
+                      
+                      <div className="text-left font-medium text-gray-700">Nombre:</div>
+                      <div className="text-right truncate">{successDetails.nombre}</div>
+                      
+                      <div className="text-left font-medium text-gray-700">Puesto:</div>
+                      <div className="text-right">{successDetails.puesto}</div>
+                      
+                      <div className="text-left font-medium text-gray-700">Tipo:</div>
+                      <div className="text-right">{successDetails.tipoPersonal}</div>
+                      
+                      <div className="text-left font-medium text-gray-700">Fecha de Registro:</div>
+                      <div className="text-right">{successDetails.fechaRegistro}</div>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex justify-center space-x-3 w-full">
+                  <button
+                    onClick={closeModal}
+                    className="px-6 py-2 bg-[#3a6ea5] text-white font-medium rounded-md hover:bg-[#2d5592] transition-colors"
+                  >
+                    Aceptar
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
       {/* CONTENT */}
       <main className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
@@ -453,22 +1372,40 @@ export default function SystemAdminDashboard() {
             <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5] w-full">
               <h1 className="text-xl font-bold text-white tracking-tight">INGRESO / CONTRATACIÓN</h1>
               <p className="text-sm text-gray-200 mt-1">
-                Para dar de alta a un nuevo empleado en el sistema, debe completar el formulario correspondiente.
+                Para dar de alta a un nuevo empleado en el sistema, seleccione el tipo de personal y complete el formulario correspondiente.
               </p>
             </div>
           </div>
 
-          {/* FORMULARIO DE REGISTRO DE EMPLEADO */}
-          <div className="space-y-6">
-            {successMessage && !showSuccessModal && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in">
-                <div className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-                  <p className="text-green-700 font-bold text-center uppercase">{successMessage}</p>
-                </div>
-              </div>
-            )}
+          {/* PESTAÑAS - Versión minimalista */}
+<div className="mb-6">
+  <div className="flex space-x-1 border-b border-gray-200">
+    <button
+      onClick={() => setActiveTab('proyecto')}
+      className={`flex-1 py-3 px-4 text-center font-bold text-sm uppercase tracking-tight transition-all duration-200 ${
+        activeTab === 'proyecto'
+          ? 'text-[#3a6ea5] border-b-2 border-[#3a6ea5] -mb-px'
+          : 'text-black hover:text-black'
+      }`}
+    >
+      PERSONAL DE PROYECTO
+    </button>
+    
+    <button
+      onClick={() => setActiveTab('base')}
+      className={`flex-1 py-3 px-4 text-center font-bold text-sm uppercase tracking-tight transition-all duration-200 ${
+        activeTab === 'base'
+          ? 'text-[#3a6ea5] border-b-2 border-[#3a6ea5] -mb-px'
+          : 'text-black hover:text-black'
+      }`}
+    >
+      PERSONAL BASE
+    </button>
+  </div>
+</div>
 
+          {/* CONTENIDO DE LAS PESTAÑAS */}
+          <div className="space-y-6">
             {errorMessage && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
                 <div className="flex items-center">
@@ -480,731 +1417,40 @@ export default function SystemAdminDashboard() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit}>
-              {/* TARJETA DE INFORMACIÓN PERSONAL */}
-              <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden mb-6">
-                <div className="bg-gray-200 px-6 py-4 border-b-2 border-gray-300">
-                  <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
-                    <User className="h-5 w-5 mr-2 text-[#3a6ea5]" />
-                    INFORMACIÓN PERSONAL
-                  </h2>
-                </div>
-                
-                <div className="p-6">
-                  <div className="space-y-6">
-                    {/* Nombre completo */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          NOMBRE(S) *
-                        </label>
-                        <input
-                          type="text"
-                          name="nombre"
-                          value={formData.nombre}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder='Ingrese el nombre (s)'
-                          required
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          APELLIDO PATERNO *
-                        </label>
-                        <input
-                          type="text"
-                          name="apellidoPaterno"
-                          value={formData.apellidoPaterno}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder='Ingrese el apellido paterno'
-                          required
-                        />
-                      </div>
+            {renderFormulario()}
 
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          APELLIDO MATERNO
-                        </label>
-                        <input
-                          type="text"
-                          name="apellidoMaterno"
-                          value={formData.apellidoMaterno}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder='Ingrese el apellido materno'
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          FECHA DE NACIMIENTO *
-                        </label>
-                        <div className="relative">
-                          <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                            <Calendar className="h-4 w-4 text-gray-600" />
-                          </div>
-                          <input
-                            type="date"
-                            name="fechaNacimiento"
-                            value={formData.fechaNacimiento}
-                            onChange={handleInputChange}
-                            className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                            required
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Documentos de identificación */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          ESTADO CIVIL
-                        </label>
-                        <select
-                          name="estadoCivil"
-                          value={formData.estadoCivil}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                        >
-                          <option value="">Seleccione un tipo</option>
-                          <option value="soltero">Soltero (a)</option>
-                          <option value="casado">Casado (a)</option>
-                          <option value="divorciado">Divorciado (a)</option>
-                          <option value="viudo">Viudo (a)</option>
-                          <option value="union_libre">Unión Libre</option>
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          GÉNERO
-                        </label>
-                        <select
-                          name="genero"
-                          value={formData.genero}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                        >
-                          <option value="">Seleccione un tipo</option>
-                          <option value="masculino">Masculino</option>
-                          <option value="femenino">Femenino</option>
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          TELÉFONO *
-                        </label>
-                        <input
-                          type="text"
-                          name="telefono"
-                          value={formData.telefono}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese el teléfono"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          EMAIL *
-                        </label>
-                        <input
-                          type="email"
-                          name="email"
-                          value={formData.email}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese el email"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          NSS *
-                        </label>
-                        <div className="relative">
-                          <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                            <User className="h-4 w-4 text-gray-600" />
-                          </div>
-                          <input
-                            type="text"
-                            name="nss"
-                            value={formData.nss}
-                            onChange={handleInputChange}
-                            className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                            placeholder="Ingrese el NSS"
-                            required
-                          />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          CURP *
-                        </label>
-                        <input
-                          type="text"
-                          name="curp"
-                          value={formData.curp}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium uppercase"
-                          placeholder="Ingrese el CURP"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          RFC *
-                        </label>
-                        <input
-                          type="text"
-                          name="rfc"
-                          value={formData.rfc}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium uppercase"
-                          placeholder="Ingrese el RFC"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          NÚMERO DE CONVENIO DE INFONAVIT
-                        </label>
-                        <input
-                          type="text"
-                          name="nci"
-                          value={formData.nci}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese NCI"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Dirección */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          CALLE *
-                        </label>
-                        <input
-                          type="text"
-                          name="calle"
-                          value={formData.calle}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese la calle"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          NO. EXTERIOR *
-                        </label>
-                        <input
-                          type="text"
-                          name="numeroExterior"
-                          value={formData.numeroExterior}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese el número exterior"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          NO. INTERIOR
-                        </label>
-                        <input
-                          type="text"
-                          name="numeroInterior"
-                          value={formData.numeroInterior}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese el número interior"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          COLONIA *
-                        </label>
-                        <input
-                          type="text"
-                          name="colonia"
-                          value={formData.colonia}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese la colonia"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          MUNICIPIO *
-                        </label>
-                        <input
-                          type="text"
-                          name="municipio"
-                          value={formData.municipio}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese el municipio"
-                          required
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          ESTADO *
-                        </label>
-                        <select
-                          name="estado"
-                          value={formData.estado}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          required
-                        >
-                          <option value="">Selecciona un estado</option>
-                          <option value="Aguascalientes">Aguascalientes</option>
-                          <option value="Baja California">Baja California</option>
-                          <option value="Baja California Sur">Baja California Sur</option>
-                          <option value="Campeche">Campeche</option>
-                          <option value="Chiapas">Chiapas</option>
-                          <option value="Chihuahua">Chihuahua</option>
-                          <option value="Ciudad de México">Ciudad de México</option>
-                          <option value="Coahuila">Coahuila</option>
-                          <option value="Colima">Colima</option>
-                          <option value="Durango">Durango</option>
-                          <option value="Estado de México">Estado de México</option>
-                          <option value="Guanajuato">Guanajuato</option>
-                          <option value="Guerrero">Guerrero</option>
-                          <option value="Hidalgo">Hidalgo</option>
-                          <option value="Jalisco">Jalisco</option>
-                          <option value="Michoacán">Michoacán</option>
-                          <option value="Morelos">Morelos</option>
-                          <option value="Nayarit">Nayarit</option>
-                          <option value="Nuevo León">Nuevo León</option>
-                          <option value="Oaxaca">Oaxaca</option>
-                          <option value="Puebla">Puebla</option>
-                          <option value="Querétaro">Querétaro</option>
-                          <option value="Quintana Roo">Quintana Roo</option>
-                          <option value="San Luis Potosí">San Luis Potosí</option>
-                          <option value="Sinaloa">Sinaloa</option>
-                          <option value="Sonora">Sonora</option>
-                          <option value="Tabasco">Tabasco</option>
-                          <option value="Tamaulipas">Tamaulipas</option>
-                          <option value="Tlaxcala">Tlaxcala</option>
-                          <option value="Veracruz">Veracruz</option>
-                          <option value="Yucatán">Yucatán</option>
-                          <option value="Zacatecas">Zacatecas</option>
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          CÓDIGO POSTAL *
-                        </label>
-                        <input
-                          type="text"
-                          name="codigoPostal"
-                          value={formData.codigoPostal}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese el código postal"
-                          required
-                        />
-                      </div>
-
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          NACIONALIDAD
-                        </label>
-                        <select
-                          name="nacionalidad"
-                          value={formData.nacionalidad}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                        >
-                          <option value="">Seleccione un tipo</option>
-                          <option value="mexicana">Mexicana</option>
-                          <option value="extranjera">Extranjera</option>
-                        </select>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          NÚMERO DE UNIDAD DE MEDICINA FAMILIAR
-                        </label>
-                        <input
-                          type="text"
-                          name="umf"
-                          value={formData.umf}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese UMF"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* TARJETA DE DATOS LABORALES */}
-              <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden mb-6">
-                <div className="bg-gray-200 px-6 py-4 border-b-2 border-gray-300">
-                  <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
-                    INFORMACIÓN LABORAL
-                  </h2>
-                </div>
-                
-                <div className="p-6">
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          FECHA DE INGRESO *
-                        </label>
-                        <div className="relative">
-                          <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                            <Calendar className="h-4 w-4 text-gray-600" />
-                          </div>
-                          <input
-                            type="date"
-                            name="fechaIngreso"
-                            value={formData.fechaIngreso}
-                            onChange={handleInputChange}
-                            className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                            required
-                          />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          PUESTO *
-                        </label>
-                        <input
-                          type="text"
-                          name="puesto"
-                          value={formData.puesto}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese el puesto"
-                          required
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          ÁREA
-                        </label>
-                        <input
-                          type="text"
-                          name="departamento"
-                          value={formData.departamento}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese el área"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          SALARIO *
-                        </label>
-                        <input
-                          type="text"
-                          name="salario"
-                          value={formData.salario}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese el salario"
-                          required
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          HORARIO LABORAL
-                        </label>
-                        <select
-                          name="horarioLaboral"
-                          value={formData.horarioLaboral}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                        >
-                          <option value="">Seleccione un tipo</option>
-                          <option value="08:15 am a 06:00 pm">08:15 am a 06:00 pm</option>
-                          <option value="OTRO">Otro</option>
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          FECHA DE INICIO CONTRATO
-                        </label>
-                        <div className="relative">
-                          <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                            <Calendar className="h-4 w-4 text-gray-600" />
-                          </div>
-                          <input
-                            type="date"
-                            name="fechaInicioContrato"
-                            value={formData.fechaInicioContrato}
-                            onChange={handleInputChange}
-                            className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          FECHA DE FIN CONTRATO
-                        </label>
-                        <div className="relative">
-                          <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                            <Calendar className="h-4 w-4 text-gray-600" />
-                          </div>
-                          <input
-                            type="date"
-                            name="fechaFinContrato"
-                            value={formData.fechaFinContrato}
-                            onChange={handleInputChange}
-                            className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          SALARIO IMSS
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            name="salaryIMSS"
-                            value={formData.salaryIMSS}
-                            onChange={handleInputChange}
-                            className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                            placeholder="Ingrese el salario para IMSS"
-                            step="0.01"
-                         />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* TARJETA DE BENEFICIARIOS */}
-              <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden mb-6">
-                <div className="bg-gray-200 px-6 py-4 border-b-2 border-gray-300">
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
-                      BENEFICIARIOS
-                    </h2>
-                    <button
-                      type="button"
-                      onClick={agregarBeneficiario}
-                      className="bg-[#3a6ea5] text-white text-sm font-bold py-2 px-4 rounded hover:bg-[#2d5592] transition-colors uppercase"
-                    >
-                      + Agregar Beneficiario
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="p-6">
-                  <div className="space-y-6">
-                    {beneficiarios.map((beneficiario, index) => (
-                      <div key={index} className="border border-gray-300 rounded-lg p-4">
-                        <div className="flex justify-between items-center mb-4">
-                          <h3 className="text-sm font-bold text-gray-700 uppercase">
-                            Beneficiario #{index + 1}
-                          </h3>
-                          {beneficiarios.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => eliminarBeneficiario(index)}
-                              className="bg-red-100 text-red-700 text-sm font-bold py-1 px-3 rounded hover:bg-red-200 transition-colors"
-                            >
-                              Eliminar
-                            </button>
-                          )}
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                              NOMBRE (S) *
-                            </label>
-                            <input
-                              type="text"
-                              value={beneficiario.nombre}
-                              onChange={(e) => handleBeneficiarioChange(index, 'nombre', e.target.value)}
-                              className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                              placeholder="Ingrese el nombre del beneficiario"
-                              required
-                            />
-                          </div>
-                          
-                          <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                              APELLIDO PATERNO *
-                            </label>
-                            <input
-                              type="text"
-                              value={beneficiario.apellidoPaterno}
-                              onChange={(e) => handleBeneficiarioChange(index, 'apellidoPaterno', e.target.value)}
-                              className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                              placeholder="ingrese el apellido paterno"
-                              required
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                              APELLIDO MATERNO
-                            </label>
-                            <input
-                              type="text"
-                              value={beneficiario.apellidoMaterno}
-                              onChange={(e) => handleBeneficiarioChange(index, 'apellidoMaterno', e.target.value)}
-                              className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                              placeholder="Ingrese el apellido materno"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                              PARENTESCO *
-                            </label>
-                            <select
-                              value={beneficiario.parentesco}
-                              onChange={(e) => handleBeneficiarioChange(index, 'parentesco', e.target.value)}
-                              className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                              required
-                            >
-                              <option value="">Seleccionar</option>
-                              <option value="conyuge">Cónyuge</option>
-                              <option value="hijo">Hijo (a)</option>
-                              <option value="padre">Padre</option>
-                              <option value="madre">Madre</option>
-                              <option value="hermano">Hermano (a)</option>
-                              <option value="otro">Otro</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                              PORCENTAJE (%) *
-                            </label>
-                            <input
-                              type="text"
-                              value={beneficiario.porcentaje}
-                              onChange={(e) => handleBeneficiarioChange(index, 'porcentaje', e.target.value)}
-                              className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                              placeholder="Ingrese el porcentaje"
-                              required
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* BOTONES */}
-              <div className="flex flex-col sm:flex-row gap-4 pt-6">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 bg-[#3a6ea5] text-white font-bold py-3 px-6 rounded-md hover:bg-[#2d5592] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center uppercase tracking-tight"
-                >
-                  {loading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                      REGISTRANDO...
-                    </>
-                  ) : (
-                    'REGISTRAR EMPLEADO'
-                  )}
-                </button>
-                
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormData({
-                      nombre: '',
-                      apellidoPaterno: '',
-                      apellidoMaterno: '',
-                      nss: '',
-                      curp: '',
-                      rfc: '',
-                      fechaNacimiento: '',
-                      genero: '',
-                      nacionalidad: '',
-                      estadoCivil: '',
-                      telefono: '',
-                      email: '',
-                      puesto: '',
-                      departamento: '',
-                      fechaIngreso: '',
-                      salario: '',
-                      horarioLaboral: '',
-                      tipoContrato: '',
-                      fechaInicioContrato: '',
-                      fechaFinContrato: '',
-                      calle: '',
-                      numeroExterior: '',
-                      numeroInterior: '',
-                      colonia: '',
-                      municipio: '',
-                      estado: '',
-                      codigoPostal: '',
-                      nci: '',
-                      umf: '',
-                      salaryIMSS: ''
-                    });
-                    setBeneficiarios([{
-                      nombre: '',
-                      apellidoPaterno: '',
-                      apellidoMaterno: '',
-                      parentesco: '',
-                      porcentaje: ''
-                    }]);
-                    setSuccessMessage('');
-                    setErrorMessage('');
-                    setShowSuccessModal(false);
-                  }}
-                  className="flex-1 bg-gray-200 text-gray-800 font-bold py-3 px-6 rounded-md hover:bg-gray-300 transition-colors uppercase tracking-tight"
-                >
-                  LIMPIAR FORMULARIO
-                </button>
-              </div>
-            </form>
+            {/* BOTONES */}
+            <div className="flex flex-col sm:flex-row gap-4 pt-8 pb-8 justify-center">
+              <button
+                type="submit"
+                form={activeTab === 'proyecto' ? undefined : undefined}
+                onClick={(e) => {
+                  const form = document.querySelector('form');
+                  if (form) {
+                    form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                  }
+                }}
+                disabled={loading}
+                className="w-full sm:w-auto min-w-[280px] bg-[#3a6ea5] text-white font-bold py-3 px-8 rounded-md hover:bg-[#2d5592] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center uppercase tracking-tight"
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    REGISTRANDO...
+                  </>
+                ) : (
+                  `REGISTRAR ${activeTab === 'proyecto' ? 'PERSONAL DE PROYECTO' : 'PERSONAL BASE'}`
+                )}
+              </button>
+              
+              <button
+                type="button"
+                onClick={limpiarTodosFormularios}
+                className="w-full sm:w-auto min-w-[280px] bg-gray-200 text-gray-800 font-bold py-3 px-8 rounded-md hover:bg-gray-300 transition-colors uppercase tracking-tight"
+              >
+                LIMPIAR FORMULARIO
+              </button>
+            </div>
           </div>
         </div>
 
