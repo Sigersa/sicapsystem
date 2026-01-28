@@ -64,6 +64,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validar campos específicos para personal de proyecto
+    if (formData.tipoPersonal === 'proyecto') {
+      if (!formData.fechaFinContrato?.trim()) {
+        return NextResponse.json(
+          { success: false, message: 'La fecha de fin de contrato es requerida para personal de proyecto' },
+          { status: 400 }
+        );
+      }
+      if (!formData.nombreProyecto?.trim()) {
+        return NextResponse.json(
+          { success: false, message: 'El nombre del proyecto es requerido para personal de proyecto' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validar beneficiario (si existe)
+    if (formData.beneficiarios && formData.beneficiarios.length > 0) {
+      if (formData.beneficiarios.length > 1) {
+        return NextResponse.json(
+          { success: false, message: 'Solo se permite un beneficiario por empleado' },
+          { status: 400 }
+        );
+      }
+      
+      const beneficiario = formData.beneficiarios[0];
+      if (beneficiario.nombre || beneficiario.apellidoPaterno) {
+        if (!beneficiario.nombre?.trim() || !beneficiario.apellidoPaterno?.trim()) {
+          return NextResponse.json(
+            { success: false, message: 'Si ingresa un beneficiario, debe completar nombre y apellido paterno' },
+            { status: 400 }
+          );
+        }
+        
+        // Validar que el porcentaje sea 100% para un solo beneficiario
+        const porcentaje = parseFloat(beneficiario.porcentaje) || 0;
+        if (Math.abs(porcentaje - 100) > 0.01) {
+          return NextResponse.json(
+            { success: false, message: 'El porcentaje del beneficiario debe ser 100%' },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     // Obtener conexión a la base de datos
     connection = await getConnection();
     
@@ -71,92 +116,87 @@ export async function POST(request: NextRequest) {
     await connection.beginTransaction();
 
     try {
-      // 1. Insertar en basepersonnel
-      const [basePersonnelResult] = await connection.execute(
-        `INSERT INTO basepersonnel 
-         (FirstName, LastName, MiddleName, Position, WorkSchedule, Salary, Area) 
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          formData.nombre,
-          formData.apellidoPaterno,
-          formData.apellidoMaterno || null,
-          formData.puesto, // Position = Puesto
-          formData.horarioLaboral || null,
-          parseFloat(formData.salario.replace(/[^0-9.-]+/g, "")) || 0,
-          formData.departamento || null
-        ]
-      );
-
-      const basePersonnelId = (basePersonnelResult as any).insertId;
-
-      // 2. Insertar en la tabla employees (siempre con EmployeeType = 'BASE')
-      await connection.execute(
-        `INSERT INTO employees (EmployeeType, BasePersonnelID) VALUES (?, ?)`,
-        ['BASE', basePersonnelId]
-      );
-
-      // 3. Insertar en basepersonnelpersonalinfo
-      // Construir la dirección completa
-      const direccionCompleta = `${formData.calle} ${formData.numeroExterior}${
-        formData.numeroInterior ? ' Int. ' + formData.numeroInterior : ''
-      }, Col. ${formData.colonia}, ${formData.municipio}, ${formData.estado}, C.P. ${formData.codigoPostal}`;
-      
-      await connection.execute(
-        `INSERT INTO basepersonnelpersonalinfo 
-         (BasePersonnelID, Address, Municipality, Nationality, Gender, Birthdate, 
-          MaritalStatus, RFC, CURP, NSS, NCI, UMF, Phone, Email) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          basePersonnelId,
-          direccionCompleta,
-          formData.municipio,
-          formData.nacionalidad || null,
-          formData.genero || null,
-          formData.fechaNacimiento,
-          formData.estadoCivil || null,
-          formData.rfc,
-          formData.curp,
-          formData.nss,
-          formData.nci || null,
-          formData.umf ? parseInt(formData.umf) : null,
-          formData.telefono || null,
-          formData.email || null
-        ]
-      );
-
-      // 4. Insertar en basecontracts (si hay datos de contrato)
-      if (formData.fechaInicioContrato || formData.salaryIMSS) {
-        await connection.execute(
-          `INSERT INTO basecontracts 
-           (BasePersonnelID, StartDate, EndDate, SalaryIMSS) 
-           VALUES (?, ?, ?, ?)`,
+      // Procesar según el tipo de personal
+      if (formData.tipoPersonal === 'base') {
+        // PERSONAL BASE
+        // 1. Insertar en basepersonnel
+        const [basePersonnelResult] = await connection.execute(
+          `INSERT INTO basepersonnel 
+           (FirstName, LastName, MiddleName, Position, WorkSchedule, Salary, Area) 
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [
-            basePersonnelId,
-            formData.fechaInicioContrato || null,
-            formData.fechaFinContrato || null,
-            formData.salaryIMSS ? parseFloat(formData.salaryIMSS) : null
+            formData.nombre,
+            formData.apellidoPaterno,
+            formData.apellidoMaterno || null,
+            formData.puesto,
+            formData.horarioLaboral || null,
+            parseFloat(formData.salario.replace(/[^0-9.-]+/g, "")) || 0,
+            formData.departamento || null
           ]
         );
-      }
 
-      // 5. Insertar beneficiarios (si existen)
-      if (formData.beneficiarios && Array.isArray(formData.beneficiarios)) {
-        // Definir el tipo para beneficiario
-        type BeneficiarioAPI = {
-          nombre?: string;
-          apellidoPaterno?: string;
-          apellidoMaterno?: string;
-          parentesco?: string;
-          porcentaje?: string;
-        };
-        
-        // Filtrar solo beneficiarios que tienen nombre y apellido paterno
-        const beneficiariosValidos = formData.beneficiarios.filter(
-          (b: BeneficiarioAPI) => b.nombre && b.nombre.trim() && b.apellidoPaterno && b.apellidoPaterno.trim()
+        const basePersonnelId = (basePersonnelResult as any).insertId;
+
+        // 2. Insertar en la tabla employees (siempre con EmployeeType = 'BASE')
+        await connection.execute(
+          `INSERT INTO employees (EmployeeType, BasePersonnelID) VALUES (?, ?)`,
+          ['BASE', basePersonnelId]
         );
+
+        // 3. Insertar en basepersonnelpersonalinfo
+        // Construir la dirección completa
+        const direccionCompleta = `${formData.calle} ${formData.numeroExterior}${
+          formData.numeroInterior ? ' Int. ' + formData.numeroInterior : ''
+        }, Col. ${formData.colonia}, ${formData.municipio}, ${formData.estado}, C.P. ${formData.codigoPostal}`;
         
-        if (beneficiariosValidos.length > 0) {
-          for (const beneficiario of beneficiariosValidos) {
+        await connection.execute(
+          `INSERT INTO basepersonnelpersonalinfo 
+           (BasePersonnelID, Address, Municipality, Nationality, Gender, Birthdate, 
+            MaritalStatus, RFC, CURP, NSS, NCI, UMF, Phone, Email) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            basePersonnelId,
+            direccionCompleta,
+            formData.municipio,
+            formData.nacionalidad || null,
+            formData.genero || null,
+            formData.fechaNacimiento,
+            formData.estadoCivil || null,
+            formData.rfc,
+            formData.curp,
+            formData.nss,
+            formData.nci || null,
+            formData.umf ? parseInt(formData.umf) : null,
+            formData.telefono || null,
+            formData.email || null
+          ]
+        );
+
+        // 4. Insertar en basecontracts (si hay datos de contrato)
+        if (formData.fechaInicioContrato || formData.salaryIMSS) {
+          await connection.execute(
+            `INSERT INTO basecontracts 
+             (BasePersonnelID, StartDate, SalaryIMSS) 
+             VALUES (?, ?, ?)`,
+            [
+              basePersonnelId,
+              formData.fechaInicioContrato || null,
+              formData.salaryIMSS ? parseFloat(formData.salaryIMSS) : null
+            ]
+          );
+        }
+
+        // 5. Insertar beneficiario (si existe)
+        if (formData.beneficiarios && formData.beneficiarios.length > 0) {
+          const beneficiario = formData.beneficiarios[0];
+          
+          // Solo insertar si tiene nombre y apellido paterno
+          if (beneficiario.nombre && beneficiario.nombre.trim() && 
+              beneficiario.apellidoPaterno && beneficiario.apellidoPaterno.trim()) {
+            
+            // Forzar el porcentaje a 100% para un solo beneficiario
+            const porcentajeFinal = 100;
+            
             await connection.execute(
               `INSERT INTO basepersonnelbeneficiaries 
                (BasePersonnelID, BeneficiaryFirstName, BeneficiaryLastName, 
@@ -168,21 +208,129 @@ export async function POST(request: NextRequest) {
                 beneficiario.apellidoPaterno,
                 beneficiario.apellidoMaterno || null,
                 beneficiario.parentesco || null,
-                beneficiario.porcentaje ? parseFloat(beneficiario.porcentaje) : null
+                porcentajeFinal
               ]
             );
           }
         }
+
+        // Confirmar transacción
+        await connection.commit();
+
+        return NextResponse.json({
+          success: true,
+          message: 'PERSONAL BASE REGISTRADO EXITOSAMENTE',
+          empleadoId: basePersonnelId,
+          tipo: 'base'
+        });
+
+      } else {
+        // PERSONAL DE PROYECTO
+        // 1. Insertar en projectpersonnel
+        const [projectPersonnelResult] = await connection.execute(
+          `INSERT INTO projectpersonnel 
+           (FirstName, LastName, MiddleName, HireDate, Position, WorkSchedule, Salary, NameProject) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            formData.nombre,
+            formData.apellidoPaterno,
+            formData.apellidoMaterno || null,
+            formData.fechaIngreso, // HireDate = Fecha de ingreso
+            formData.puesto,
+            formData.horarioLaboral || null,
+            parseFloat(formData.salario.replace(/[^0-9.-]+/g, "")) || 0,
+            formData.nombreProyecto || null
+          ]
+        );
+
+        const projectPersonnelId = (projectPersonnelResult as any).insertId;
+
+        // 2. Insertar en la tabla employees (siempre con EmployeeType = 'PROJECT')
+        await connection.execute(
+          `INSERT INTO employees (EmployeeType, ProjectPersonnelID) VALUES (?, ?)`,
+          ['PROJECT', projectPersonnelId]
+        );
+
+        // 3. Insertar en projectpersonnelpersonalinfo
+        // Construir la dirección completa (campo Address tiene 500 caracteres)
+        const direccionCompleta = `${formData.calle} ${formData.numeroExterior}${
+          formData.numeroInterior ? ' Int. ' + formData.numeroInterior : ''
+        }, Col. ${formData.colonia}, ${formData.municipio}, ${formData.estado}, C.P. ${formData.codigoPostal}`;
+        
+        await connection.execute(
+          `INSERT INTO projectpersonnelpersonalinfo 
+           (ProjectPersonnelID, Address, Municipality, Nationality, Gender, Birthdate, 
+            MaritalStatus, RFC, CURP, NSS, NCI, UMF, Phone, Email) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            projectPersonnelId,
+            direccionCompleta,
+            formData.municipio,
+            formData.nacionalidad || null,
+            formData.genero || null,
+            formData.fechaNacimiento,
+            formData.estadoCivil || null,
+            formData.rfc,
+            formData.curp,
+            formData.nss,
+            formData.nci || null,
+            formData.umf || null, // UMF es varchar(20) en project
+            formData.telefono || null,
+            formData.email || null
+          ]
+        );
+
+        // 4. Insertar en projectcontracts (obligatorio para personal de proyecto)
+        await connection.execute(
+          `INSERT INTO projectcontracts 
+           (ProjectPersonnelID, StartDate, EndDate, SalaryIMSS) 
+           VALUES (?, ?, ?, ?)`,
+          [
+            projectPersonnelId,
+            formData.fechaInicioContrato || null,
+            formData.fechaFinContrato || null,
+            formData.salaryIMSS ? parseFloat(formData.salaryIMSS) : null
+          ]
+        );
+
+        // 5. Insertar beneficiario (si existe)
+        if (formData.beneficiarios && formData.beneficiarios.length > 0) {
+          const beneficiario = formData.beneficiarios[0];
+          
+          // Solo insertar si tiene nombre y apellido paterno
+          if (beneficiario.nombre && beneficiario.nombre.trim() && 
+              beneficiario.apellidoPaterno && beneficiario.apellidoPaterno.trim()) {
+            
+            // Forzar el porcentaje a 100% para un solo beneficiario
+            const porcentajeFinal = 100;
+            
+            await connection.execute(
+              `INSERT INTO projectpersonnelbeneficiaries 
+               (ProjectPersonnelID, BeneficiaryFirstName, BeneficiaryLastName, 
+                BeneficiaryMiddleName, Relationship, Percentage) 
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [
+                projectPersonnelId,
+                beneficiario.nombre,
+                beneficiario.apellidoPaterno,
+                beneficiario.apellidoMaterno || null,
+                beneficiario.parentesco || null,
+                porcentajeFinal
+              ]
+            );
+          }
+        }
+
+        // Confirmar transacción
+        await connection.commit();
+
+        return NextResponse.json({
+          success: true,
+          message: 'PERSONAL DE PROYECTO REGISTRADO EXITOSAMENTE',
+          empleadoId: projectPersonnelId,
+          tipo: 'proyecto'
+        });
       }
-
-      // Confirmar transacción
-      await connection.commit();
-
-      return NextResponse.json({
-        success: true,
-        message: 'EMPLEADO REGISTRADO EXITOSAMENTE',
-        empleadoId: basePersonnelId
-      });
 
     } catch (error: unknown) {
       // Rollback en caso de error
