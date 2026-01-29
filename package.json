@@ -9,20 +9,27 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ilovepdf/ilovepdf-nodejs": "^0.3.1",
     "@uploadthing/react": "^7.3.3",
     "bcryptjs": "^3.0.3",
+    "cloudconvert": "^3.0.0",
+    "exceljs": "^4.4.0",
     "lucide-react": "^0.559.0",
     "mysql2": "^3.15.3",
     "next": "16.0.8",
+    "pdfkit": "^0.17.2",
+    "puppeteer": "^24.36.1",
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "react-hook-form": "^7.68.0",
-    "uploadthing": "^7.7.4"
+    "uploadthing": "^7.7.4",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
+    "@types/pdfkit": "^0.17.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
