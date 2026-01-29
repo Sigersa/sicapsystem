@@ -9,6 +9,26 @@ interface MySqlError {
   sqlState: string;
 }
 
+// Interface para documentos
+interface Documentos {
+  cv: string[];
+  actaNacimiento: string[];
+  curp: string[];
+  rfc: string[];
+  imss: string[];
+  ine: string[];
+  comprobanteDomicilio: string[];
+  comprobanteEstudios: string[];
+  comprobanteCapacitacion: string[];
+  licenciaManejo: string[];
+  cartaAntecedentes: string[];
+  cartaRecomendacion: string[];
+  retencionInfonavit: string[];
+  examenMedico: string[];
+  foto: string[];
+  folleto: string[];
+}
+
 export async function POST(request: NextRequest) {
   let connection;
   
@@ -75,6 +95,31 @@ export async function POST(request: NextRequest) {
       if (!formData.nombreProyecto?.trim()) {
         return NextResponse.json(
           { success: false, message: 'El nombre del proyecto es requerido para personal de proyecto' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validar documentos
+    if (!formData.documentos) {
+      return NextResponse.json(
+        { success: false, message: 'Los documentos son requeridos' },
+        { status: 400 }
+      );
+    }
+
+    const documentos: Documentos = formData.documentos;
+    
+    // Validar documentos requeridos
+    const documentosRequeridos: (keyof Documentos)[] = [
+      'cv', 'actaNacimiento', 'curp', 'rfc', 'imss', 
+      'ine', 'comprobanteDomicilio', 'foto'
+    ];
+
+    for (const docType of documentosRequeridos) {
+      if (!documentos[docType] || documentos[docType].length === 0) {
+        return NextResponse.json(
+          { success: false, message: `El documento ${docType} es requerido` },
           { status: 400 }
         );
       }
@@ -214,6 +259,53 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // 6. Insertar documentación
+        // Tomar solo el primer archivo de cada tipo (si existe)
+        const cvUrl = documentos.cv && documentos.cv.length > 0 ? documentos.cv[0] : null;
+        const actaNacimientoUrl = documentos.actaNacimiento && documentos.actaNacimiento.length > 0 ? documentos.actaNacimiento[0] : null;
+        const curpUrl = documentos.curp && documentos.curp.length > 0 ? documentos.curp[0] : null;
+        const rfcUrl = documentos.rfc && documentos.rfc.length > 0 ? documentos.rfc[0] : null;
+        const imssUrl = documentos.imss && documentos.imss.length > 0 ? documentos.imss[0] : null;
+        const ineUrl = documentos.ine && documentos.ine.length > 0 ? documentos.ine[0] : null;
+        const comprobanteDomicilioUrl = documentos.comprobanteDomicilio && documentos.comprobanteDomicilio.length > 0 ? documentos.comprobanteDomicilio[0] : null;
+        const comprobanteEstudiosUrl = documentos.comprobanteEstudios && documentos.comprobanteEstudios.length > 0 ? documentos.comprobanteEstudios[0] : null;
+        const comprobanteCapacitacionUrl = documentos.comprobanteCapacitacion && documentos.comprobanteCapacitacion.length > 0 ? documentos.comprobanteCapacitacion[0] : null;
+        const licenciaManejoUrl = documentos.licenciaManejo && documentos.licenciaManejo.length > 0 ? documentos.licenciaManejo[0] : null;
+        const actaNotarialUrl = documentos.cartaAntecedentes && documentos.cartaAntecedentes.length > 0 ? documentos.cartaAntecedentes[0] : null;
+        const cartaRecomendacionUrl = documentos.cartaRecomendacion && documentos.cartaRecomendacion.length > 0 ? documentos.cartaRecomendacion[0] : null;
+        const retencionInfonavitUrl = documentos.retencionInfonavit && documentos.retencionInfonavit.length > 0 ? documentos.retencionInfonavit[0] : null;
+        const examenMedicoUrl = documentos.examenMedico && documentos.examenMedico.length > 0 ? documentos.examenMedico[0] : null;
+        const fotoUrl = documentos.foto && documentos.foto.length > 0 ? documentos.foto[0] : null;
+        const folletoUrl = documentos.folleto && documentos.folleto.length > 0 ? documentos.folleto[0] : null;
+
+        await connection.execute(
+          `INSERT INTO basepersonneldocumentation 
+           (BasePersonnelID, CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, 
+            IMSSFileURL, INEFileURL, CDFileURL, CEFileURL, CPFileURL, 
+            LMFileURL, ANPFileURL, CRFileURL, RIFileURL, EMFileURL, 
+            FotoFileURL, FolletoFileURL) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            basePersonnelId,
+            cvUrl,
+            actaNacimientoUrl,
+            curpUrl,
+            rfcUrl,
+            imssUrl,
+            ineUrl,
+            comprobanteDomicilioUrl,
+            comprobanteEstudiosUrl,
+            comprobanteCapacitacionUrl,
+            licenciaManejoUrl,
+            actaNotarialUrl,
+            cartaRecomendacionUrl,
+            retencionInfonavitUrl,
+            examenMedicoUrl,
+            fotoUrl,
+            folletoUrl
+          ]
+        );
+
         // Confirmar transacción
         await connection.commit();
 
@@ -274,7 +366,7 @@ export async function POST(request: NextRequest) {
             formData.curp,
             formData.nss,
             formData.nci || null,
-            formData.umf || null, // UMF es varchar(20) en project
+            formData.umf || null,
             formData.telefono || null,
             formData.email || null
           ]
@@ -320,6 +412,53 @@ export async function POST(request: NextRequest) {
             );
           }
         }
+
+        // 6. Insertar documentación
+        // Tomar solo el primer archivo de cada tipo (si existe)
+        const cvUrl = documentos.cv && documentos.cv.length > 0 ? documentos.cv[0] : null;
+        const actaNacimientoUrl = documentos.actaNacimiento && documentos.actaNacimiento.length > 0 ? documentos.actaNacimiento[0] : null;
+        const curpUrl = documentos.curp && documentos.curp.length > 0 ? documentos.curp[0] : null;
+        const rfcUrl = documentos.rfc && documentos.rfc.length > 0 ? documentos.rfc[0] : null;
+        const imssUrl = documentos.imss && documentos.imss.length > 0 ? documentos.imss[0] : null;
+        const ineUrl = documentos.ine && documentos.ine.length > 0 ? documentos.ine[0] : null;
+        const comprobanteDomicilioUrl = documentos.comprobanteDomicilio && documentos.comprobanteDomicilio.length > 0 ? documentos.comprobanteDomicilio[0] : null;
+        const comprobanteEstudiosUrl = documentos.comprobanteEstudios && documentos.comprobanteEstudios.length > 0 ? documentos.comprobanteEstudios[0] : null;
+        const cedulaProfesionalUrl = documentos.comprobanteCapacitacion && documentos.comprobanteCapacitacion.length > 0 ? documentos.comprobanteCapacitacion[0] : null;
+        const licenciaManejoUrl = documentos.licenciaManejo && documentos.licenciaManejo.length > 0 ? documentos.licenciaManejo[0] : null;
+        const cartaAntecedentesUrl = documentos.cartaAntecedentes && documentos.cartaAntecedentes.length > 0 ? documentos.cartaAntecedentes[0] : null;
+        const cartaRecomendacionUrl = documentos.cartaRecomendacion && documentos.cartaRecomendacion.length > 0 ? documentos.cartaRecomendacion[0] : null;
+        const retencionInfonavitUrl = documentos.retencionInfonavit && documentos.retencionInfonavit.length > 0 ? documentos.retencionInfonavit[0] : null;
+        const examenMedicoUrl = documentos.examenMedico && documentos.examenMedico.length > 0 ? documentos.examenMedico[0] : null;
+        const fotoUrl = documentos.foto && documentos.foto.length > 0 ? documentos.foto[0] : null;
+        const folletoUrl = documentos.folleto && documentos.folleto.length > 0 ? documentos.folleto[0] : null;
+
+        await connection.execute(
+          `INSERT INTO projectpersonneldocumentation 
+           (ProjectPersonnelID, CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, 
+            IMSSFileURL, INEFileURL, CDFileURL, CEFileURL, CPFileURL, 
+            LMFileURL, ANPFileURL, CRFileURL, RIFileURL, EMFileURL, 
+            FotoFileURL, FolletoFileURL) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            projectPersonnelId,
+            cvUrl,
+            actaNacimientoUrl,
+            curpUrl,
+            rfcUrl,
+            imssUrl,
+            ineUrl,
+            comprobanteDomicilioUrl,
+            comprobanteEstudiosUrl,
+            cedulaProfesionalUrl,
+            licenciaManejoUrl,
+            cartaAntecedentesUrl,
+            cartaRecomendacionUrl,
+            retencionInfonavitUrl,
+            examenMedicoUrl,
+            fotoUrl,
+            folletoUrl
+          ]
+        );
 
         // Confirmar transacción
         await connection.commit();
