@@ -3,8 +3,9 @@ import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
-import { useState, ChangeEvent, FormEvent } from 'react';
-import { User, Calendar, CheckCircle, X, Briefcase, Users } from 'lucide-react';
+import { useState, ChangeEvent, FormEvent, useRef } from 'react';
+import { User, Calendar, CheckCircle, X, Briefcase, Users, Upload, File, XCircle } from 'lucide-react';
+import { useUploadThing } from '@/lib/uploadthing';
 
 // Definir el tipo para el formulario base
 type FormDataBase = {
@@ -38,7 +39,7 @@ type FormDataBase = {
   nci: string;
   umf: string;
   salaryIMSS: string;
-  nombreProyecto: string; // Solo para personal de proyecto
+  nombreProyecto: string;
 };
 
 // Tipo para formulario de proyecto
@@ -46,7 +47,7 @@ type FormDataProyecto = FormDataBase & {
   nombreProyecto: string;
 };
 
-// Tipo para formulario base (sin fechaFinContrato y nombreProyecto)
+// Tipo para formulario base
 type FormDataPersonalBase = Omit<FormDataBase, 'fechaFinContrato' | 'nombreProyecto'>;
 
 // Tipo para beneficiario
@@ -60,6 +61,26 @@ type Beneficiario = {
 
 // Tipo para pestaña activa
 type TabType = 'proyecto' | 'base';
+
+// Tipo para documentos
+type Documentos = {
+  cv: File[];
+  actaNacimiento: File[];
+  curp: File[];
+  rfc: File[];
+  imss: File[];
+  ine: File[];
+  comprobanteDomicilio: File[];
+  comprobanteEstudios: File[];
+  comprobanteCapacitacion: File[];
+  licenciaManejo: File[];
+  cartaAntecedentes: File[];
+  cartaRecomendacion: File[];
+  retencionInfonavit: File[];
+  examenMedico: File[];
+  foto: File[];
+  folleto: File[];
+};
 
 // Mapa de nombres de campos para mensajes de error
 const fieldNames: Record<string, string> = {
@@ -80,6 +101,26 @@ const fieldNames: Record<string, string> = {
   municipio: 'Municipio',
   estado: 'Estado',
   codigoPostal: 'Código Postal'
+};
+
+// Mapa de nombres de documentos
+const documentoNombres: Record<keyof Documentos, string> = {
+  cv: 'Solicitud de empleo o CV',
+  actaNacimiento: 'Copia de Acta de Nacimiento',
+  curp: 'Copia de CURP',
+  rfc: 'Copia de Constancia de RFC',
+  imss: 'Copia de Hoja de Afiliación IMSS',
+  ine: 'Copia de Credencial de Elector INE',
+  comprobanteDomicilio: 'Copia de Comprobante de Domicilio',
+  comprobanteEstudios: 'Copia de Comprobante de Estudios',
+  comprobanteCapacitacion: 'Copia de Comprobante de Capacitación',
+  licenciaManejo: 'Copia de Licencia de Manejo',
+  cartaAntecedentes: 'Carta de Antecedentes No Penales',
+  cartaRecomendacion: 'Copias de Cartas de Recomendación',
+  retencionInfonavit: 'Copia de Hoja de Retención Infonavit',
+  examenMedico: 'Copia de Examen Médico',
+  foto: 'Fotografía (JPG/PNG)',
+  folleto: 'Folletos de Inducción'
 };
 
 export default function SystemAdminDashboard() {
@@ -174,11 +215,48 @@ export default function SystemAdminDashboard() {
     porcentaje: ''
   });
 
+  // Estados para documentos (compartidos entre ambas pestañas)
+  const [documentos, setDocumentos] = useState<Documentos>({
+    cv: [],
+    actaNacimiento: [],
+    curp: [],
+    rfc: [],
+    imss: [],
+    ine: [],
+    comprobanteDomicilio: [],
+    comprobanteEstudios: [],
+    comprobanteCapacitacion: [],
+    licenciaManejo: [],
+    cartaAntecedentes: [],
+    cartaRecomendacion: [],
+    retencionInfonavit: [],
+    examenMedico: [],
+    foto: [],
+    folleto: []
+  });
+
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [successDetails, setSuccessDetails] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+
+  // UploadThing
+  const { startUpload } = useUploadThing('hiringFiles', {
+    onClientUploadComplete: () => {
+      console.log("Documentos subidos exitosamente");
+      setUploadProgress(100);
+    },
+    onUploadError: (error) => {
+      console.error("Error al subir documentos:", error);
+      setErrorMessage('Error al subir documentos. Por favor, intente nuevamente.');
+      setUploadProgress(0);
+    },
+  });
+
+  // Referencias para inputs de archivo
+  const fileInputRefs = useRef<{ [key in keyof Documentos]?: HTMLInputElement }>({});
 
   // Obtener el formulario activo según la pestaña
   const getActiveFormData = () => {
@@ -219,6 +297,113 @@ export default function SystemAdminDashboard() {
         [field]: value
       }));
     }
+  };
+
+  // Manejar cambios en documentos
+  const handleDocumentChange = (tipo: keyof Documentos, files: FileList) => {
+    const filesArray = Array.from(files);
+    
+    // Validar tipo de archivo
+    const validExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.xls', '.xlsx'];
+    const invalidFiles = filesArray.filter(file => {
+      const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+      return !validExtensions.includes(extension);
+    });
+
+    if (invalidFiles.length > 0) {
+      setErrorMessage(`Tipo de archivo no válido para ${documentoNombres[tipo]}. Solo se permiten PDF, imágenes y archivos de Excel.`);
+      return;
+    }
+
+    // Validar tamaño máximo (4MB)
+    const maxSize = 4 * 1024 * 1024; // 4MB
+    const oversizedFiles = filesArray.filter(file => file.size > maxSize);
+
+    if (oversizedFiles.length > 0) {
+      setErrorMessage(`Archivo demasiado grande para ${documentoNombres[tipo]}. Tamaño máximo: 4MB.`);
+      return;
+    }
+
+    setDocumentos(prev => ({
+      ...prev,
+      [tipo]: filesArray
+    }));
+  };
+
+  // Eliminar documento
+  const removeDocument = (tipo: keyof Documentos, index: number) => {
+    setDocumentos(prev => {
+      const newFiles = [...prev[tipo]];
+      newFiles.splice(index, 1);
+      return {
+        ...prev,
+        [tipo]: newFiles
+      };
+    });
+  };
+
+  // Abrir selector de archivos
+  const triggerFileInput = (tipo: keyof Documentos) => {
+    fileInputRefs.current[tipo]?.click();
+  };
+
+  // Validar documentos
+  const validateDocuments = (): boolean => {
+    const documentosRequeridos: (keyof Documentos)[] = [
+      'cv', 'actaNacimiento', 'curp', 'rfc', 'imss', 
+      'ine', 'comprobanteDomicilio', 'foto'
+    ];
+
+    for (const docType of documentosRequeridos) {
+      if (documentos[docType].length === 0) {
+        setErrorMessage(`El documento ${documentoNombres[docType]} es requerido`);
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  // Subir documentos
+  const uploadDocuments = async (): Promise<Record<keyof Documentos, string[]>> => {
+    const uploadedUrls: Record<keyof Documentos, string[]> = {
+      cv: [], actaNacimiento: [], curp: [], rfc: [], imss: [], ine: [],
+      comprobanteDomicilio: [], comprobanteEstudios: [], comprobanteCapacitacion: [],
+      licenciaManejo: [], cartaAntecedentes: [], cartaRecomendacion: [], retencionInfonavit: [],
+      examenMedico: [], foto: [], folleto: []
+    };
+
+    let totalFiles = 0;
+    let uploadedFiles = 0;
+
+    // Contar total de archivos
+    Object.values(documentos).forEach(files => {
+      totalFiles += files.length;
+    });
+
+    if (totalFiles === 0) return uploadedUrls;
+
+    // Subir archivos por tipo
+    for (const [docType, files] of Object.entries(documentos)) {
+      if (files.length > 0) {
+        try {
+          setUploadProgress(Math.round((uploadedFiles / totalFiles) * 50));
+          
+          const response = await startUpload(files as File[]);
+          
+          if (response && response.length > 0) {
+            uploadedUrls[docType as keyof Documentos] = response.map(file => file.url);
+            uploadedFiles += files.length;
+            setUploadProgress(Math.round((uploadedFiles / totalFiles) * 100));
+          }
+        } catch (error) {
+          console.error(`Error al subir ${docType}:`, error);
+          throw new Error(`Error al subir ${documentoNombres[docType as keyof Documentos]}`);
+        }
+      }
+    }
+
+    return uploadedUrls;
   };
 
   // Validar formulario según la pestaña activa
@@ -277,6 +462,11 @@ export default function SystemAdminDashboard() {
     // Validar formato de email
     if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
       setErrorMessage('El email no tiene un formato válido');
+      return false;
+    }
+
+    // Validar documentos
+    if (!validateDocuments()) {
       return false;
     }
 
@@ -394,9 +584,30 @@ export default function SystemAdminDashboard() {
       porcentaje: ''
     });
 
+    // Limpiar documentos
+    setDocumentos({
+      cv: [],
+      actaNacimiento: [],
+      curp: [],
+      rfc: [],
+      imss: [],
+      ine: [],
+      comprobanteDomicilio: [],
+      comprobanteEstudios: [],
+      comprobanteCapacitacion: [],
+      licenciaManejo: [],
+      cartaAntecedentes: [],
+      cartaRecomendacion: [],
+      retencionInfonavit: [],
+      examenMedico: [],
+      foto: [],
+      folleto: []
+    });
+
     setSuccessMessage('');
     setErrorMessage('');
     setShowSuccessModal(false);
+    setUploadProgress(0);
   };
 
   // Manejar envío del formulario
@@ -405,6 +616,7 @@ export default function SystemAdminDashboard() {
     setSuccessMessage('');
     setErrorMessage('');
     setSuccessDetails(null);
+    setUploadProgress(0);
 
     if (!validateForm()) {
       return;
@@ -415,6 +627,11 @@ export default function SystemAdminDashboard() {
     try {
       const formData = getActiveFormData();
       const beneficiario = getActiveBeneficiario();
+
+      // Subir documentos primero
+      setUploadProgress(10);
+      const documentosUrls = await uploadDocuments();
+      setUploadProgress(50);
 
       // Solo incluir beneficiario si tiene datos
       const beneficiariosFiltrados = beneficiario.nombre.trim() && beneficiario.apellidoPaterno.trim()
@@ -465,7 +682,10 @@ export default function SystemAdminDashboard() {
         tipoPersonal: activeTab === 'proyecto' ? 'proyecto' : 'base',
         
         // Beneficiarios
-        beneficiarios: beneficiariosFiltrados
+        beneficiarios: beneficiariosFiltrados,
+
+        // Documentos adjuntos
+        documentos: documentosUrls
       };
 
       // Agregar campos específicos según el tipo
@@ -478,6 +698,7 @@ export default function SystemAdminDashboard() {
         formDataToSend.tipoContrato = formData.tipoContrato;
       }
 
+      setUploadProgress(75);
       const response = await fetch('/api/empleados/registrar', {
         method: 'POST',
         headers: {
@@ -489,6 +710,7 @@ export default function SystemAdminDashboard() {
       const result = await response.json();
 
       if (response.ok && result.success) {
+        setUploadProgress(100);
         setSuccessMessage(result.message);
         setSuccessDetails({
           empleadoId: result.empleadoId,
@@ -581,6 +803,26 @@ export default function SystemAdminDashboard() {
             porcentaje: ''
           });
         }
+
+        // Limpiar documentos
+        setDocumentos({
+          cv: [],
+          actaNacimiento: [],
+          curp: [],
+          rfc: [],
+          imss: [],
+          ine: [],
+          comprobanteDomicilio: [],
+          comprobanteEstudios: [],
+          comprobanteCapacitacion: [],
+          licenciaManejo: [],
+          cartaAntecedentes: [],
+          cartaRecomendacion: [],
+          retencionInfonavit: [],
+          examenMedico: [],
+          foto: [],
+          folleto: []
+        });
       } else {
         setErrorMessage(result.message || 'ERROR AL REGISTRAR EL EMPLEADO. POR FAVOR, INTENTE NUEVAMENTE.');
       }
@@ -589,6 +831,7 @@ export default function SystemAdminDashboard() {
       setErrorMessage('ERROR DE CONEXIÓN. POR FAVOR, VERIFIQUE SU CONEXIÓN A INTERNET E INTENTE NUEVAMENTE.');
     } finally {
       setLoading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -596,6 +839,67 @@ export default function SystemAdminDashboard() {
   const closeModal = () => {
     setShowSuccessModal(false);
   };
+
+  // Componente para mostrar archivos seleccionados
+  const FileListDisplay = ({ tipo }: { tipo: keyof Documentos }) => {
+    const files = documentos[tipo];
+    
+    if (files.length === 0) return null;
+
+    return (
+      <div className="mt-2 space-y-1">
+        {files.map((file, index) => (
+          <div key={index} className="flex items-center justify-between bg-gray-50 px-3 py-1.5 rounded text-sm">
+            <div className="flex items-center truncate">
+              <File className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
+              <span className="truncate">{file.name}</span>
+              <span className="ml-2 text-xs text-gray-500">
+                ({(file.size / 1024 / 1024).toFixed(2)} MB)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => removeDocument(tipo, index)}
+              className="text-red-500 hover:text-red-700 ml-2"
+            >
+              <XCircle className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // Componente para input de documento
+  const DocumentInput = ({ tipo, required = false }: { tipo: keyof Documentos, required?: boolean }) => (
+    <div className="space-y-2">
+      <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">
+        {documentoNombres[tipo]} {required && '*'}
+      </label>
+      <input
+        type="file"
+        ref={el => {
+          if (el) fileInputRefs.current[tipo] = el;
+        }}
+        onChange={(e) => e.target.files && handleDocumentChange(tipo, e.target.files)}
+        className="hidden"
+        accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx"
+        multiple
+      />
+      <button
+        type="button"
+        onClick={() => triggerFileInput(tipo)}
+        className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded hover:border-[#3a6ea5] hover:bg-gray-50 transition-colors font-medium flex items-center justify-center"
+      >
+        <Upload className="h-4 w-4 mr-2" />
+        Seleccionar archivo(s)
+      </button>
+      <FileListDisplay tipo={tipo} />
+      {required && documentos[tipo].length === 0 && (
+        <p className="text-xs text-red-500">Este documento es requerido</p>
+      )}
+    </div>
+  );
 
   // Mostrar loading mientras se verifica la sesión
   if (sessionLoading) {
@@ -1076,12 +1380,13 @@ export default function SystemAdminDashboard() {
                     SALARIO *
                   </label>
                   <input
-                    type="text"
+                    type="number"
                     name="salario"
                     value={formData.salario}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                     placeholder="Ingrese el salario"
+                    step="0.01"
                     required
                   />
                 </div>
@@ -1287,11 +1592,63 @@ export default function SystemAdminDashboard() {
                     value={beneficiario.porcentaje}
                     onChange={(e) => handleBeneficiarioChange('porcentaje', e.target.value)}
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                    placeholder="100"
+                    placeholder="Ingrese el porcentaje"
                     required
                   />
                 </div>
               </div>
+          </div>
+        </div>
+
+        {/* TARJETA DE DOCUMENTACIÓN */}
+        <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden mb-6">
+          <div className="bg-gray-200 px-6 py-4 border-b-2 border-gray-300">
+            <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+              DOCUMENTACIÓN REQUERIDA
+            </h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Todos los documentos son obligatorios. Formatos aceptados: PDF, JPG, PNG. Tamaño máximo: 4MB por archivo.
+            </p>
+          </div>
+          
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Documentos obligatorios */}
+              <DocumentInput tipo="cv" required />
+              <DocumentInput tipo="actaNacimiento" required />
+              <DocumentInput tipo="curp" required />
+              <DocumentInput tipo="rfc" required />
+              <DocumentInput tipo="imss" required />
+              <DocumentInput tipo="ine" required />
+              <DocumentInput tipo="comprobanteDomicilio" required />
+              <DocumentInput tipo="foto" required />
+              
+              {/* Documentos opcionales */}
+              <DocumentInput tipo="comprobanteEstudios" required/>
+              <DocumentInput tipo="comprobanteCapacitacion" required/>
+              <DocumentInput tipo="licenciaManejo" required/>
+              <DocumentInput tipo="cartaAntecedentes" required/>
+              <DocumentInput tipo="cartaRecomendacion" required/>
+              <DocumentInput tipo="retencionInfonavit" required/>
+              <DocumentInput tipo="examenMedico" required/>
+              <DocumentInput tipo="folleto" required/>
+            </div>
+
+            {/* Barra de progreso */}
+            {uploadProgress > 0 && uploadProgress < 100 && (
+              <div className="mt-6">
+                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                  <span>Subiendo documentos...</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-[#3a6ea5] h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </form>
@@ -1320,7 +1677,6 @@ export default function SystemAdminDashboard() {
             <div className="p-6 pt-7">
               <div className="flex flex-col items-center text-center">
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                  {/* Icono con color verde forzado para ambos casos */}
                   <CheckCircle className="h-10 w-10 !text-green-600" />
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 mb-2">
@@ -1378,31 +1734,31 @@ export default function SystemAdminDashboard() {
           </div>
 
           {/* PESTAÑAS - Versión minimalista */}
-<div className="mb-6">
-  <div className="flex space-x-1 border-b border-gray-200">
-    <button
-      onClick={() => setActiveTab('proyecto')}
-      className={`flex-1 py-3 px-4 text-center font-bold text-sm uppercase tracking-tight transition-all duration-200 ${
-        activeTab === 'proyecto'
-          ? 'text-[#3a6ea5] border-b-2 border-[#3a6ea5] -mb-px'
-          : 'text-black hover:text-black'
-      }`}
-    >
-      PERSONAL DE PROYECTO
-    </button>
-    
-    <button
-      onClick={() => setActiveTab('base')}
-      className={`flex-1 py-3 px-4 text-center font-bold text-sm uppercase tracking-tight transition-all duration-200 ${
-        activeTab === 'base'
-          ? 'text-[#3a6ea5] border-b-2 border-[#3a6ea5] -mb-px'
-          : 'text-black hover:text-black'
-      }`}
-    >
-      PERSONAL BASE
-    </button>
-  </div>
-</div>
+          <div className="mb-6">
+            <div className="flex space-x-1 border-b border-gray-200">
+              <button
+                onClick={() => setActiveTab('proyecto')}
+                className={`flex-1 py-3 px-4 text-center font-bold text-sm uppercase tracking-tight transition-all duration-200 ${
+                  activeTab === 'proyecto'
+                    ? 'text-[#3a6ea5] border-b-2 border-[#3a6ea5] -mb-px'
+                    : 'text-black hover:text-black'
+                }`}
+              >
+                PERSONAL DE PROYECTO
+              </button>
+              
+              <button
+                onClick={() => setActiveTab('base')}
+                className={`flex-1 py-3 px-4 text-center font-bold text-sm uppercase tracking-tight transition-all duration-200 ${
+                  activeTab === 'base'
+                    ? 'text-[#3a6ea5] border-b-2 border-[#3a6ea5] -mb-px'
+                    : 'text-black hover:text-black'
+                }`}
+              >
+                PERSONAL BASE
+              </button>
+            </div>
+          </div>
 
           {/* CONTENIDO DE LAS PESTAÑAS */}
           <div className="space-y-6">
@@ -1430,13 +1786,13 @@ export default function SystemAdminDashboard() {
                     form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
                   }
                 }}
-                disabled={loading}
+                disabled={loading || uploadProgress > 0 && uploadProgress < 100}
                 className="w-full sm:w-auto min-w-[280px] bg-[#3a6ea5] text-white font-bold py-3 px-8 rounded-md hover:bg-[#2d5592] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center uppercase tracking-tight"
               >
                 {loading ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    REGISTRANDO...
+                    {uploadProgress > 0 && uploadProgress < 100 ? `SUBIDO ${uploadProgress}%` : 'REGISTRANDO...'}
                   </>
                 ) : (
                   `REGISTRAR ${activeTab === 'proyecto' ? 'PERSONAL DE PROYECTO' : 'PERSONAL BASE'}`
@@ -1446,7 +1802,8 @@ export default function SystemAdminDashboard() {
               <button
                 type="button"
                 onClick={limpiarTodosFormularios}
-                className="w-full sm:w-auto min-w-[280px] bg-gray-200 text-gray-800 font-bold py-3 px-8 rounded-md hover:bg-gray-300 transition-colors uppercase tracking-tight"
+                disabled={loading || uploadProgress > 0 && uploadProgress < 100}
+                className="w-full sm:w-auto min-w-[280px] bg-gray-200 text-gray-800 font-bold py-3 px-8 rounded-md hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-tight"
               >
                 LIMPIAR FORMULARIO
               </button>
