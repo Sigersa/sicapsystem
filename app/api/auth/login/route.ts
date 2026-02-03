@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
@@ -27,7 +29,6 @@ export async function POST(request: NextRequest) {
       [username.trim()]
     );
 
-
     if (rows.length === 0) {
       return NextResponse.json(
         { error: 'Usuario o contraseña incorrectos' },
@@ -56,9 +57,8 @@ export async function POST(request: NextRequest) {
       [sessionId, user.SystemUserID, SESSION_DURATION_MINUTES]
     );
 
-  // Lógica de redirección según el tipo de usuario
     let redirectTo = '/';
-    
+
     switch (user.UserTypeID) {
       case 1:
         redirectTo = '/system-admin-dashboard';
@@ -72,10 +72,7 @@ export async function POST(request: NextRequest) {
       case 4:
         redirectTo = '/applicant-dashboard';
         break;
-      default:
-        redirectTo = '/';
     }
-
 
     const response = NextResponse.json(
       { success: true, redirectTo },
@@ -89,12 +86,12 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       maxAge: 60 * SESSION_DURATION_MINUTES,
-      path: '/'
+      path: '/',
     });
 
     return response;
   } catch (error) {
-    console.error("Error en el inicio de sesión:", error);
+    console.error('Error en el inicio de sesión:', error);
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }
