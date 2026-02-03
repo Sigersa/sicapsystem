@@ -1,46 +1,60 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 
-const DownloadButtons: React.FC = () => {
-  const handleDownloadEditable = () => {
-    window.location.href = "/api/download/excel";
-  };
-
-  const handleDownloadPDF = () => {
-  window.location.href = "/api/download/pdf";
-};
-
-
- const handlePrint = () => {
-  window.open("/print/pdf", "_blank");
-};
-
+export default function Page() {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   return (
-    <div className="flex gap-4">
+    <>
       <button
-        onClick={handleDownloadEditable}
-        className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+        onClick={() => {
+          setOpen(true);
+          setLoading(true);
+        }}
+        className="px-4 py-2 bg-red-600 text-white rounded"
       >
-        Descargar editable
+        Ver documento
       </button>
 
-      <button
-        onClick={handleDownloadPDF}
-        className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
-      >
-        Descargar PDF
-      </button>
+      {open && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+          <div className="bg-white w-[90%] h-[90%] rounded flex flex-col">
+            <div className="p-4 border-b flex justify-between">
+              <h2 className="font-semibold">Vista previa PDF</h2>
+              <button onClick={() => setOpen(false)}>✕</button>
+            </div>
 
-      <button
-        onClick={handlePrint}
-        className="px-4 py-2 rounded bg-gray-700 text-white hover:bg-gray-800"
-      >
-        Imprimir
-      </button>
-    </div>
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white/70">
+                <div className="w-10 h-10 border-4 border-gray-300 border-t-red-600 animate-spin rounded-full" />
+              </div>
+            )}
+
+            <iframe
+              src="/api/download/pdf?preview=1"
+              className="flex-1 w-full"
+              onLoad={() => setLoading(false)}
+            />
+
+            <div className="p-4 border-t flex gap-3 justify-end">
+              <a
+                href="/api/download/excel"
+                className="px-4 py-2 bg-gray-600 text-white rounded"
+              >
+                Descargar editable
+              </a>
+              <a
+                href="/api/download/pdf"
+                className="px-4 py-2 bg-red-600 text-white rounded"
+              >
+                Descargar PDF
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
-};
-
-export default DownloadButtons;
+}
