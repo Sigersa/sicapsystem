@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/header/2/2';
 import Footer from '@/components/footer';
-import { UserPlus, Users, FileText} from 'lucide-react';
+import { UserPlus, Users, FileText, ToolCase} from 'lucide-react';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 
@@ -40,6 +40,13 @@ export default function SystemAdminDashboard() {
       description: 'Procesos de terminación laboral',
       icon: <FileText className="h-6 w-6" />,
       href: '/administrative-personnel-dashboard/job-termination'
+    },
+    {
+      id: 4,
+      title: 'GESTIÓN DE PROYECTOS',
+      description: 'Procesos de terminación laboral',
+      icon: <ToolCase className="h-6 w-6" />,
+      href: '/administrative-personnel-dashboard/projects'
     }
   ];
 
