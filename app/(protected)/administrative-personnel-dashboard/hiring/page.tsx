@@ -3,9 +3,10 @@ import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
-import { useState, ChangeEvent, FormEvent, useRef } from 'react';
-import { User, Calendar, CheckCircle, X, Briefcase, Users, Upload, File, XCircle } from 'lucide-react';
+import { useState, ChangeEvent, FormEvent, useRef, useEffect } from 'react';
+import { User, Calendar, CheckCircle, X, Upload, File, XCircle, Download, Eye, FileText, ChevronLeft, ChevronRight, Archive } from 'lucide-react';
 import { useUploadThing } from '@/lib/uploadthing';
+import JSZip from 'jszip';
 
 // Definir el tipo para el formulario base
 type FormDataBase = {
@@ -23,7 +24,6 @@ type FormDataBase = {
   email: string;
   puesto: string;
   departamento: string;
-  fechaIngreso: string;
   salario: string;
   horarioLaboral: string;
   tipoContrato: string;
@@ -39,16 +39,16 @@ type FormDataBase = {
   nci: string;
   umf: string;
   salaryIMSS: string;
-  nombreProyecto: string;
+  proyectoId: string;
 };
 
 // Tipo para formulario de proyecto
 type FormDataProyecto = FormDataBase & {
-  nombreProyecto: string;
+  proyectoId: string;
 };
 
 // Tipo para formulario base
-type FormDataPersonalBase = Omit<FormDataBase, 'fechaFinContrato' | 'nombreProyecto'>;
+type FormDataPersonalBase = Omit<FormDataBase, 'fechaFinContrato' | 'proyectoId'>;
 
 // Tipo para beneficiario
 type Beneficiario = {
@@ -82,6 +82,36 @@ type Documentos = {
   folleto: File[];
 };
 
+// Tipo para proyectos
+type Proyecto = {
+  ProjectID: number;
+  NameProject: string;
+};
+
+// Tipo para los detalles del éxito
+type SuccessDetails = {
+  empleadoId: string;
+  nombre: string;
+  puesto: string;
+  tipoPersonal: string;
+  fechaRegistro: string;
+  ftRh02PdfUrl?: string;
+  ftRh02PdfDownloadUrl?: string;
+  ftRh04PdfUrl?: string;
+  ftRh04PdfDownloadUrl?: string;
+  ftRh07PdfUrl?: string;
+  ftRh07PdfDownloadUrl?: string;
+  ftRh29PdfUrl?: string;
+  ftRh29PdfDownloadUrl?: string;
+  ftRh02WordUrl?: string;
+  ftRh04ExcelUrl?: string;
+  ftRh07WordUrl?: string;
+  ftRh29WordUrl?: string;
+};
+
+// Tipo para formato activo en el modal
+type FormatoActivo = 'FT-RH-02' | 'FT-RH-04' | 'FT-RH-07' | 'FT-RH-29';
+
 // Mapa de nombres de campos para mensajes de error
 const fieldNames: Record<string, string> = {
   nombre: 'Nombre',
@@ -93,7 +123,6 @@ const fieldNames: Record<string, string> = {
   telefono: 'Teléfono',
   email: 'Email',
   puesto: 'Puesto',
-  fechaIngreso: 'Fecha de Ingreso',
   salario: 'Salario',
   calle: 'Calle',
   numeroExterior: 'Número Exterior',
@@ -146,7 +175,6 @@ export default function SystemAdminDashboard() {
     email: '',
     puesto: '',
     departamento: '',
-    fechaIngreso: '',
     salario: '',
     horarioLaboral: '',
     tipoContrato: '',
@@ -162,7 +190,7 @@ export default function SystemAdminDashboard() {
     nci: '',
     umf: '',
     salaryIMSS: '',
-    nombreProyecto: ''
+    proyectoId: ''
   });
 
   // Estados para el formulario de personal base
@@ -181,7 +209,6 @@ export default function SystemAdminDashboard() {
     email: '',
     puesto: '',
     departamento: '',
-    fechaIngreso: '',
     salario: '',
     horarioLaboral: '',
     tipoContrato: '',
@@ -235,12 +262,20 @@ export default function SystemAdminDashboard() {
     folleto: []
   });
 
+  // Estado para proyectos
+  const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
-  const [successDetails, setSuccessDetails] = useState<any>(null);
+  const [successDetails, setSuccessDetails] = useState<SuccessDetails | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadingZip, setDownloadingZip] = useState(false);
+  const [formatoActivo, setFormatoActivo] = useState<FormatoActivo>('FT-RH-02');
 
   // UploadThing
   const { startUpload } = useUploadThing('hiringFiles', {
@@ -258,6 +293,262 @@ export default function SystemAdminDashboard() {
   // Referencias para inputs de archivo
   const fileInputRefs = useRef<{ [key in keyof Documentos]?: HTMLInputElement }>({});
 
+  // Cargar proyectos al montar el componente
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
+  const fetchProjects = async () => {
+    try {
+      setLoadingProjects(true);
+      const response = await fetch('/api/projects');
+      if (response.ok) {
+        const data = await response.json();
+        setProyectos(data);
+      }
+    } catch (error) {
+      console.error('Error al cargar proyectos:', error);
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  // Función para obtener URLs de archivos desde la BD
+  const getDocumentUrls = async (employeeId: string): Promise<{
+    contractFileURL?: string;
+    warningFileURL?: string;
+    letterFileURL?: string;
+    agreementFileURL?: string;
+  }> => {
+    try {
+      const response = await fetch(`/api/empleados/document-urls/${employeeId}`);
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        return {
+          contractFileURL: data.contractFileURL,
+          warningFileURL: data.warningFileURL,
+          letterFileURL: data.letterFileURL,
+          agreementFileURL: data.agreementFileURL
+        };
+      }
+      return {};
+    } catch (error) {
+      console.error('Error al obtener URLs de documentos:', error);
+      return {};
+    }
+  };
+
+  // Función para forzar la descarga de archivos
+  const handleDownloadFile = async (url: string, filename: string) => {
+    try {
+      setDownloading(true);
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error('Error al descargar el archivo');
+      }
+      
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+      
+      setDownloading(false);
+    } catch (error) {
+      console.error('Error al descargar archivo:', error);
+      setErrorMessage('Error al descargar el archivo. Intente nuevamente.');
+      setDownloading(false);
+    }
+  };
+
+  // Función para descargar todos los PDFs en un ZIP
+  const handleDownloadAllPDFs = async () => {
+    if (!successDetails) return;
+    
+    try {
+      setDownloadingZip(true);
+      
+      const zip = new JSZip();
+      
+      // Descargar FT-RH-02 PDF
+      if (successDetails.ftRh02PdfDownloadUrl) {
+        const response = await fetch(successDetails.ftRh02PdfDownloadUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-02_${successDetails.empleadoId}.pdf`, blob);
+        }
+      }
+      
+      // Descargar FT-RH-04 PDF
+      if (successDetails.ftRh04PdfDownloadUrl) {
+        const response = await fetch(successDetails.ftRh04PdfDownloadUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-04_${successDetails.empleadoId}.pdf`, blob);
+        }
+      }
+      
+      // Descargar FT-RH-07 PDF
+      if (successDetails.ftRh07PdfDownloadUrl) {
+        const response = await fetch(successDetails.ftRh07PdfDownloadUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-07_${successDetails.empleadoId}.pdf`, blob);
+        }
+      }
+      
+      // Descargar FT-RH-29 PDF
+      if (successDetails.ftRh29PdfDownloadUrl) {
+        const response = await fetch(successDetails.ftRh29PdfDownloadUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-29_${successDetails.empleadoId}.pdf`, blob);
+        }
+      }
+      
+      // Generar el archivo ZIP
+      const content = await zip.generateAsync({ type: "blob" });
+      const downloadUrl = window.URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `documentos_${successDetails.empleadoId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+      
+      setDownloadingZip(false);
+    } catch (error) {
+      console.error('Error al crear ZIP:', error);
+      setErrorMessage('Error al crear archivo ZIP. Intente nuevamente.');
+      setDownloadingZip(false);
+    }
+  };
+
+  // Función para descargar todos los editables en un ZIP
+  const handleDownloadAllEditables = async () => {
+    if (!successDetails) return;
+    
+    try {
+      setDownloadingZip(true);
+      
+      const zip = new JSZip();
+      
+      // Descargar FT-RH-02 Word
+      if (successDetails.ftRh02WordUrl) {
+        const response = await fetch(successDetails.ftRh02WordUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-02_${successDetails.empleadoId}.docx`, blob);
+        }
+      }
+      
+      // Descargar FT-RH-04 Excel
+      if (successDetails.ftRh04ExcelUrl) {
+        const response = await fetch(successDetails.ftRh04ExcelUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-04_${successDetails.empleadoId}.xlsx`, blob);
+        }
+      }
+      
+      // Descargar FT-RH-07 Word
+      if (successDetails.ftRh07WordUrl) {
+        const response = await fetch(successDetails.ftRh07WordUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-07_${successDetails.empleadoId}.docx`, blob);
+        }
+      }
+      
+      // Descargar FT-RH-29 Word
+      if (successDetails.ftRh29WordUrl) {
+        const response = await fetch(successDetails.ftRh29WordUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-29_${successDetails.empleadoId}.docx`, blob);
+        }
+      }
+      
+      // Generar el archivo ZIP
+      const content = await zip.generateAsync({ type: "blob" });
+      const downloadUrl = window.URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `editables_${successDetails.empleadoId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+      
+      setDownloadingZip(false);
+    } catch (error) {
+      console.error('Error al crear ZIP de editables:', error);
+      setErrorMessage('Error al crear archivo ZIP. Intente nuevamente.');
+      setDownloadingZip(false);
+    }
+  };
+
+  // Función para generar URLs de descarga
+  const generateDownloadUrls = async (
+    empleadoId: string, 
+    contractFileURL?: string,
+    warningFileURL?: string, 
+    letterFileURL?: string,
+    agreementFileURL?: string
+  ): Promise<{
+    ftRh02PdfUrl: string;
+    ftRh02PdfDownloadUrl: string;
+    ftRh04PdfUrl: string;
+    ftRh04PdfDownloadUrl: string;
+    ftRh07PdfUrl: string;
+    ftRh07PdfDownloadUrl: string;
+    ftRh29PdfUrl: string;
+    ftRh29PdfDownloadUrl: string;
+    ftRh02WordUrl: string;
+    ftRh04ExcelUrl: string;
+    ftRh07WordUrl: string;
+    ftRh29WordUrl: string;
+  }> => {
+    // URLs para FT-RH-02 (Contract)
+    const ftRh02PdfUrl = contractFileURL || `/api/download/pdf/FT-RH-02?empleadoId=${empleadoId}&preview=1`;
+    const ftRh02PdfDownloadUrl = contractFileURL || `/api/download/pdf/FT-RH-02?empleadoId=${empleadoId}`;
+    
+    // URLs para FT-RH-04 (Warning)
+    const ftRh04PdfUrl = warningFileURL || `/api/download/pdf/FT-RH-04?empleadoId=${empleadoId}&preview=1`;
+    const ftRh04PdfDownloadUrl = warningFileURL || `/api/download/pdf/FT-RH-04?empleadoId=${empleadoId}`;
+    
+    // URLs para FT-RH-07 (Letter)
+    const ftRh07PdfUrl = letterFileURL || `/api/download/pdf/FT-RH-07?empleadoId=${empleadoId}&preview=1`;
+    const ftRh07PdfDownloadUrl = letterFileURL || `/api/download/pdf/FT-RH-07?empleadoId=${empleadoId}`;
+    
+    // URLs para FT-RH-29 (Agreement)
+    const ftRh29PdfUrl = agreementFileURL || `/api/download/pdf/FT-RH-29?empleadoId=${empleadoId}&preview=1`;
+    const ftRh29PdfDownloadUrl = agreementFileURL || `/api/download/pdf/FT-RH-29?empleadoId=${empleadoId}`;
+    
+    return {
+      ftRh02PdfUrl,
+      ftRh02PdfDownloadUrl,
+      ftRh04PdfUrl,
+      ftRh04PdfDownloadUrl,
+      ftRh07PdfUrl,
+      ftRh07PdfDownloadUrl,
+      ftRh29PdfUrl,
+      ftRh29PdfDownloadUrl,
+      ftRh02WordUrl: `/api/download/edit/FT-RH-02?empleadoId=${empleadoId}`,
+      ftRh04ExcelUrl: `/api/download/edit/FT-RH-04?empleadoId=${empleadoId}`,
+      ftRh07WordUrl: `/api/download/edit/FT-RH-07?empleadoId=${empleadoId}`,
+      ftRh29WordUrl: `/api/download/edit/FT-RH-29?empleadoId=${empleadoId}`
+    };
+  };
+
   // Obtener el formulario activo según la pestaña
   const getActiveFormData = () => {
     return activeTab === 'proyecto' ? formDataProyecto : formDataBase;
@@ -274,12 +565,12 @@ export default function SystemAdminDashboard() {
     if (activeTab === 'proyecto') {
       setFormDataProyecto(prev => ({
         ...prev,
-        [name]: value
+        [name]: name === 'email' ? value : value.toUpperCase()
       }));
     } else {
       setFormDataBase(prev => ({
         ...prev,
-        [name]: value
+        [name]: name === 'email' ? value : value.toUpperCase()
       }));
     }
   };
@@ -289,29 +580,39 @@ export default function SystemAdminDashboard() {
     if (activeTab === 'proyecto') {
       setBeneficiarioProyecto(prev => ({
         ...prev,
-        [field]: value
+        [field]: value.toUpperCase()
       }));
     } else {
       setBeneficiarioBase(prev => ({
         ...prev,
-        [field]: value
+        [field]: value.toUpperCase()
       }));
     }
   };
 
-  // Manejar cambios en documentos
+  // Manejar cambios en documentos - SOLO PDF y JPG/PNG
   const handleDocumentChange = (tipo: keyof Documentos, files: FileList) => {
     const filesArray = Array.from(files);
     
-    // Validar tipo de archivo
-    const validExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.xls', '.xlsx'];
+    // Validar tipo de archivo basado en el tipo de documento
+    let validExtensions: string[] = [];
+    
+    if (tipo === 'foto') {
+      // Solo imágenes para la foto
+      validExtensions = ['.jpg', '.jpeg', '.png'];
+    } else {
+      // Solo PDF para todos los demás documentos
+      validExtensions = ['.pdf'];
+    }
+    
     const invalidFiles = filesArray.filter(file => {
       const extension = '.' + file.name.split('.').pop()?.toLowerCase();
       return !validExtensions.includes(extension);
     });
 
     if (invalidFiles.length > 0) {
-      setErrorMessage(`Tipo de archivo no válido para ${documentoNombres[tipo]}. Solo se permiten PDF, imágenes y archivos de Excel.`);
+      const extensionList = validExtensions.join(', ');
+      setErrorMessage(`Tipo de archivo no válido para ${documentoNombres[tipo]}. Solo se permiten: ${extensionList}`);
       return;
     }
 
@@ -415,15 +716,15 @@ export default function SystemAdminDashboard() {
     const requiredFieldsBase = [
       'nombre', 'apellidoPaterno', 'nss', 'curp', 'rfc',
       'fechaNacimiento', 'telefono', 'email', 'puesto',
-      'fechaIngreso', 'salario', 'calle', 'numeroExterior',
+      'salario', 'calle', 'numeroExterior',
       'colonia', 'municipio', 'estado', 'codigoPostal'
     ];
 
-    // Campos adicionales requeridos solo para proyecto
+    // Validar campos adicionales según el tipo
     if (activeTab === 'proyecto') {
       const proyectoData = formData as FormDataProyecto;
-      if (!proyectoData.nombreProyecto?.trim()) {
-        setErrorMessage('El nombre del proyecto es requerido');
+      if (!proyectoData.proyectoId?.trim()) {
+        setErrorMessage('El proyecto es requerido para personal de proyecto');
         return false;
       }
       if (!proyectoData.fechaFinContrato?.trim()) {
@@ -518,7 +819,6 @@ export default function SystemAdminDashboard() {
       email: '',
       puesto: '',
       departamento: '',
-      fechaIngreso: '',
       salario: '',
       horarioLaboral: '',
       tipoContrato: '',
@@ -534,7 +834,7 @@ export default function SystemAdminDashboard() {
       nci: '',
       umf: '',
       salaryIMSS: '',
-      nombreProyecto: ''
+      proyectoId: ''
     });
     setBeneficiarioProyecto({
       nombre: '',
@@ -560,7 +860,6 @@ export default function SystemAdminDashboard() {
       email: '',
       puesto: '',
       departamento: '',
-      fechaIngreso: '',
       salario: '',
       horarioLaboral: '',
       tipoContrato: '',
@@ -610,6 +909,11 @@ export default function SystemAdminDashboard() {
     setUploadProgress(0);
   };
 
+  // Función para convertir texto a mayúsculas manteniendo acentos
+  const toUpperCaseWithAccents = (text: string): string => {
+    return text.toUpperCase();
+  };
+
   // Manejar envío del formulario
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -635,44 +939,50 @@ export default function SystemAdminDashboard() {
 
       // Solo incluir beneficiario si tiene datos
       const beneficiariosFiltrados = beneficiario.nombre.trim() && beneficiario.apellidoPaterno.trim()
-        ? [beneficiario]
+        ? [{
+            nombre: toUpperCaseWithAccents(beneficiario.nombre.trim()),
+            apellidoPaterno: toUpperCaseWithAccents(beneficiario.apellidoPaterno.trim()),
+            apellidoMaterno: toUpperCaseWithAccents(beneficiario.apellidoMaterno.trim()),
+            parentesco: toUpperCaseWithAccents(beneficiario.parentesco.trim()),
+            porcentaje: beneficiario.porcentaje
+          }]
         : [];
 
       // Crear objeto con formato correcto según el tipo de personal
       const formDataToSend: any = {
         // Información personal (común para ambos)
-        nombre: formData.nombre,
-        apellidoPaterno: formData.apellidoPaterno,
-        apellidoMaterno: formData.apellidoMaterno,
+        nombre: toUpperCaseWithAccents(formData.nombre.trim()),
+        apellidoPaterno: toUpperCaseWithAccents(formData.apellidoPaterno.trim()),
+        apellidoMaterno: toUpperCaseWithAccents(formData.apellidoMaterno.trim()),
         fechaNacimiento: formData.fechaNacimiento,
-        genero: formData.genero,
-        nacionalidad: formData.nacionalidad,
-        estadoCivil: formData.estadoCivil,
+        genero: toUpperCaseWithAccents(formData.genero),
+        nacionalidad: toUpperCaseWithAccents(formData.nacionalidad),
+        estadoCivil: toUpperCaseWithAccents(formData.estadoCivil),
         telefono: formData.telefono,
-        email: formData.email,
+        email: formData.email.toLowerCase().trim(),
         
         // Documentos
         nss: formData.nss,
-        curp: formData.curp,
-        rfc: formData.rfc,
-        nci: formData.nci,
+        curp: toUpperCaseWithAccents(formData.curp.trim()),
+        rfc: toUpperCaseWithAccents(formData.rfc.trim()),
+        nci: toUpperCaseWithAccents(formData.nci.trim()),
         umf: formData.umf,
         
         // Dirección
-        calle: formData.calle,
-        numeroExterior: formData.numeroExterior,
-        numeroInterior: formData.numeroInterior,
-        colonia: formData.colonia,
-        municipio: formData.municipio,
-        estado: formData.estado,
+        calle: toUpperCaseWithAccents(formData.calle.trim()),
+        numeroExterior: toUpperCaseWithAccents(formData.numeroExterior.trim()),
+        numeroInterior: toUpperCaseWithAccents(formData.numeroInterior.trim()),
+        colonia: toUpperCaseWithAccents(formData.colonia.trim()),
+        municipio: toUpperCaseWithAccents(formData.municipio.trim()),
+        estado: toUpperCaseWithAccents(formData.estado),
         codigoPostal: formData.codigoPostal,
         
         // Información laboral
-        puesto: formData.puesto,
-        departamento: formData.departamento,
-        fechaIngreso: formData.fechaIngreso,
+        puesto: toUpperCaseWithAccents(formData.puesto.trim()),
+        departamento: toUpperCaseWithAccents(formData.departamento.trim()),
         salario: formData.salario,
-        horarioLaboral: formData.horarioLaboral,
+        horarioLaboral: toUpperCaseWithAccents(formData.horarioLaboral),
+        tipoContrato: toUpperCaseWithAccents(formData.tipoContrato),
         
         // Información de contrato
         fechaInicioContrato: formData.fechaInicioContrato,
@@ -692,10 +1002,7 @@ export default function SystemAdminDashboard() {
       if (activeTab === 'proyecto') {
         const proyectoData = formData as FormDataProyecto;
         formDataToSend.fechaFinContrato = proyectoData.fechaFinContrato;
-        formDataToSend.nombreProyecto = proyectoData.nombreProyecto;
-        formDataToSend.tipoContrato = proyectoData.tipoContrato;
-      } else {
-        formDataToSend.tipoContrato = formData.tipoContrato;
+        formDataToSend.proyectoId = proyectoData.proyectoId;
       }
 
       setUploadProgress(75);
@@ -712,13 +1019,40 @@ export default function SystemAdminDashboard() {
       if (response.ok && result.success) {
         setUploadProgress(100);
         setSuccessMessage(result.message);
-        setSuccessDetails({
-          empleadoId: result.empleadoId,
-          nombre: `${formData.nombre} ${formData.apellidoPaterno} ${formData.apellidoMaterno}`,
-          puesto: formData.puesto,
-          tipoPersonal: activeTab === 'proyecto' ? 'Personal de Proyecto' : 'Personal Base',
-          fechaRegistro: new Date().toLocaleDateString('es-MX')
-        });
+        
+        // Obtener URLs de documentos desde la BD
+        const documentUrls = await getDocumentUrls(result.empleadoId);
+        
+        // Generar URLs para descarga
+        const downloadUrls = await generateDownloadUrls(
+          result.empleadoId,
+          documentUrls.contractFileURL,
+          documentUrls.warningFileURL, 
+          documentUrls.letterFileURL,
+          documentUrls.agreementFileURL
+        );
+        
+        const details: SuccessDetails = {
+          empleadoId: result.employeeId,
+          nombre: `${toUpperCaseWithAccents(formData.nombre)} ${toUpperCaseWithAccents(formData.apellidoPaterno)} ${toUpperCaseWithAccents(formData.apellidoMaterno)}`.trim(),
+          puesto: toUpperCaseWithAccents(formData.puesto),
+          tipoPersonal: activeTab === 'proyecto' ? 'PERSONAL DE PROYECTO' : 'PERSONAL BASE',
+          fechaRegistro: new Date().toLocaleDateString('es-MX'),
+          ftRh02PdfUrl: downloadUrls.ftRh02PdfUrl,
+          ftRh02PdfDownloadUrl: downloadUrls.ftRh02PdfDownloadUrl,
+          ftRh04PdfUrl: downloadUrls.ftRh04PdfUrl,
+          ftRh04PdfDownloadUrl: downloadUrls.ftRh04PdfDownloadUrl,
+          ftRh07PdfUrl: downloadUrls.ftRh07PdfUrl,
+          ftRh07PdfDownloadUrl: downloadUrls.ftRh07PdfDownloadUrl,
+          ftRh29PdfUrl: downloadUrls.ftRh29PdfUrl,
+          ftRh29PdfDownloadUrl: downloadUrls.ftRh29PdfDownloadUrl,
+          ftRh02WordUrl: downloadUrls.ftRh02WordUrl,
+          ftRh04ExcelUrl: downloadUrls.ftRh04ExcelUrl,
+          ftRh07WordUrl: downloadUrls.ftRh07WordUrl,
+          ftRh29WordUrl: downloadUrls.ftRh29WordUrl
+        };
+        
+        setSuccessDetails(details);
         setShowSuccessModal(true);
         
         // Limpiar solo el formulario activo después de éxito
@@ -738,7 +1072,6 @@ export default function SystemAdminDashboard() {
             email: '',
             puesto: '',
             departamento: '',
-            fechaIngreso: '',
             salario: '',
             horarioLaboral: '',
             tipoContrato: '',
@@ -754,7 +1087,7 @@ export default function SystemAdminDashboard() {
             nci: '',
             umf: '',
             salaryIMSS: '',
-            nombreProyecto: ''
+            proyectoId: ''
           });
           setBeneficiarioProyecto({
             nombre: '',
@@ -779,7 +1112,6 @@ export default function SystemAdminDashboard() {
             email: '',
             puesto: '',
             departamento: '',
-            fechaIngreso: '',
             salario: '',
             horarioLaboral: '',
             tipoContrato: '',
@@ -838,6 +1170,29 @@ export default function SystemAdminDashboard() {
   // Cerrar modal
   const closeModal = () => {
     setShowSuccessModal(false);
+    setPdfLoading(false);
+    setFormatoActivo('FT-RH-02');
+  };
+
+  // Navegar entre formatos
+  const siguienteFormato = () => {
+    if (formatoActivo === 'FT-RH-02') {
+      setFormatoActivo('FT-RH-04');
+    } else if (formatoActivo === 'FT-RH-04') {
+      setFormatoActivo('FT-RH-07');
+    } else if (formatoActivo === 'FT-RH-07') {
+      setFormatoActivo('FT-RH-29');
+    }
+  };
+
+  const anteriorFormato = () => {
+    if (formatoActivo === 'FT-RH-29') {
+      setFormatoActivo('FT-RH-07');
+    } else if (formatoActivo === 'FT-RH-07') {
+      setFormatoActivo('FT-RH-04');
+    } else if (formatoActivo === 'FT-RH-04') {
+      setFormatoActivo('FT-RH-02');
+    }
   };
 
   // Componente para mostrar archivos seleccionados
@@ -871,35 +1226,47 @@ export default function SystemAdminDashboard() {
   };
 
   // Componente para input de documento
-  const DocumentInput = ({ tipo, required = false }: { tipo: keyof Documentos, required?: boolean }) => (
-    <div className="space-y-2">
-      <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">
-        {documentoNombres[tipo]} {required && '*'}
-      </label>
-      <input
-        type="file"
-        ref={el => {
-          if (el) fileInputRefs.current[tipo] = el;
-        }}
-        onChange={(e) => e.target.files && handleDocumentChange(tipo, e.target.files)}
-        className="hidden"
-        accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx"
-        multiple
-      />
-      <button
-        type="button"
-        onClick={() => triggerFileInput(tipo)}
-        className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded hover:border-[#3a6ea5] hover:bg-gray-50 transition-colors font-medium flex items-center justify-center"
-      >
-        <Upload className="h-4 w-4 mr-2" />
-        Seleccionar archivo(s)
-      </button>
-      <FileListDisplay tipo={tipo} />
-      {required && documentos[tipo].length === 0 && (
-        <p className="text-xs text-red-500">Este documento es requerido</p>
-      )}
-    </div>
-  );
+  const DocumentInput = ({ tipo, required = false }: { tipo: keyof Documentos, required?: boolean }) => {
+    // Definir accept basado en el tipo de documento
+    const accept = tipo === 'foto' 
+      ? '.jpg,.jpeg,.png' 
+      : '.pdf';
+    
+    return (
+      <div className="space-y-2">
+        <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">
+          {documentoNombres[tipo]} {required && '*'}
+        </label>
+        <input
+          type="file"
+          ref={el => {
+            if (el) fileInputRefs.current[tipo] = el;
+          }}
+          onChange={(e) => e.target.files && handleDocumentChange(tipo, e.target.files)}
+          className="hidden"
+          accept={accept}
+          multiple={false}
+        />
+        <button
+          type="button"
+          onClick={() => triggerFileInput(tipo)}
+          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded hover:border-[#3a6ea5] hover:bg-gray-50 transition-colors font-medium flex items-center justify-center"
+        >
+          <Upload className="h-4 w-4 mr-2" />
+          Seleccionar archivo
+        </button>
+        <FileListDisplay tipo={tipo} />
+        {required && documentos[tipo].length === 0 && (
+          <p className="text-xs text-red-500">Este documento es requerido</p>
+        )}
+        <p className="text-xs text-gray-500">
+          {tipo === 'foto' 
+            ? 'Formato: JPG/PNG • Máx: 4MB' 
+            : 'Formato: PDF • Máx: 4MB'}
+        </p>
+      </div>
+    );
+  };
 
   // Mostrar loading mientras se verifica la sesión
   if (sessionLoading) {
@@ -1015,11 +1382,11 @@ export default function SystemAdminDashboard() {
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                   >
                     <option value="">Seleccione un tipo</option>
-                    <option value="soltero">Soltero (a)</option>
-                    <option value="casado">Casado (a)</option>
-                    <option value="divorciado">Divorciado (a)</option>
-                    <option value="viudo">Viudo (a)</option>
-                    <option value="union_libre">Unión Libre</option>
+                    <option value="SOLTERO">SOLTERO (A)</option>
+                    <option value="CASADO">CASADO (A)</option>
+                    <option value="DIVORCIADO">DIVORCIADO (A)</option>
+                    <option value="VIUDO">VIUDO (A)</option>
+                    <option value="UNION LIBRE">UNIÓN LIBRE</option>
                   </select>
                 </div>
                 
@@ -1034,8 +1401,8 @@ export default function SystemAdminDashboard() {
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                   >
                     <option value="">Seleccione un tipo</option>
-                    <option value="masculino">Masculino</option>
-                    <option value="femenino">Femenino</option>
+                    <option value="MASCULINO">MASCULINO</option>
+                    <option value="FEMENINO">FEMENINO</option>
                   </select>
                 </div>
                 
@@ -1064,7 +1431,7 @@ export default function SystemAdminDashboard() {
                     value={formData.email}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                    placeholder="Ingrese el email"
+                    placeholder="Ingrese el correo"
                     required
                   />
                 </div>
@@ -1100,7 +1467,7 @@ export default function SystemAdminDashboard() {
                     name="curp"
                     value={formData.curp}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium uppercase"
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                     placeholder="Ingrese el CURP"
                     required
                   />
@@ -1115,7 +1482,7 @@ export default function SystemAdminDashboard() {
                     name="rfc"
                     value={formData.rfc}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium uppercase"
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                     placeholder="Ingrese el RFC"
                     required
                   />
@@ -1131,7 +1498,7 @@ export default function SystemAdminDashboard() {
                     value={formData.nci}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                    placeholder="Ingrese NCI"
+                    placeholder="Ingrese el NCI"
                     required
                   />
                 </div>
@@ -1227,39 +1594,39 @@ export default function SystemAdminDashboard() {
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                     required
                   >
-                    <option value="">Selecciona un estado</option>
-                    <option value="Aguascalientes">Aguascalientes</option>
-                    <option value="Baja California">Baja California</option>
-                    <option value="Baja California Sur">Baja California Sur</option>
-                    <option value="Campeche">Campeche</option>
-                    <option value="Chiapas">Chiapas</option>
-                    <option value="Chihuahua">Chihuahua</option>
-                    <option value="Ciudad de México">Ciudad de México</option>
-                    <option value="Coahuila">Coahuila</option>
-                    <option value="Colima">Colima</option>
-                    <option value="Durango">Durango</option>
-                    <option value="Estado de México">Estado de México</option>
-                    <option value="Guanajuato">Guanajuato</option>
-                    <option value="Guerrero">Guerrero</option>
-                    <option value="Hidalgo">Hidalgo</option>
-                    <option value="Jalisco">Jalisco</option>
-                    <option value="Michoacán">Michoacán</option>
-                    <option value="Morelos">Morelos</option>
-                    <option value="Nayarit">Nayarit</option>
-                    <option value="Nuevo León">Nuevo León</option>
-                    <option value="Oaxaca">Oaxaca</option>
-                    <option value="Puebla">Puebla</option>
-                    <option value="Querétaro">Querétaro</option>
-                    <option value="Quintana Roo">Quintana Roo</option>
-                    <option value="San Luis Potosí">San Luis Potosí</option>
-                    <option value="Sinaloa">Sinaloa</option>
-                    <option value="Sonora">Sonora</option>
-                    <option value="Tabasco">Tabasco</option>
-                    <option value="Tamaulipas">Tamaulipas</option>
-                    <option value="Tlaxcala">Tlaxcala</option>
-                    <option value="Veracruz">Veracruz</option>
-                    <option value="Yucatán">Yucatán</option>
-                    <option value="Zacatecas">Zacatecas</option>
+                    <option value="">Seleccione un estado</option>
+                    <option value="AGUASCALIENTES">AGUASCALIENTES</option>
+                    <option value="BAJA CALIFORNIA">BAJA CALIFORNIA</option>
+                    <option value="BAJA CALIFORNIA SUR">BAJA CALIFORNIA SUR</option>
+                    <option value="CAMPECHE">CAMPECHE</option>
+                    <option value="CHIAPAS">CHIAPAS</option>
+                    <option value="CHIHUAHUA">CHIHUAHUA</option>
+                    <option value="CIUDAD DE MÉXICO">CIUDAD DE MÉXICO</option>
+                    <option value="COAHUILA">COAHUILA</option>
+                    <option value="COLIMA">COLIMA</option>
+                    <option value="DURANGO">DURANGO</option>
+                    <option value="ESTADO DE MÉXICO">ESTADO DE MÉXICO</option>
+                    <option value="GUANAJUATO">GUANAJUATO</option>
+                    <option value="GUERRERO">GUERRERO</option>
+                    <option value="HIDALGO">HIDALGO</option>
+                    <option value="JALISCO">JALISCO</option>
+                    <option value="MICHOACÁN">MICHOACÁN</option>
+                    <option value="MORELOS">MORELOS</option>
+                    <option value="NAYARIT">NAYARIT</option>
+                    <option value="NUEVO LEÓN">NUEVO LEÓN</option>
+                    <option value="OAXACA">OAXACA</option>
+                    <option value="PUEBLA">PUEBLA</option>
+                    <option value="QUERÉTARO">QUERÉTARO</option>
+                    <option value="QUINTANA ROO">QUINTANA ROO</option>
+                    <option value="SAN LUIS POTOSÍ">SAN LUIS POTOSÍ</option>
+                    <option value="SINALOA">SINALOA</option>
+                    <option value="SONORA">SONORA</option>
+                    <option value="TABASCO">TABASCO</option>
+                    <option value="TAMAULIPAS">TAMAULIPAS</option>
+                    <option value="TLAXCALA">TLAXCALA</option>
+                    <option value="VERACRUZ">VERACRUZ</option>
+                    <option value="YUCATÁN">YUCATÁN</option>
+                    <option value="ZACATECAS">ZACATECAS</option>
                   </select>
                 </div>
                 
@@ -1289,8 +1656,8 @@ export default function SystemAdminDashboard() {
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                   >
                     <option value="">Seleccione un tipo</option>
-                    <option value="mexicana">Mexicana</option>
-                    <option value="extranjera">Extranjera</option>
+                    <option value="MEXICANA">MEXICANA</option>
+                    <option value="EXTRANJERA">EXTRANJERA</option>
                   </select>
                 </div>
               </div>
@@ -1301,7 +1668,7 @@ export default function SystemAdminDashboard() {
                     NÚMERO DE UNIDAD DE MEDICINA FAMILIAR *
                   </label>
                   <input
-                    type="text"
+                    type="Number"
                     name="umf"
                     value={formData.umf}
                     onChange={handleInputChange}
@@ -1326,25 +1693,6 @@ export default function SystemAdminDashboard() {
           <div className="p-6">
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    FECHA DE INGRESO *
-                  </label>
-                  <div className="relative">
-                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                      <Calendar className="h-4 w-4 text-gray-600" />
-                    </div>
-                    <input
-                      type="date"
-                      name="fechaIngreso"
-                      value={formData.fechaIngreso}
-                      onChange={handleInputChange}
-                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                      required
-                    />
-                  </div>
-                </div>
-                
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                     PUESTO *
@@ -1390,6 +1738,24 @@ export default function SystemAdminDashboard() {
                     required
                   />
                 </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    SALARIO IMSS *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      name="salaryIMSS"
+                      value={formData.salaryIMSS}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      placeholder="Ingrese el salario para IMSS"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+                </div>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1404,8 +1770,8 @@ export default function SystemAdminDashboard() {
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                   >
                     <option value="">Seleccione un tipo</option>
-                    <option value="08:15 am a 06:00 pm">08:15 am a 06:00 pm</option>
-                    <option value="OTRO">Otro</option>
+                    <option value="08:15 AM A 06:00 PM">08:15 AM A 06:00 PM</option>
+                    <option value="OTRO">OTRO</option>
                   </select>
                 </div>
                 
@@ -1423,6 +1789,7 @@ export default function SystemAdminDashboard() {
                       value={formData.fechaInicioContrato}
                       onChange={handleInputChange}
                       className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
                     />
                   </div>
                 </div>
@@ -1448,66 +1815,34 @@ export default function SystemAdminDashboard() {
                     </div>
                   </div>
                 )}
-
-                {/* Nombre del proyecto solo para personal de proyecto */}
-                {activeTab === 'proyecto' ? (
+                
+                {/* Campo de proyecto solo para personal de proyecto */}
+                {activeTab === 'proyecto' && (
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                      NOMBRE DEL PROYECTO *
+                      PROYECTO *
                     </label>
-                    <input
-                      type="text"
-                      name="nombreProyecto"
-                      value={(formData as FormDataProyecto).nombreProyecto}
+                    <select
+                      name="proyectoId"
+                      value={(formData as FormDataProyecto).proyectoId}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                      placeholder="Ingrese el nombre del proyecto"
                       required
-                    />
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                      SALARIO IMSS *
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        name="salaryIMSS"
-                        value={formData.salaryIMSS}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                        placeholder="Ingrese el salario para IMSS"
-                        step="0.01"
-                        required
-                      />
-                    </div>
+                      disabled={loadingProjects}
+                    >
+                      <option value="">Seleccione un proyecto</option>
+                      {proyectos.map((proyecto) => (
+                        <option key={proyecto.ProjectID} value={proyecto.ProjectID}>
+                          {proyecto.NameProject}
+                        </option>
+                      ))}
+                    </select>
+                    {loadingProjects && (
+                      <p className="text-xs text-gray-500 mt-1">Cargando proyectos...</p>
+                    )}
                   </div>
                 )}
               </div>
-              
-              {/* Salario IMSS para personal de proyecto en una fila separada */}
-              {activeTab === 'proyecto' && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                      SALARIO IMSS *
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        name="salaryIMSS"
-                        value={formData.salaryIMSS}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                        placeholder="Ingrese el salario para IMSS"
-                        step="0.01"
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -1521,82 +1856,82 @@ export default function SystemAdminDashboard() {
           </div>
           
           <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    NOMBRE (S) *
-                  </label>
-                  <input
-                    type="text"
-                    value={beneficiario.nombre}
-                    onChange={(e) => handleBeneficiarioChange('nombre', e.target.value)}
-                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                    placeholder="Ingrese el nombre del beneficiario"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    APELLIDO PATERNO *
-                  </label>
-                  <input
-                    type="text"
-                    value={beneficiario.apellidoPaterno}
-                    onChange={(e) => handleBeneficiarioChange('apellidoPaterno', e.target.value)}
-                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                    placeholder="Ingrese el apellido paterno"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    APELLIDO MATERNO *
-                  </label>
-                  <input
-                    type="text"
-                    value={beneficiario.apellidoMaterno}
-                    onChange={(e) => handleBeneficiarioChange('apellidoMaterno', e.target.value)}
-                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                    placeholder="Ingrese el apellido materno"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    PARENTESCO *
-                  </label>
-                  <select
-                    value={beneficiario.parentesco}
-                    onChange={(e) => handleBeneficiarioChange('parentesco', e.target.value)}
-                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                  >
-                    <option value="">Seleccionar</option>
-                    <option value="conyuge">Cónyuge</option>
-                    <option value="hijo">Hijo (a)</option>
-                    <option value="padre">Padre</option>
-                    <option value="madre">Madre</option>
-                    <option value="hermano">Hermano (a)</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    PORCENTAJE (%) *
-                  </label>
-                  <input
-                    type="text"
-                    value={beneficiario.porcentaje}
-                    onChange={(e) => handleBeneficiarioChange('porcentaje', e.target.value)}
-                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                    placeholder="Ingrese el porcentaje"
-                    required
-                  />
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                  NOMBRE (S) *
+                </label>
+                <input
+                  type="text"
+                  value={beneficiario.nombre}
+                  onChange={(e) => handleBeneficiarioChange('nombre', e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  placeholder="Ingrese el nombre (s) del beneficiario"
+                  required
+                />
               </div>
+              
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                  APELLIDO PATERNO *
+                </label>
+                <input
+                  type="text"
+                  value={beneficiario.apellidoPaterno}
+                  onChange={(e) => handleBeneficiarioChange('apellidoPaterno', e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  placeholder="Ingrese el apellido paterno"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                  APELLIDO MATERNO *
+                </label>
+                <input
+                  type="text"
+                  value={beneficiario.apellidoMaterno}
+                  onChange={(e) => handleBeneficiarioChange('apellidoMaterno', e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  placeholder="Ingrese el apellido materno"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                  PARENTESCO *
+                </label>
+                <select
+                  value={beneficiario.parentesco}
+                  onChange={(e) => handleBeneficiarioChange('parentesco', e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                >
+                  <option value="">Seleccione un tipo</option>
+                  <option value="CÓNYUGE">CÓNYUGE</option>
+                  <option value="HIJO">HIJO (A)</option>
+                  <option value="PADRE">PADRE</option>
+                  <option value="MADRE">MADRE</option>
+                  <option value="HERMANO">HERMANO (A)</option>
+                  <option value="OTRO">OTRO</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                  PORCENTAJE (%) *
+                </label>
+                <input
+                  type="text"
+                  value={beneficiario.porcentaje}
+                  onChange={(e) => handleBeneficiarioChange('porcentaje', e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  placeholder="Ingrese el porcentaje"
+                  required
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1607,7 +1942,7 @@ export default function SystemAdminDashboard() {
               DOCUMENTACIÓN REQUERIDA
             </h2>
             <p className="text-sm text-gray-600 mt-1">
-              Todos los documentos son obligatorios. Formatos aceptados: PDF, JPG, PNG. Tamaño máximo: 4MB por archivo.
+              Todos los documentos son obligatorios. Documentos: PDF • Fotografía: JPG/PNG • Tamaño máximo: 4MB por archivo.
             </p>
           </div>
           
@@ -1626,8 +1961,8 @@ export default function SystemAdminDashboard() {
               {/* Documentos opcionales */}
               <DocumentInput tipo="comprobanteEstudios" required/>
               <DocumentInput tipo="comprobanteCapacitacion" required/>
-              <DocumentInput tipo="licenciaManejo" required/>
-              <DocumentInput tipo="cartaAntecedentes" required/>
+              <DocumentInput tipo="licenciaManejo" />
+              <DocumentInput tipo="cartaAntecedentes" />
               <DocumentInput tipo="cartaRecomendacion" required/>
               <DocumentInput tipo="retencionInfonavit" required/>
               <DocumentInput tipo="examenMedico" required/>
@@ -1662,58 +1997,363 @@ export default function SystemAdminDashboard() {
         title="PANEL ADMINISTRATIVO"
       />
 
-      {/* MODAL DE CONFIRMACIÓN EXITOSA - CORREGIDO */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/30">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative">
-            <button
-              onClick={closeModal}
-              className="absolute -top-2 -right-2 bg-white rounded-full p-1 shadow-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all duration-200 z-10"
-              aria-label="Cerrar modal"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            
-            <div className="p-6 pt-7">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                  <CheckCircle className="h-10 w-10 !text-green-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">
+      {/* MODAL DE CONFIRMACIÓN EXITOSA CON VISTA PREVIA DE PDF */}
+      {showSuccessModal && successDetails && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/70">
+          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full h-[90vh] flex flex-col animate-fade-in">
+            {/* Encabezado del modal */}
+            <div className="p-6 pb-4 border-b flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
                   ¡REGISTRO EXITOSO!
-                </h3>
-                <p className="text-gray-600 mb-4">
+                </h2>
+                <p className="text-gray-600 mt-1 text-sm">
                   El empleado ha sido registrado correctamente en el sistema.
                 </p>
-                
-                {successDetails && (
-                  <div className="bg-gray-50 rounded-lg p-4 w-full mb-4">
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="text-left font-medium text-gray-700">ID Empleado:</div>
-                      <div className="text-right font-bold text-[#3a6ea5]">{successDetails.empleadoId}</div>
-                      
-                      <div className="text-left font-medium text-gray-700">Nombre:</div>
-                      <div className="text-right truncate">{successDetails.nombre}</div>
-                      
-                      <div className="text-left font-medium text-gray-700">Puesto:</div>
-                      <div className="text-right">{successDetails.puesto}</div>
-                      
-                      <div className="text-left font-medium text-gray-700">Tipo:</div>
-                      <div className="text-right">{successDetails.tipoPersonal}</div>
-                      
-                      <div className="text-left font-medium text-gray-700">Fecha de Registro:</div>
-                      <div className="text-right">{successDetails.fechaRegistro}</div>
+              </div>
+              <button
+                onClick={closeModal}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                aria-label="Cerrar modal"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+            
+            {/* Contenido del modal - dos columnas */}
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+              {/* Columna izquierda - Detalles del registro */}
+              <div className="w-full md:w-1/3 p-6 border-r border-gray-200 overflow-y-auto">
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DETALLES DEL REGISTRO</h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">ID EMPLEADO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{successDetails.empleadoId}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">NOMBRE:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{successDetails.nombre}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">PUESTO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{successDetails.puesto}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">TIPO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{successDetails.tipoPersonal}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">FECHA DE REGISTRO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{successDetails.fechaRegistro}</span>
+                      </div>
                     </div>
                   </div>
-                )}
+                  
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">CONTROL DE FORMATOS</h3>
+                    <div className="flex items-center justify-between mb-4">
+                      <button
+                        onClick={anteriorFormato}
+                        disabled={formatoActivo === 'FT-RH-02'}
+                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Formato anterior"
+                      >
+                        <ChevronLeft className="h-4 w-4 text-gray-700" />
+                      </button>
+                      <span className="font-bold text-gray-800 text-sm">
+                        {formatoActivo === 'FT-RH-02' ? 'FORMATO FT-RH-02' : 
+                         formatoActivo === 'FT-RH-04' ? 'FORMATO FT-RH-04' : 
+                         formatoActivo === 'FT-RH-07' ? 'FORMATO FT-RH-07' : 
+                         'FORMATO FT-RH-29'}
+                      </span>
+                      <button
+                        onClick={siguienteFormato}
+                        disabled={formatoActivo === 'FT-RH-29'}
+                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Siguiente formato"
+                      >
+                        <ChevronRight className="h-4 w-4 text-gray-700" />
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      {/* Documentos del formato activo */}
+                      {formatoActivo === 'FT-RH-02' ? (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-02 (PDF)</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <a
+                                href={successDetails.ftRh02PdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                title="Vista previa"
+                              >
+                                <Eye className="h-4 w-4 text-gray-700" />
+                              </a>
+                              <button
+                                onClick={() => handleDownloadFile(successDetails.ftRh02PdfDownloadUrl || '', `FT-RH-02_${successDetails.empleadoId}.pdf`)}
+                                disabled={downloading}
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Descargar PDF"
+                              >
+                                {downloading ? (
+                                  <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                  <Download className="h-4 w-4 text-gray-700" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-02 (EDITABLE)</span>
+                            </div>
+                            <a
+                              href={successDetails.ftRh02WordUrl}
+                              download={`FT-RH-02_${successDetails.empleadoId}.docx`}
+                              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                            >
+                              <Download className="h-4 w-4 text-gray-700" />
+                            </a>
+                          </div>
+                        </>
+                      ) : formatoActivo === 'FT-RH-04' ? (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-04 (PDF)</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <a
+                                href={successDetails.ftRh04PdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                title="Vista previa"
+                              >
+                                <Eye className="h-4 w-4 text-gray-700" />
+                              </a>
+                              <button
+                                onClick={() => handleDownloadFile(successDetails.ftRh04PdfDownloadUrl || '', `FT-RH-04_${successDetails.empleadoId}.pdf`)}
+                                disabled={downloading}
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Descargar PDF"
+                              >
+                                {downloading ? (
+                                  <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                  <Download className="h-4 w-4 text-gray-700" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-04 (EDITABLE)</span>
+                            </div>
+                            <a
+                              href={successDetails.ftRh04ExcelUrl}
+                              download={`FT-RH-04_${successDetails.empleadoId}.xlsx`}
+                              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                            >
+                              <Download className="h-4 w-4 text-gray-700" />
+                            </a>
+                          </div>
+                        </>
+                      ) : formatoActivo === 'FT-RH-07' ? (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-07 (PDF)</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <a
+                                href={successDetails.ftRh07PdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                title="Vista previa"
+                              >
+                                <Eye className="h-4 w-4 text-gray-700" />
+                              </a>
+                              <button
+                                onClick={() => handleDownloadFile(successDetails.ftRh07PdfDownloadUrl || '', `FT-RH-07_${successDetails.empleadoId}.pdf`)}
+                                disabled={downloading}
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Descargar PDF"
+                              >
+                                {downloading ? (
+                                  <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                  <Download className="h-4 w-4 text-gray-700" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-07 (EDITABLE)</span>
+                            </div>
+                            <a
+                              href={successDetails.ftRh07WordUrl}
+                              download={`FT-RH-07_${successDetails.empleadoId}.docx`}
+                              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                            >
+                              <Download className="h-4 w-4 text-gray-700" />
+                            </a>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-29 (PDF)</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <a
+                                href={successDetails.ftRh29PdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                title="Vista previa"
+                              >
+                                <Eye className="h-4 w-4 text-gray-700" />
+                              </a>
+                              <button
+                                onClick={() => handleDownloadFile(successDetails.ftRh29PdfDownloadUrl || '', `FT-RH-29_${successDetails.empleadoId}.pdf`)}
+                                disabled={downloading}
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Descargar PDF"
+                              >
+                                {downloading ? (
+                                  <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                  <Download className="h-4 w-4 text-gray-700" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-29 (EDITABLE)</span>
+                            </div>
+                            <a
+                              href={successDetails.ftRh29WordUrl}
+                              download={`FT-RH-29_${successDetails.empleadoId}.docx`}
+                              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                            >
+                              <Download className="h-4 w-4 text-gray-700" />
+                            </a>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DESCARGAS MASIVAS</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">
+                          DESCARGAR TODOS LOS PDF
+                        </span>
+
+                        <button
+                          onClick={handleDownloadAllPDFs}
+                          disabled={downloadingZip}
+                          className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+                        >
+                         <Download className="h-4 w-4 text-gray-700" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">
+                          DESCARGAR TODOS LOS EDITABLES
+                        </span>
+                      <button
+                        onClick={handleDownloadAllEditables}
+                        disabled={downloadingZip}
+                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+                      >
+                         <Download className="h-4 w-4 text-gray-700" />
+                      </button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <h4 className="font-bold text-yellow-800 mb-2 text-sm">SIGUIENTES PASOS</h4>
+                    <ul className="text-sm text-yellow-700 space-y-1">
+                      <li>• Revisar la vista previa de cada documento</li>
+                      <li>• Descargar archivos individuales o en ZIP</li>
+                      <li>• Archivar la documentación física</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Columna derecha - Vista previa del PDF */}
+              <div className="flex-1 flex flex-col p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-gray-800 text-sm uppercase">
+                    VISTA PREVIA - {
+                      formatoActivo === 'FT-RH-02' ? 'FORMATO FT-RH-02' : 
+                      formatoActivo === 'FT-RH-04' ? 'FORMATO FT-RH-04' : 
+                      formatoActivo === 'FT-RH-07' ? 'FORMATO FT-RH-07' : 
+                      'FORMATO FT-RH-29'
+                    }
+                  </h3>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-500">
+                      {formatoActivo === 'FT-RH-02' ? '1 de 4' : 
+                       formatoActivo === 'FT-RH-04' ? '2 de 4' : 
+                       formatoActivo === 'FT-RH-07' ? '3 de 4' : 
+                       '4 de 4'}
+                    </span>
+                  </div>
+                </div>
                 
-                <div className="flex justify-center space-x-3 w-full">
-                  <button
-                    onClick={closeModal}
-                    className="px-6 py-2 bg-[#3a6ea5] text-white font-medium rounded-md hover:bg-[#2d5592] transition-colors"
-                  >
-                    Aceptar
-                  </button>
+                <div className="flex-1 border border-gray-300 rounded-lg overflow-hidden relative bg-gray-50">
+                  {pdfLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                      <div className="flex flex-col items-center">
+                        <div className="w-12 h-12 border-4 border-gray-300 border-t-[#3a6ea5] animate-spin rounded-full mb-3"></div>
+                        <p className="text-sm text-gray-600">Cargando vista previa...</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <iframe
+                    src={
+                      formatoActivo === 'FT-RH-02' ? successDetails.ftRh02PdfUrl :
+                      formatoActivo === 'FT-RH-04' ? successDetails.ftRh04PdfUrl : 
+                      formatoActivo === 'FT-RH-07' ? successDetails.ftRh07PdfUrl : 
+                      successDetails.ftRh29PdfUrl
+                    }
+                    className="w-full h-full border-0"
+                    onLoad={() => setPdfLoading(false)}
+                    title={`Vista previa del ${formatoActivo}`}
+                  />
                 </div>
               </div>
             </div>
