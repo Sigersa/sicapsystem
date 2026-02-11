@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
+import { UTApi } from 'uploadthing/server';
 
 // Interface para el error de MySQL
 interface MySqlError {
@@ -29,6 +30,144 @@ interface Documentos {
   folleto: string[];
 }
 
+// Función para normalizar texto a mayúsculas manteniendo acentos
+const normalizarMayusculas = (texto: string): string => {
+  if (!texto) return '';
+  return texto.toUpperCase();
+};
+
+// Función para subir archivo a UploadThing
+async function uploadFileToUploadThing(fileBuffer: ArrayBuffer, fileName: string, fileType: string): Promise<string> {
+  try {
+    const utapi = new UTApi();
+    
+    // Crear un Blob desde el ArrayBuffer
+    const blob = new Blob([fileBuffer], { type: fileType });
+    
+    // Convertir Blob a File
+    const file = new File([blob], fileName, { type: fileType });
+    
+    // Subir el archivo a UploadThing
+    const uploadResponse = await utapi.uploadFiles([file]);
+    
+    if (!uploadResponse || !uploadResponse[0]) {
+      throw new Error('No se recibió respuesta de UploadThing');
+    }
+    
+    const uploadedFile = uploadResponse[0];
+    
+    // Verificar si hay error
+    if (uploadedFile.error) {
+      throw new Error(uploadedFile.error.message || 'Error al subir el archivo');
+    }
+    
+    // Obtener la URL según la estructura de UploadThing
+    let fileUrl: string | undefined;
+    
+    // Intentar diferentes propiedades según la versión de UploadThing
+    if ('ufsUrl' in uploadedFile) {
+      // Para versiones más recientes
+      fileUrl = (uploadedFile as any).ufsUrl;
+    } else if (uploadedFile.data?.url) {
+      // Para versiones actuales
+      fileUrl = uploadedFile.data.url;
+    } else if ('serverData' in uploadedFile) {
+      // Para algunas versiones
+      fileUrl = (uploadedFile as any).serverData?.url;
+    }
+    
+    if (!fileUrl) {
+      console.warn('Estructura de UploadThing recibida:', uploadedFile);
+      throw new Error('No se pudo obtener la URL del archivo subido. Estructura inesperada.');
+    }
+    
+    console.log('Archivo subido exitosamente a:', fileUrl);
+    return fileUrl;
+    
+  } catch (error) {
+    console.error('Error al subir archivo a UploadThing:', error);
+    
+    let errorMessage = 'Error al subir el documento';
+    if (error instanceof Error) {
+      errorMessage = `Error al subir archivo: ${error.message}`;
+    }
+    
+    throw new Error(errorMessage);
+  }
+}
+
+// Función para generar el PDF FT-RH-02
+async function generateFT_RH_02_PDF(empleadoId: string): Promise<ArrayBuffer> {
+  try {
+    const pdfUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/download/pdf/FT-RH-02?empleadoId=${empleadoId}&preview=1`;
+    
+    const response = await fetch(pdfUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Error al generar PDF FT-RH-02: ${response.statusText}`);
+    }
+    
+    return await response.arrayBuffer();
+  } catch (error) {
+    console.error('Error al generar PDF FT-RH-02:', error);
+    throw new Error('Error al generar el documento PDF FT-RH-02');
+  }
+}
+
+// Función para generar el PDF FT-RH-04
+async function generateFT_RH_04_PDF(empleadoId: string): Promise<ArrayBuffer> {
+  try {
+    const pdfUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/download/pdf/FT-RH-04?empleadoId=${empleadoId}&preview=1`;
+    
+    const response = await fetch(pdfUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Error al generar PDF FT-RH-04: ${response.statusText}`);
+    }
+    
+    return await response.arrayBuffer();
+  } catch (error) {
+    console.error('Error al generar PDF FT-RH-04:', error);
+    throw new Error('Error al generar el documento PDF FT-RH-04');
+  }
+}
+
+// Función para generar el PDF FT-RH-07
+async function generateFT_RH_07_PDF(empleadoId: string): Promise<ArrayBuffer> {
+  try {
+    const pdfUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/download/pdf/FT-RH-07?empleadoId=${empleadoId}&preview=1`;
+    
+    const response = await fetch(pdfUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Error al generar PDF FT-RH-07: ${response.statusText}`);
+    }
+    
+    return await response.arrayBuffer();
+  } catch (error) {
+    console.error('Error al generar PDF FT-RH-07:', error);
+    throw new Error('Error al generar el documento PDF FT-RH-07');
+  }
+}
+
+// Función para generar el PDF FT-RH-29
+async function generateFT_RH_29_PDF(empleadoId: string): Promise<ArrayBuffer> {
+  try {
+    const pdfUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/download/pdf/FT-RH-29?empleadoId=${empleadoId}&preview=1`;
+    
+    const response = await fetch(pdfUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Error al generar PDF FT-RH-29: ${response.statusText}`);
+    }
+    
+    return await response.arrayBuffer();
+  } catch (error) {
+    console.error('Error al generar PDF FT-RH-29:', error);
+    throw new Error('Error al generar el documento PDF FT-RH-29');
+  }
+}
+
 export async function POST(request: NextRequest) {
   let connection;
   
@@ -39,14 +178,14 @@ export async function POST(request: NextRequest) {
     const requiredFields = [
       'nombre', 'apellidoPaterno', 'nss', 'curp', 'rfc',
       'fechaNacimiento', 'telefono', 'email', 'puesto',
-      'fechaIngreso', 'salario', 'calle', 'numeroExterior',
+      'salario', 'calle', 'numeroExterior',
       'colonia', 'municipio', 'estado', 'codigoPostal'
     ];
     
     for (const field of requiredFields) {
       if (!formData[field]?.trim()) {
         return NextResponse.json(
-          { success: false, message: `El campo ${field} es requerido` },
+          { success: false, message: `EL CAMPO ${field.toUpperCase()} ES REQUERIDO` },
           { status: 400 }
         );
       }
@@ -55,7 +194,7 @@ export async function POST(request: NextRequest) {
     // Validar formato de CURP (18 caracteres)
     if (formData.curp && formData.curp.length !== 18) {
       return NextResponse.json(
-        { success: false, message: 'La CURP debe tener 18 caracteres' },
+        { success: false, message: 'LA CURP DEBE TENER 18 CARACTERES' },
         { status: 400 }
       );
     }
@@ -63,7 +202,7 @@ export async function POST(request: NextRequest) {
     // Validar formato de NSS (11 dígitos)
     if (formData.nss && !/^\d{11}$/.test(formData.nss)) {
       return NextResponse.json(
-        { success: false, message: 'El NSS debe tener 11 dígitos' },
+        { success: false, message: 'EL NSS DEBE TENER 11 DÍGITOS' },
         { status: 400 }
       );
     }
@@ -71,7 +210,7 @@ export async function POST(request: NextRequest) {
     // Validar RFC (12-13 caracteres)
     if (formData.rfc && (formData.rfc.length < 12 || formData.rfc.length > 13)) {
       return NextResponse.json(
-        { success: false, message: 'El RFC debe tener entre 12 y 13 caracteres' },
+        { success: false, message: 'EL RFC DEBE TENER ENTRE 12 Y 13 CARACTERES' },
         { status: 400 }
       );
     }
@@ -79,7 +218,7 @@ export async function POST(request: NextRequest) {
     // Validar formato de email
     if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
       return NextResponse.json(
-        { success: false, message: 'El email no tiene un formato válido' },
+        { success: false, message: 'EL EMAIL NO TIENE UN FORMATO VÁLIDO' },
         { status: 400 }
       );
     }
@@ -88,13 +227,13 @@ export async function POST(request: NextRequest) {
     if (formData.tipoPersonal === 'proyecto') {
       if (!formData.fechaFinContrato?.trim()) {
         return NextResponse.json(
-          { success: false, message: 'La fecha de fin de contrato es requerida para personal de proyecto' },
+          { success: false, message: 'LA FECHA DE FIN DE CONTRATO ES REQUERIDA PARA PERSONAL DE PROYECTO' },
           { status: 400 }
         );
       }
-      if (!formData.nombreProyecto?.trim()) {
+      if (!formData.proyectoId?.trim()) {
         return NextResponse.json(
-          { success: false, message: 'El nombre del proyecto es requerido para personal de proyecto' },
+          { success: false, message: 'EL PROYECTO ES REQUERIDO PARA PERSONAL DE PROYECTO' },
           { status: 400 }
         );
       }
@@ -103,7 +242,7 @@ export async function POST(request: NextRequest) {
     // Validar documentos
     if (!formData.documentos) {
       return NextResponse.json(
-        { success: false, message: 'Los documentos son requeridos' },
+        { success: false, message: 'LOS DOCUMENTOS SON REQUERIDOS' },
         { status: 400 }
       );
     }
@@ -119,7 +258,7 @@ export async function POST(request: NextRequest) {
     for (const docType of documentosRequeridos) {
       if (!documentos[docType] || documentos[docType].length === 0) {
         return NextResponse.json(
-          { success: false, message: `El documento ${docType} es requerido` },
+          { success: false, message: `EL DOCUMENTO ${docType.toUpperCase()} ES REQUERIDO` },
           { status: 400 }
         );
       }
@@ -129,7 +268,7 @@ export async function POST(request: NextRequest) {
     if (formData.beneficiarios && formData.beneficiarios.length > 0) {
       if (formData.beneficiarios.length > 1) {
         return NextResponse.json(
-          { success: false, message: 'Solo se permite un beneficiario por empleado' },
+          { success: false, message: 'SOLO SE PERMITE UN BENEFICIARIO POR EMPLEADO' },
           { status: 400 }
         );
       }
@@ -138,7 +277,7 @@ export async function POST(request: NextRequest) {
       if (beneficiario.nombre || beneficiario.apellidoPaterno) {
         if (!beneficiario.nombre?.trim() || !beneficiario.apellidoPaterno?.trim()) {
           return NextResponse.json(
-            { success: false, message: 'Si ingresa un beneficiario, debe completar nombre y apellido paterno' },
+            { success: false, message: 'SI INGRESA UN BENEFICIARIO, DEBE COMPLETAR NOMBRE Y APELLIDO PATERNO' },
             { status: 400 }
           );
         }
@@ -147,7 +286,7 @@ export async function POST(request: NextRequest) {
         const porcentaje = parseFloat(beneficiario.porcentaje) || 0;
         if (Math.abs(porcentaje - 100) > 0.01) {
           return NextResponse.json(
-            { success: false, message: 'El porcentaje del beneficiario debe ser 100%' },
+            { success: false, message: 'EL PORCENTAJE DEL BENEFICIARIO DEBE SER 100%' },
             { status: 400 }
           );
         }
@@ -161,38 +300,60 @@ export async function POST(request: NextRequest) {
     await connection.beginTransaction();
 
     try {
+      let employeeId;
+      let employeeType;
+      let employeeIdNumber;
+      let contractFileURL: string | null = null;
+      let warningFileURL: string | null = null;
+      let letterFileURL: string | null = null;
+      let agreementFileURL: string | null = null;
+
       // Procesar según el tipo de personal
       if (formData.tipoPersonal === 'base') {
         // PERSONAL BASE
+        employeeType = 'BASE';
+        
         // 1. Insertar en basepersonnel
         const [basePersonnelResult] = await connection.execute(
           `INSERT INTO basepersonnel 
            (FirstName, LastName, MiddleName, Position, WorkSchedule, Salary, Area) 
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [
-            formData.nombre,
-            formData.apellidoPaterno,
-            formData.apellidoMaterno || null,
-            formData.puesto,
-            formData.horarioLaboral || null,
+            normalizarMayusculas(formData.nombre.trim()),
+            normalizarMayusculas(formData.apellidoPaterno.trim()),
+            normalizarMayusculas(formData.apellidoMaterno.trim()),
+            normalizarMayusculas(formData.puesto.trim()),
+            normalizarMayusculas(formData.horarioLaboral || ''),
             parseFloat(formData.salario.replace(/[^0-9.-]+/g, "")) || 0,
-            formData.departamento || null
+            normalizarMayusculas(formData.departamento || '')
           ]
         );
 
         const basePersonnelId = (basePersonnelResult as any).insertId;
+        employeeIdNumber = basePersonnelId;
 
-        // 2. Insertar en la tabla employees (siempre con EmployeeType = 'BASE')
-        await connection.execute(
+        // 2. Insertar en la tabla employees (siempre con EmployeeType = 'BASE') y obtener EmployeeID
+        const [employeeResult] = await connection.execute(
           `INSERT INTO employees (EmployeeType, BasePersonnelID) VALUES (?, ?)`,
           ['BASE', basePersonnelId]
         );
 
+        const employeeInsertId = (employeeResult as any).insertId;
+        
+        // Obtener el EmployeeID generado
+        const [employeeRows] = await connection.query(
+          `SELECT EmployeeID FROM employees WHERE EmployeeID = ?`,
+          [employeeInsertId]
+        );
+        
+        employeeId = (employeeRows as any[])[0]?.EmployeeID;
+
         // 3. Insertar en basepersonnelpersonalinfo
-        // Construir la dirección completa
-        const direccionCompleta = `${formData.calle} ${formData.numeroExterior}${
-          formData.numeroInterior ? ' Int. ' + formData.numeroInterior : ''
-        }, Col. ${formData.colonia}, ${formData.municipio}, ${formData.estado}, C.P. ${formData.codigoPostal}`;
+        const direccionCompleta = `${normalizarMayusculas(formData.calle.trim())} ${normalizarMayusculas(formData.numeroExterior.trim())}${
+          formData.numeroInterior ? ' INT. ' + normalizarMayusculas(formData.numeroInterior.trim()) : ''
+        }, COL. ${normalizarMayusculas(formData.colonia.trim())}, ${normalizarMayusculas(formData.municipio.trim())}, ${normalizarMayusculas(formData.estado)}, C.P. ${formData.codigoPostal}`;
+        
+        const direccionTruncada = direccionCompleta.length > 250 ? direccionCompleta.substring(0, 247) + '...' : direccionCompleta;
         
         await connection.execute(
           `INSERT INTO basepersonnelpersonalinfo 
@@ -201,58 +362,58 @@ export async function POST(request: NextRequest) {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             basePersonnelId,
-            direccionCompleta,
-            formData.municipio,
-            formData.nacionalidad || null,
-            formData.genero || null,
+            direccionTruncada,
+            normalizarMayusculas(formData.municipio.trim()),
+            normalizarMayusculas(formData.nacionalidad || ''),
+            normalizarMayusculas(formData.genero || ''),
             formData.fechaNacimiento,
-            formData.estadoCivil || null,
-            formData.rfc,
-            formData.curp,
+            normalizarMayusculas(formData.estadoCivil || ''),
+            normalizarMayusculas(formData.rfc.trim()),
+            normalizarMayusculas(formData.curp.trim()),
             formData.nss,
-            formData.nci || null,
+            normalizarMayusculas(formData.nci || ''),
             formData.umf ? parseInt(formData.umf) : null,
             formData.telefono || null,
-            formData.email || null
+            formData.email.toLowerCase().trim()
           ]
         );
 
-        // 4. Insertar en basecontracts (si hay datos de contrato)
-        if (formData.fechaInicioContrato || formData.salaryIMSS) {
-          await connection.execute(
-            `INSERT INTO basecontracts 
-             (BasePersonnelID, StartDate, SalaryIMSS) 
-             VALUES (?, ?, ?)`,
-            [
-              basePersonnelId,
-              formData.fechaInicioContrato || null,
-              formData.salaryIMSS ? parseFloat(formData.salaryIMSS) : null
-            ]
-          );
-        }
+        // 4. Insertar en basecontracts - con todos los campos de archivos
+        await connection.execute(
+          `INSERT INTO basecontracts 
+           (BasePersonnelID, StartDate, SalaryIMSS, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL) 
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            basePersonnelId,
+            formData.fechaInicioContrato || null,
+            formData.salaryIMSS ? parseFloat(formData.salaryIMSS) : null,
+            null, // ContractFileURL - Se actualizará después
+            null, // WarningFileURL - Se actualizará después
+            null, // LetterFileURL - Se actualizará después
+            null  // AgreementFileURL - Se actualizará después
+          ]
+        );
 
         // 5. Insertar beneficiario (si existe)
         if (formData.beneficiarios && formData.beneficiarios.length > 0) {
           const beneficiario = formData.beneficiarios[0];
           
-          // Solo insertar si tiene nombre y apellido paterno
           if (beneficiario.nombre && beneficiario.nombre.trim() && 
               beneficiario.apellidoPaterno && beneficiario.apellidoPaterno.trim()) {
             
-            // Forzar el porcentaje a 100% para un solo beneficiario
             const porcentajeFinal = 100;
             
             await connection.execute(
               `INSERT INTO basepersonnelbeneficiaries 
                (BasePersonnelID, BeneficiaryFirstName, BeneficiaryLastName, 
-                BeneficiaryMiddleName, Relationship, Porcentage) 
+                BeneficiaryMiddleName, Relationship, Percentage) 
                VALUES (?, ?, ?, ?, ?, ?)`,
               [
                 basePersonnelId,
-                beneficiario.nombre,
-                beneficiario.apellidoPaterno,
-                beneficiario.apellidoMaterno || null,
-                beneficiario.parentesco || null,
+                normalizarMayusculas(beneficiario.nombre.trim()),
+                normalizarMayusculas(beneficiario.apellidoPaterno.trim()),
+                normalizarMayusculas(beneficiario.apellidoMaterno || ''),
+                normalizarMayusculas(beneficiario.parentesco || ''),
                 porcentajeFinal
               ]
             );
@@ -260,7 +421,6 @@ export async function POST(request: NextRequest) {
         }
 
         // 6. Insertar documentación
-        // Tomar solo el primer archivo de cada tipo (si existe)
         const cvUrl = documentos.cv && documentos.cv.length > 0 ? documentos.cv[0] : null;
         const actaNacimientoUrl = documentos.actaNacimiento && documentos.actaNacimiento.length > 0 ? documentos.actaNacimiento[0] : null;
         const curpUrl = documentos.curp && documentos.curp.length > 0 ? documentos.curp[0] : null;
@@ -306,48 +466,47 @@ export async function POST(request: NextRequest) {
           ]
         );
 
-        // Confirmar transacción
-        await connection.commit();
-
-        return NextResponse.json({
-          success: true,
-          message: 'PERSONAL BASE REGISTRADO EXITOSAMENTE',
-          empleadoId: basePersonnelId,
-          tipo: 'base'
-        });
-
       } else {
         // PERSONAL DE PROYECTO
+        employeeType = 'PROJECT';
+        
         // 1. Insertar en projectpersonnel
         const [projectPersonnelResult] = await connection.execute(
           `INSERT INTO projectpersonnel 
-           (FirstName, LastName, MiddleName, HireDate, Position, WorkSchedule, Salary, NameProject) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (FirstName, LastName, MiddleName) 
+           VALUES (?, ?, ?)`,
           [
-            formData.nombre,
-            formData.apellidoPaterno,
-            formData.apellidoMaterno || null,
-            formData.fechaIngreso, // HireDate = Fecha de ingreso
-            formData.puesto,
-            formData.horarioLaboral || null,
-            parseFloat(formData.salario.replace(/[^0-9.-]+/g, "")) || 0,
-            formData.nombreProyecto || null
+            normalizarMayusculas(formData.nombre.trim()),
+            normalizarMayusculas(formData.apellidoPaterno.trim()),
+            normalizarMayusculas(formData.apellidoMaterno.trim())
           ]
         );
 
         const projectPersonnelId = (projectPersonnelResult as any).insertId;
+        employeeIdNumber = projectPersonnelId;
 
-        // 2. Insertar en la tabla employees (siempre con EmployeeType = 'PROJECT')
-        await connection.execute(
+        // 2. Insertar en la tabla employees (siempre con EmployeeType = 'PROJECT') y obtener EmployeeID
+        const [employeeResult] = await connection.execute(
           `INSERT INTO employees (EmployeeType, ProjectPersonnelID) VALUES (?, ?)`,
           ['PROJECT', projectPersonnelId]
         );
 
+        const employeeInsertId = (employeeResult as any).insertId;
+        
+        // Obtener el EmployeeID generado
+        const [employeeRows] = await connection.query(
+          `SELECT EmployeeID FROM employees WHERE EmployeeID = ?`,
+          [employeeInsertId]
+        );
+        
+        employeeId = (employeeRows as any[])[0]?.EmployeeID;
+
         // 3. Insertar en projectpersonnelpersonalinfo
-        // Construir la dirección completa (campo Address tiene 500 caracteres)
-        const direccionCompleta = `${formData.calle} ${formData.numeroExterior}${
-          formData.numeroInterior ? ' Int. ' + formData.numeroInterior : ''
-        }, Col. ${formData.colonia}, ${formData.municipio}, ${formData.estado}, C.P. ${formData.codigoPostal}`;
+        const direccionCompleta = `${normalizarMayusculas(formData.calle.trim())} ${normalizarMayusculas(formData.numeroExterior.trim())}${
+          formData.numeroInterior ? ' INT. ' + normalizarMayusculas(formData.numeroInterior.trim()) : ''
+        }, COL. ${normalizarMayusculas(formData.colonia.trim())}, ${normalizarMayusculas(formData.municipio.trim())}, ${normalizarMayusculas(formData.estado)}, C.P. ${formData.codigoPostal}`;
+        
+        const direccionTruncada = direccionCompleta.length > 500 ? direccionCompleta.substring(0, 497) + '...' : direccionCompleta;
         
         await connection.execute(
           `INSERT INTO projectpersonnelpersonalinfo 
@@ -356,32 +515,43 @@ export async function POST(request: NextRequest) {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             projectPersonnelId,
-            direccionCompleta,
-            formData.municipio,
-            formData.nacionalidad || null,
-            formData.genero || null,
+            direccionTruncada,
+            normalizarMayusculas(formData.municipio.trim()),
+            normalizarMayusculas(formData.nacionalidad || ''),
+            normalizarMayusculas(formData.genero || ''),
             formData.fechaNacimiento,
-            formData.estadoCivil || null,
-            formData.rfc,
-            formData.curp,
+            normalizarMayusculas(formData.estadoCivil || ''),
+            normalizarMayusculas(formData.rfc.trim()),
+            normalizarMayusculas(formData.curp.trim()),
             formData.nss,
-            formData.nci || null,
-            formData.umf || null,
+            normalizarMayusculas(formData.nci || ''),
+            formData.umf ? parseInt(formData.umf) : null,
             formData.telefono || null,
-            formData.email || null
+            formData.email.toLowerCase().trim()
           ]
         );
 
-        // 4. Insertar en projectcontracts (obligatorio para personal de proyecto)
+        // 4. Insertar en projectcontracts - con todos los campos de archivos
+        const proyectoId = parseInt(formData.proyectoId) || null;
+        
         await connection.execute(
           `INSERT INTO projectcontracts 
-           (ProjectPersonnelID, StartDate, EndDate, SalaryIMSS) 
-           VALUES (?, ?, ?, ?)`,
+           (ProjectPersonnelID, StartDate, EndDate, SalaryIMSS, Position, Salary, WorkSchedule, ProjectID, 
+            ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             projectPersonnelId,
             formData.fechaInicioContrato || null,
             formData.fechaFinContrato || null,
-            formData.salaryIMSS ? parseFloat(formData.salaryIMSS) : null
+            formData.salaryIMSS ? parseFloat(formData.salaryIMSS) : null,
+            normalizarMayusculas(formData.puesto.trim()),
+            parseFloat(formData.salario.replace(/[^0-9.-]+/g, "")) || 0,
+            normalizarMayusculas(formData.horarioLaboral || ''),
+            proyectoId,
+            null, // ContractFileURL - Se actualizará después
+            null, // WarningFileURL - Se actualizará después
+            null, // LetterFileURL - Se actualizará después
+            null  // AgreementFileURL - Se actualizará después
           ]
         );
 
@@ -389,11 +559,9 @@ export async function POST(request: NextRequest) {
         if (formData.beneficiarios && formData.beneficiarios.length > 0) {
           const beneficiario = formData.beneficiarios[0];
           
-          // Solo insertar si tiene nombre y apellido paterno
           if (beneficiario.nombre && beneficiario.nombre.trim() && 
               beneficiario.apellidoPaterno && beneficiario.apellidoPaterno.trim()) {
             
-            // Forzar el porcentaje a 100% para un solo beneficiario
             const porcentajeFinal = 100;
             
             await connection.execute(
@@ -403,10 +571,10 @@ export async function POST(request: NextRequest) {
                VALUES (?, ?, ?, ?, ?, ?)`,
               [
                 projectPersonnelId,
-                beneficiario.nombre,
-                beneficiario.apellidoPaterno,
-                beneficiario.apellidoMaterno || null,
-                beneficiario.parentesco || null,
+                normalizarMayusculas(beneficiario.nombre.trim()),
+                normalizarMayusculas(beneficiario.apellidoPaterno.trim()),
+                normalizarMayusculas(beneficiario.apellidoMaterno || ''),
+                normalizarMayusculas(beneficiario.parentesco || ''),
                 porcentajeFinal
               ]
             );
@@ -414,7 +582,6 @@ export async function POST(request: NextRequest) {
         }
 
         // 6. Insertar documentación
-        // Tomar solo el primer archivo de cada tipo (si existe)
         const cvUrl = documentos.cv && documentos.cv.length > 0 ? documentos.cv[0] : null;
         const actaNacimientoUrl = documentos.actaNacimiento && documentos.actaNacimiento.length > 0 ? documentos.actaNacimiento[0] : null;
         const curpUrl = documentos.curp && documentos.curp.length > 0 ? documentos.curp[0] : null;
@@ -423,7 +590,7 @@ export async function POST(request: NextRequest) {
         const ineUrl = documentos.ine && documentos.ine.length > 0 ? documentos.ine[0] : null;
         const comprobanteDomicilioUrl = documentos.comprobanteDomicilio && documentos.comprobanteDomicilio.length > 0 ? documentos.comprobanteDomicilio[0] : null;
         const comprobanteEstudiosUrl = documentos.comprobanteEstudios && documentos.comprobanteEstudios.length > 0 ? documentos.comprobanteEstudios[0] : null;
-        const cedulaProfesionalUrl = documentos.comprobanteCapacitacion && documentos.comprobanteCapacitacion.length > 0 ? documentos.comprobanteCapacitacion[0] : null;
+        const comprobanteCapacitacionUrl = documentos.comprobanteCapacitacion && documentos.comprobanteCapacitacion.length > 0 ? documentos.comprobanteCapacitacion[0] : null;
         const licenciaManejoUrl = documentos.licenciaManejo && documentos.licenciaManejo.length > 0 ? documentos.licenciaManejo[0] : null;
         const cartaAntecedentesUrl = documentos.cartaAntecedentes && documentos.cartaAntecedentes.length > 0 ? documentos.cartaAntecedentes[0] : null;
         const cartaRecomendacionUrl = documentos.cartaRecomendacion && documentos.cartaRecomendacion.length > 0 ? documentos.cartaRecomendacion[0] : null;
@@ -449,7 +616,7 @@ export async function POST(request: NextRequest) {
             ineUrl,
             comprobanteDomicilioUrl,
             comprobanteEstudiosUrl,
-            cedulaProfesionalUrl,
+            comprobanteCapacitacionUrl,
             licenciaManejoUrl,
             cartaAntecedentesUrl,
             cartaRecomendacionUrl,
@@ -459,15 +626,92 @@ export async function POST(request: NextRequest) {
             folletoUrl
           ]
         );
+      }
 
-        // Confirmar transacción
+      // Confirmar transacción de registro
+      await connection.commit();
+
+      // **PASO 7: Generar PDFs, subirlos a UploadThing y actualizar la base de datos**
+      try {
+        // Generar el PDF FT-RH-02
+        const ftRh02PdfBuffer = await generateFT_RH_02_PDF(employeeId);
+        const ftRh02FileName = `FT-RH-02_${formData.tipoPersonal}_${employeeId}_${Date.now()}.pdf`;
+        contractFileURL = await uploadFileToUploadThing(ftRh02PdfBuffer, ftRh02FileName, 'application/pdf');
+        
+        // Generar el PDF FT-RH-04
+        const ftRh04PdfBuffer = await generateFT_RH_04_PDF(employeeId);
+        const ftRh04FileName = `FT-RH-04_${formData.tipoPersonal}_${employeeId}_${Date.now()}.pdf`;
+        warningFileURL = await uploadFileToUploadThing(ftRh04PdfBuffer, ftRh04FileName, 'application/pdf');
+        
+        // Generar el PDF FT-RH-07
+        const ftRh07PdfBuffer = await generateFT_RH_07_PDF(employeeId);
+        const ftRh07FileName = `FT-RH-07_${formData.tipoPersonal}_${employeeId}_${Date.now()}.pdf`;
+        letterFileURL = await uploadFileToUploadThing(ftRh07PdfBuffer, ftRh07FileName, 'application/pdf');
+        
+        // Generar el PDF FT-RH-29
+        const ftRh29PdfBuffer = await generateFT_RH_29_PDF(employeeId);
+        const ftRh29FileName = `FT-RH-29_${formData.tipoPersonal}_${employeeId}_${Date.now()}.pdf`;
+        agreementFileURL = await uploadFileToUploadThing(ftRh29PdfBuffer, ftRh29FileName, 'application/pdf');
+        
+        // Actualizar la base de datos con las URLs de los PDFs
+        await connection.beginTransaction();
+        
+        if (employeeType === 'BASE') {
+          // Actualizar todos los campos de archivos en basecontracts
+          await connection.execute(
+            `UPDATE basecontracts 
+             SET ContractFileURL = ?, WarningFileURL = ?, LetterFileURL = ?, AgreementFileURL = ?
+             WHERE BasePersonnelID = ?`,
+            [contractFileURL, warningFileURL, letterFileURL, agreementFileURL, employeeIdNumber]
+          );
+        } else {
+          // Actualizar todos los campos de archivos en projectcontracts
+          await connection.execute(
+            `UPDATE projectcontracts 
+             SET ContractFileURL = ?, WarningFileURL = ?, LetterFileURL = ?, AgreementFileURL = ?
+             WHERE ProjectPersonnelID = ?`,
+            [contractFileURL, warningFileURL, letterFileURL, agreementFileURL, employeeIdNumber]
+          );
+        }
+        
         await connection.commit();
-
+        
+        console.log('PDFs generados y guardados exitosamente:');
+        console.log('FT-RH-02 (Contract):', contractFileURL);
+        console.log('FT-RH-04 (Warning):', warningFileURL);
+        console.log('FT-RH-07 (Letter):', letterFileURL);
+        console.log('FT-RH-29 (Agreement):', agreementFileURL);
+        
         return NextResponse.json({
           success: true,
-          message: 'PERSONAL DE PROYECTO REGISTRADO EXITOSAMENTE',
-          empleadoId: projectPersonnelId,
-          tipo: 'proyecto'
+          message: formData.tipoPersonal === 'base' 
+            ? 'PERSONAL BASE REGISTRADO EXITOSAMENTE'
+            : 'PERSONAL DE PROYECTO REGISTRADO EXITOSAMENTE',
+          empleadoId: employeeId,
+          employeeId: employeeId,
+          employeeIdNumber: employeeIdNumber,
+          tipo: formData.tipoPersonal,
+          contractFileURL: contractFileURL,
+          warningFileURL: warningFileURL,
+          letterFileURL: letterFileURL,
+          agreementFileURL: agreementFileURL
+        });
+
+      } catch (pdfError) {
+        // Si falla la generación de PDFs, aún así confirmar el registro
+        console.error('Error al generar/subir PDFs:', pdfError);
+        
+        return NextResponse.json({
+          success: true,
+          message: formData.tipoPersonal === 'base' 
+            ? 'PERSONAL BASE REGISTRADO EXITOSAMENTE (ERROR EN PDFs)'
+            : 'PERSONAL DE PROYECTO REGISTRADO EXITOSAMENTE (ERROR EN PDFs)',
+          empleadoId: employeeId,
+          employeeId: employeeId,
+          employeeIdNumber: employeeIdNumber,
+          tipo: formData.tipoPersonal,
+          warning: 'Error al generar los documentos PDF',
+          errorDetails: process.env.NODE_ENV === 'development' ? pdfError instanceof Error ? pdfError.message : String(pdfError) : undefined
         });
       }
 
@@ -503,13 +747,14 @@ export async function POST(request: NextRequest) {
     
     if (error instanceof Error) {
       console.error('Detalles del error:', error.message);
-      // Mensajes más específicos según el tipo de error
       if (error.message.includes('ER_BAD_FIELD_ERROR')) {
         errorMessage = 'ERROR EN LA ESTRUCTURA DE LA BASE DE DATOS. CONTACTE AL ADMINISTRADOR.';
       } else if (error.message.includes('ER_NO_SUCH_TABLE')) {
         errorMessage = 'ERROR: TABLAS NO ENCONTRADAS EN LA BASE DE DATOS.';
       } else if (error.message.includes('ECONNREFUSED')) {
         errorMessage = 'ERROR DE CONEXIÓN A LA BASE DE DATOS. VERIFIQUE EL SERVIDOR.';
+      } else if (error.message.includes('foreign key constraint')) {
+        errorMessage = 'ERROR: EL PROYECTO SELECCIONADO NO EXISTE EN LA BASE DE DATOS.';
       }
     }
     
@@ -535,7 +780,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   return NextResponse.json(
-    { message: 'Método no permitido' },
+    { message: 'MÉTODO NO PERMITIDO' },
     { status: 405 }
   );
 }
