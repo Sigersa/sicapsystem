@@ -9,11 +9,13 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@ilovepdf/ilovepdf-nodejs": "^0.3.1",
     "@uploadthing/react": "^7.3.3",
     "bcryptjs": "^3.0.3",
-    "cloudconvert": "^3.0.0",
+    "convertapi": "^1.15.0",
+    "docx-templates": "^4.15.0",
     "exceljs": "^4.4.0",
+    "form-data": "^4.0.5",
+    "fs": "^0.0.1-security",
     "lucide-react": "^0.559.0",
     "mysql2": "^3.15.3",
     "next": "16.0.8",
