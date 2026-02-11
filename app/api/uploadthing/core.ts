@@ -2,15 +2,14 @@ import { createUploadthing, type FileRouter } from "uploadthing/next";
 
 const f = createUploadthing();
 
-const commonFileTypes = {
-  pdf: { maxFileSize: "4MB" as const, maxFileCount: 3 },
-  image: { maxFileSize: "4MB" as const, maxFileCount: 3 },
-  "application/vnd.ms-excel": { maxFileSize: "4MB" as const, maxFileCount: 3 },
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": { maxFileSize: "4MB" as const, maxFileCount: 3 },
+// Configuración para archivos PDF e imágenes
+const fileConfig = {
+  pdf: { maxFileSize: "4MB" as const, maxFileCount: 1 },
+  image: { maxFileSize: "4MB" as const, maxFileCount: 1 },
 };
 
 function createFileRoute(folder: string, prefix: string) {
-  return f(commonFileTypes)
+  return f(fileConfig)
     .middleware(async () => ({
       customFolder: folder,
       uploadTime: new Date().toISOString()
@@ -31,16 +30,38 @@ const empleadoDocumentosRouter = f({
   image: { maxFileSize: "4MB", maxFileCount: 1 }
 })
   .middleware(async ({ req }) => {
-    // Puedes agregar lógica de autenticación aquí
     return { 
       userId: "empleado-docs",
       timestamp: new Date().toISOString()
     };
   })
   .onUploadComplete(async ({ metadata, file }) => {
-    // Aquí puedes guardar la referencia en tu base de datos
     console.log("Documento de empleado subido:", {
       userId: metadata.userId,
+      fileUrl: file.url,
+      fileName: file.name,
+      timestamp: metadata.timestamp
+    });
+    
+    return {
+      ...file,
+      customData: metadata
+    };
+  });
+
+// Router para documentos de advertencia (warning PDFs)
+const warningDocumentsRouter = f({
+  pdf: { maxFileSize: "8MB", maxFileCount: 1 }
+})
+  .middleware(async ({ req }) => {
+    return { 
+      type: "warning_document",
+      timestamp: new Date().toISOString()
+    };
+  })
+  .onUploadComplete(async ({ metadata, file }) => {
+    console.log("Documento de advertencia subido:", {
+      type: metadata.type,
       fileUrl: file.url,
       fileName: file.name,
       timestamp: metadata.timestamp
@@ -55,6 +76,7 @@ const empleadoDocumentosRouter = f({
 export const ourFileRouter = {
   hiringFiles: createFileRoute("documentosdecontratacion", "contratacion"),
   empleadoDocumentos: empleadoDocumentosRouter,
+  warningDocuments: warningDocumentsRouter, // Nueva ruta para documentos de advertencia
 } satisfies FileRouter;
 
 export type OurFileRouter = typeof ourFileRouter;
