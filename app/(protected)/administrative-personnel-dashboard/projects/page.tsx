@@ -15,6 +15,10 @@ type Project = {
   updatedAt?: string;
 };
 
+type UserType = {
+  UserTypeID: number;
+  Type: string;
+};
 export default function SystemAdminDashboard() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
@@ -65,7 +69,7 @@ export default function SystemAdminDashboard() {
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#3a6ea5] mx-auto"></div>
-          <p className="mt-4 text-gray-700 font-medium">VERIFICANDO SESIÓN...</p>
+          <p className="mt-4 text-gray-700 font-medium">Verificando sesión...</p>
         </div>
       </div>
     );
@@ -241,15 +245,18 @@ export default function SystemAdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* HEADER */}
+      {/* HEADER - Fixed */}
       <AppHeader 
         title="PANEL ADMINISTRATIVO"
       />
 
-      {/* MODAL PARA CREAR/EDITAR PROYECTO */}
+      {/* MODAL PARA CREAR/EDITAR PROYECTO - Corregido para que se muestre sobre todo */}
       {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/70">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in">
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70" 
+          style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
+        >
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative z-[10000]">
             <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
@@ -297,7 +304,7 @@ export default function SystemAdminDashboard() {
                     name="ProjectAddress"
                     value={formData.ProjectAddress}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium h-32"
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium h-32 resize-none"
                     placeholder="Ingrese la dirección completa del proyecto"
                     maxLength={1000}
                     required
@@ -309,8 +316,8 @@ export default function SystemAdminDashboard() {
                 <button
                   type="button"
                   onClick={closeModal}
-                  className=" bg-gray-200 text-black font-bold py-2.5 px-6 rounded-md rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
-                 >
+                  className="bg-gray-200 text-black font-bold py-2.5 px-6 rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
+                >
                   CANCELAR
                 </button>
                 <button
@@ -333,15 +340,19 @@ export default function SystemAdminDashboard() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMACIÓN PARA ELIMINAR */}
+      {/* MODAL DE CONFIRMACIÓN PARA ELIMINAR - Corregido para que se muestre sobre todo */}
       {confirmDelete.show && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/70">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in">
-            <div className="p-6 pb-4 border-b border-gray-300 ">
-              <div className="flex items-center">
-                <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">CONFIRMAR ELIMINACIÓN</h2>
-              </div>
-                <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
+          style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
+        >
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative z-[10000]">
+            <div className="p-6 pb-4 border-b border-gray-300">
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+                <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
+                CONFIRMAR ELIMINACIÓN
+              </h2>
+              <p className="text-sm text-gray-600 mt-2 leading-5">
                 ¿Está seguro que desea eliminar este proyecto? Esta acción no se puede deshacer.
               </p>
             </div>
@@ -350,7 +361,7 @@ export default function SystemAdminDashboard() {
               <button
                 type="button"
                 onClick={() => setConfirmDelete({ show: false, id: null })}
-                className=" bg-gray-200 text-black font-bold py-2.5 px-6 rounded-md rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
+                className="bg-gray-200 text-black font-bold py-2.5 px-6 rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
               >
                 CANCELAR
               </button>
@@ -359,7 +370,6 @@ export default function SystemAdminDashboard() {
                 onClick={() => confirmDelete.id && handleDelete(confirmDelete.id)}
                 disabled={loading}
                 className="px-6 py-2.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center whitespace-nowrap"                
-
               >
                 {loading ? (
                   <>
@@ -375,144 +385,147 @@ export default function SystemAdminDashboard() {
         </div>
       )}
 
-      {/* CONTENT */}
-      <main className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
-        <div className="mb-6 sm:mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5] w-full">
-              <h1 className="text-xl font-bold text-white tracking-tight">GESTIÓN DE PROYECTOS</h1>
-              <p className="text-sm text-gray-200 mt-1">
-                Administre los proyectos del sistema. Puede crear, editar, ver y eliminar proyectos.
-              </p>
-            </div>
-          </div>
-
-          {/* MENSAJES DE ÉXITO/ERROR */}
-          {successMessage && (
-            <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in">
-              <div className="flex items-center">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-                    <p className="text-sm font-medium text-gray-600 leading-5">
-                        {successMessage}
-                    </p>
+      {/* CONTENT - Ajustado para header y footer fijos */}
+      <main className="pt-[72px] pb-[80px] min-h-screen bg-gray-100">
+        <div className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 max-w-7xl mx-auto">
+          <div className="mb-6 sm:mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+              <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5] w-full">
+                <h1 className="text-xl font-bold text-white tracking-tight">GESTIÓN DE PROYECTOS</h1>
+                <p className="text-sm text-gray-200 mt-1">
+                  Administre los proyectos del sistema. Puede crear, editar, ver y eliminar proyectos.
+                </p>
               </div>
             </div>
-          )}
 
-          {errorMessage && (
-            <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
-              <div className="flex items-center">
-                <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
-                    <p className="text-sm font-medium text-gray-600 leading-5">
-                        {errorMessage}
-                    </p>
-              </div>
-            </div>
-          )}
-
-          {/* BARRA DE ACCIONES Y BÚSQUEDA */}
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <div className="flex-1">
-              <div className="relative">
-                <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                  <Search className="h-5 w-5 text-gray-400" />
+            {/* MENSAJES DE ÉXITO/ERROR */}
+            {successMessage && (
+              <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in">
+                <div className="flex items-center">
+                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                  <p className="text-sm font-medium text-gray-600 leading-5">
+                    {successMessage}
+                  </p>
                 </div>
-                <input
-                  type="text"
-                  placeholder="Buscar proyectos por nombre o dirección..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                />
-                {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm('')}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                )}
               </div>
-            </div>
-            
-            <button
-              onClick={openCreateModal}
-              className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap"
-            >
-              NUEVO PROYECTO
-            </button>
-          </div>
+            )}
 
-          {/* TABLA DE PROYECTOS */}
+            {errorMessage && (
+              <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
+                <div className="flex items-center">
+                  <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
+                  <p className="text-sm font-medium text-gray-600 leading-5">
+                    {errorMessage}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* BARRA DE ACCIONES Y BÚSQUEDA */}
+            <div className="flex flex-col md:flex-row gap-4 mb-6">
+              <div className="flex-1">
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                    <Search className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Buscar proyectos por nombre o dirección..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              
+              <button
+                onClick={openCreateModal}
+                className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap"
+              >
+                NUEVO PROYECTO
+              </button>
+            </div>
+
+            {/* TABLA DE PROYECTOS */}
             <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden">
-            <div className="overflow-x-auto">
+              <div className="overflow-x-auto">
                 <table className="w-full">
-                <thead className="bg-gray-100">
+                  <thead className="bg-gray-100">
                     <tr>
-                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ID</th>
-                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">NOMBRE DEL PROYECTO</th>
-                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300" >DIRECCIÓN</th>
-                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
+                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ID</th>
+                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">NOMBRE DEL PROYECTO</th>
+                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">DIRECCIÓN</th>
+                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
                     </tr>
-                </thead>
-                <tbody>
+                  </thead>
+                  <tbody>
                     {loading ? (
-                    <tr>
+                      <tr>
                         <td colSpan={4} className="py-12 text-center">
-                        <div className="flex flex-col items-center justify-center">
+                          <div className="flex flex-col items-center justify-center">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
                             <p className="text-gray-600">Cargando proyectos...</p>
-                        </div>
+                          </div>
                         </td>
-                    </tr>
+                      </tr>
                     ) : filteredProjects.length === 0 ? (
-                    <tr>
+                      <tr>
                         <td colSpan={4} className="py-12 text-center">
-                        <div className="flex flex-col items-center justify-center">
+                          <div className="flex flex-col items-center justify-center">
                             <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
                             <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
-                            {searchTerm ? 'No se encontraron proyectos que coincidan con la búsqueda' : 'No hay proyectos registrados'}
+                              {searchTerm ? 'No se encontraron proyectos que coincidan con la búsqueda' : 'No hay proyectos registrados'}
                             </p>
-                        </div>
+                          </div>
                         </td>
-                    </tr>
+                      </tr>
                     ) : (
-                    filteredProjects.map((project) => (
+                      filteredProjects.map((project) => (
                         <tr key={project.ProjectID} className="hover:bg-gray-50 transition-colors border-b border-gray-300">
-                        <td className="py-3 px-4 text-sm text-gray-800 font-medium">{project.ProjectID}</td>
-                        <td className="py-3 px-4 text-sm text-gray-800 uppercase">{project.NameProject}</td>
-                        <td className="py-3 px-4 text-sm text-gray-600 uppercase max-w-xs truncate">{project.ProjectAddress}</td>
-                        <td className="py-3 px-4">
+                          <td className="py-3 px-4 text-sm text-gray-800 font-medium">{project.ProjectID}</td>
+                          <td className="py-3 px-4 text-sm text-gray-800 uppercase">{project.NameProject}</td>
+                          <td className="py-3 px-4 text-sm text-gray-600 uppercase max-w-xs truncate">{project.ProjectAddress}</td>
+                          <td className="py-3 px-4">
                             <div className="flex items-center justify-center gap-2">
-                            <button
+                              <button
                                 onClick={() => handleEdit(project)}
                                 className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                                 title="Editar proyecto"
-                            >
+                              >
                                 <Edit className="h-4 w-4" />
-                            </button>
-                            <button
+                              </button>
+                              <button
                                 onClick={() => setConfirmDelete({ show: true, id: project.ProjectID })}
                                 className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
                                 title="Eliminar proyecto"
-                            >
+                              >
                                 <Trash2 className="h-4 w-4" />
-                            </button>
+                              </button>
                             </div>
-                        </td>
+                          </td>
                         </tr>
-                    ))
+                      ))
                     )}
-                </tbody>
+                  </tbody>
                 </table>
+              </div>
             </div>
-            </div>
+          </div>
         </div>
-
-        <Footer/>
       </main>
 
-      {/* Agregar estilos para animaciones */}
+      {/* FOOTER - Fixed */}
+      <Footer />
+
+      {/* Agregar estilos para animaciones y layout */}
       <style jsx global>{`
         @keyframes fade-in {
           from {
@@ -524,9 +537,6 @@ export default function SystemAdminDashboard() {
             transform: translateY(0);
           }
         }
-        .animate-fade-in {
-          animation: fade-in 0.3s ease-out;
-        }
         
         @keyframes spin {
           from {
@@ -536,8 +546,46 @@ export default function SystemAdminDashboard() {
             transform: rotate(360deg);
           }
         }
+        
+        .animate-fade-in {
+          animation: fade-in 0.3s ease-out;
+        }
+        
         .animate-spin {
           animation: spin 1s linear infinite;
+        }
+        
+        /* Ajustes de layout para header y footer fijos */
+        body {
+          padding-top: 0;
+          padding-bottom: 0;
+          margin: 0;
+          overflow-x: hidden;
+        }
+        
+        /* Asegurar que los modales estén por encima de todo */
+        .fixed.inset-0.z-\\[9999\\] {
+          z-index: 9999 !important;
+        }
+        
+        /* Asegurar que el header y footer tengan z-index adecuado */
+        header, footer {
+          z-index: 50 !important;
+        }
+        
+        /* El modal debe estar por encima del header y footer */
+        .fixed.inset-0.z-\\[9999\\] {
+          z-index: 9999 !important;
+        }
+        
+        /* Prevenir scroll cuando el modal está abierto */
+        body.modal-open {
+          overflow: hidden;
+        }
+        
+        /* Estilos para textarea */
+        textarea {
+          resize: none;
         }
       `}</style>
     </div>
