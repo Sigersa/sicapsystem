@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { UTApi } from 'uploadthing/server';
+import { validateAndRenewSession } from "@/lib/auth";
 
 // Interface para el error de MySQL
 interface MySqlError {
@@ -35,6 +36,59 @@ const normalizarMayusculas = (texto: string): string => {
   if (!texto) return '';
   return texto.toUpperCase();
 };
+
+// Función para verificar duplicados antes de insertar
+async function checkDuplicatesBeforeInsert(connection: any, nss: string, curp: string, rfc: string): Promise<{ exists: boolean; field: string; message: string }> {
+  // Verificar NSS
+  const [nssRows] = await connection.execute(
+    `SELECT 'BASE' as tipo FROM basepersonnelpersonalinfo WHERE NSS = ?
+     UNION
+     SELECT 'PROJECT' as tipo FROM projectpersonnelpersonalinfo WHERE NSS = ?`,
+    [nss, nss]
+  );
+
+  if (Array.isArray(nssRows) && nssRows.length > 0) {
+    return {
+      exists: true,
+      field: 'NSS',
+      message: 'YA EXISTE UN EMPLEADO REGISTRADO CON ESTE NSS'
+    };
+  }
+
+  // Verificar CURP
+  const [curpRows] = await connection.execute(
+    `SELECT 'BASE' as tipo FROM basepersonnelpersonalinfo WHERE CURP = ?
+     UNION
+     SELECT 'PROJECT' as tipo FROM projectpersonnelpersonalinfo WHERE CURP = ?`,
+    [curp, curp]
+  );
+
+  if (Array.isArray(curpRows) && curpRows.length > 0) {
+    return {
+      exists: true,
+      field: 'CURP',
+      message: 'YA EXISTE UN EMPLEADO REGISTRADO CON ESTA CURP'
+    };
+  }
+
+  // Verificar RFC
+  const [rfcRows] = await connection.execute(
+    `SELECT 'BASE' as tipo FROM basepersonnelpersonalinfo WHERE RFC = ?
+     UNION
+     SELECT 'PROJECT' as tipo FROM projectpersonnelpersonalinfo WHERE RFC = ?`,
+    [rfc, rfc]
+  );
+
+  if (Array.isArray(rfcRows) && rfcRows.length > 0) {
+    return {
+      exists: true,
+      field: 'RFC',
+      message: 'YA EXISTE UN EMPLEADO REGISTRADO CON ESTE RFC'
+    };
+  }
+
+  return { exists: false, field: '', message: '' };
+}
 
 // Función para subir archivo a UploadThing
 async function uploadFileToUploadThing(fileBuffer: ArrayBuffer, fileName: string, fileType: string): Promise<string> {
@@ -172,6 +226,34 @@ export async function POST(request: NextRequest) {
   let connection;
   
   try {
+    // Validar sesión
+    const sessionId = request.cookies.get("session")?.value;
+
+    if (!sessionId) {
+      return NextResponse.json(
+        { success: false, message: 'NO AUTORIZADO' },
+        { status: 401 }
+      );
+    }
+
+    // Validar y renovar la sesión
+    const user = await validateAndRenewSession(sessionId);
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: 'SESIÓN INVÁLIDA O EXPIRADA' },
+        { status: 401 }
+      );
+    }
+
+    // Verificar permisos 
+    if (user.UserTypeID !== 2) { 
+      return NextResponse.json(
+        { success: false, message: 'ACCESO DENEGADO' },
+        { status: 403 }
+      );
+    }
+
     const formData = await request.json();
     
     // Validación básica de campos requeridos
@@ -189,30 +271,6 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-    }
-
-    // Validar formato de CURP (18 caracteres)
-    if (formData.curp && formData.curp.length !== 18) {
-      return NextResponse.json(
-        { success: false, message: 'LA CURP DEBE TENER 18 CARACTERES' },
-        { status: 400 }
-      );
-    }
-
-    // Validar formato de NSS (11 dígitos)
-    if (formData.nss && !/^\d{11}$/.test(formData.nss)) {
-      return NextResponse.json(
-        { success: false, message: 'EL NSS DEBE TENER 11 DÍGITOS' },
-        { status: 400 }
-      );
-    }
-
-    // Validar RFC (12-13 caracteres)
-    if (formData.rfc && (formData.rfc.length < 12 || formData.rfc.length > 13)) {
-      return NextResponse.json(
-        { success: false, message: 'EL RFC DEBE TENER ENTRE 12 Y 13 CARACTERES' },
-        { status: 400 }
-      );
     }
 
     // Validar formato de email
@@ -295,6 +353,25 @@ export async function POST(request: NextRequest) {
 
     // Obtener conexión a la base de datos
     connection = await getConnection();
+    
+    // **VERIFICAR DUPLICADOS ANTES DE INICIAR LA TRANSACCIÓN**
+    const duplicateCheck = await checkDuplicatesBeforeInsert(
+      connection, 
+      formData.nss, 
+      formData.curp, 
+      formData.rfc
+    );
+
+    if (duplicateCheck.exists) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: duplicateCheck.message,
+          field: duplicateCheck.field
+        },
+        { status: 400 }
+      );
+    }
     
     // Iniciar transacción
     await connection.beginTransaction();
@@ -723,14 +800,27 @@ export async function POST(request: NextRequest) {
       
       console.error('Error en la transacción:', error);
       
-      // Verificar si es un error de MySQL de duplicación
+      // Verificar si es un error de MySQL de duplicación (por si acaso)
       if (error && typeof error === 'object' && 'code' in error) {
         const mysqlError = error as MySqlError;
         if (mysqlError.code === 'ER_DUP_ENTRY') {
+          // Determinar qué campo está duplicado basado en el mensaje de error
+          let mensajeDuplicado = 'EL EMPLEADO YA EXISTE EN EL SISTEMA';
+          
+          if (mysqlError.sqlMessage) {
+            if (mysqlError.sqlMessage.includes('CURP')) {
+              mensajeDuplicado = 'YA EXISTE UN EMPLEADO REGISTRADO CON ESTA CURP';
+            } else if (mysqlError.sqlMessage.includes('RFC')) {
+              mensajeDuplicado = 'YA EXISTE UN EMPLEADO REGISTRADO CON ESTE RFC';
+            } else if (mysqlError.sqlMessage.includes('NSS')) {
+              mensajeDuplicado = 'YA EXISTE UN EMPLEADO REGISTRADO CON ESTE NSS';
+            }
+          }
+          
           return NextResponse.json(
             { 
               success: false, 
-              message: 'EL EMPLEADO YA EXISTE EN EL SISTEMA (CURP, RFC O NSS DUPLICADO)'
+              message: mensajeDuplicado
             },
             { status: 400 }
           );
