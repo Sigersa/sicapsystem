@@ -1,22 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
+import { validateAndRenewSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   let connection;
 
   try {
-    const session = request.cookies.get("session")?.value;
+    const sessionId = request.cookies.get("session")?.value;
 
-    if (!session) {
+    if (!sessionId) {
       return NextResponse.json(
         { error: 'No autorizado' },
         { status: 401 }
       );
     }
 
+    // Validar y renovar la sesión
+    const user = await validateAndRenewSession(sessionId);
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Sesión inválida o expirada' },
+        { status: 401 }
+      );
+    }
+
     connection = await getConnection();
 
-    // Consulta actualizada para usar las nuevas tablas
     const [rows] = await connection.execute(
       `SELECT 
          su.SystemUserID,
@@ -32,7 +42,7 @@ export async function GET(request: NextRequest) {
        LEFT JOIN basepersonnel bp ON su.SystemUserID = bp.BasePersonnelID
        LEFT JOIN basepersonnelpersonalinfo pi ON bp.BasePersonnelID = pi.BasePersonnelID
        WHERE s.SessionID = ? AND s.ExpiresAt > NOW()`,
-      [session]
+      [sessionId] // Cambiado de 'session' a 'sessionId' para consistencia
     );
 
     const users = rows as any[];
@@ -44,32 +54,32 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const user = users[0];
+    const userData = users[0];
 
     // Construir el nombre completo considerando valores nulos
-    const firstName = user.FirstName || '';
-    const lastName = user.LastName || '';
-    const middleName = user.MiddleName || '';
+    const firstName = userData.FirstName || '';
+    const lastName = userData.LastName || '';
+    const middleName = userData.MiddleName || '';
     
     let fullName = '';
     if (firstName && lastName) {
       fullName = middleName ? `${firstName} ${lastName} ${middleName}` : `${firstName} ${lastName}`;
     } else {
-      fullName = user.UserName;
+      fullName = userData.UserName;
     }
 
     return NextResponse.json({
       success: true,
       user: {
-        SystemUserID: user.SystemUserID,
-        UserName: user.UserName,
-        FirstName: user.FirstName,
-        LastName: user.LastName,
-        MiddleName: user.MiddleName,
+        SystemUserID: userData.SystemUserID,
+        UserName: userData.UserName,
+        FirstName: userData.FirstName,
+        LastName: userData.LastName,
+        MiddleName: userData.MiddleName,
         FullName: fullName.trim(),
-        Email: user.Email,
-        UserTypeID: user.UserTypeID,
-        CreationDate: user.CreationDate
+        Email: userData.Email,
+        UserTypeID: userData.UserTypeID,
+        CreationDate: userData.CreationDate
       }
     },
     { status: 200 });
