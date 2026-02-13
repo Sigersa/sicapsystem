@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
+import { validateAndRenewSession } from "@/lib/auth";
 
 // Función para normalizar texto a mayúsculas
 const normalizarMayusculas = (texto: string): string => {
@@ -8,40 +9,62 @@ const normalizarMayusculas = (texto: string): string => {
 };
 
 // GET: Obtener todos los proyectos
-export async function GET(request: NextRequest) {
+export async function GET(req: NextRequest) {
   let connection;
+  
   try {
+    const sessionId = req.cookies.get("session")?.value;
+
+    if (!sessionId) {
+      return NextResponse.json({ error: "NO AUTORIZADO" }, { status: 401 });
+    }
+
+    // Validar y renovar la sesión
+    const user = await validateAndRenewSession(sessionId);
+
+    if (!user || user.UserTypeID !== 2) {
+      return NextResponse.json({ error: "ACCESO DENEGADO" }, { status: 403 });
+    }
+
     connection = await getConnection();
     
     const [projects] = await connection.execute(
       'SELECT * FROM projects ORDER BY ProjectID DESC'
     );
     
-    await connection.release();
-    
     return NextResponse.json(projects, { status: 200 });
+    
   } catch (error) {
     console.error('Error fetching projects:', error);
     
-    if (connection) {
-      await connection.release();
-    }
-    
     return NextResponse.json(
-      { 
-        message: 'ERROR AL OBTENER LOS PROYECTOS',
-        error: error instanceof Error ? error.message : 'ERROR DESCONOCIDO'
-      },
+      { error: 'ERROR AL OBTENER LOS PROYECTOS' },
       { status: 500 }
     );
+  } finally {
+        if (connection) connection.release();
   }
 }
 
 // POST: Crear un nuevo proyecto
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   let connection;
+  
   try {
-    const body = await request.json();
+    const sessionId = req.cookies.get("session")?.value;
+
+    if (!sessionId) {
+      return NextResponse.json({ error: "NO AUTORIZADO" }, { status: 401 });
+    }
+
+    // Validar y renovar la sesión
+    const user = await validateAndRenewSession(sessionId);
+
+    if (!user || user.UserTypeID !== 2) {
+      return NextResponse.json({ error: "ACCESO DENEGADO" }, { status: 403 });
+    }
+
+    const body = await req.json();
     let { NameProject, ProjectAddress } = body;
 
     // Validaciones
@@ -56,28 +79,12 @@ export async function POST(request: NextRequest) {
     NameProject = normalizarMayusculas(NameProject.trim());
     ProjectAddress = normalizarMayusculas(ProjectAddress.trim());
 
-    if (NameProject.length > 1000) {
-      return NextResponse.json(
-        { message: 'EL NOMBRE DEL PROYECTO ES DEMASIADO LARGO' },
-        { status: 400 }
-      );
-    }
-
-    if (ProjectAddress.length > 1000) {
-      return NextResponse.json(
-        { message: 'LA DIRECCIÓN DEL PROYECTO ES DEMASIADO LARGA' },
-        { status: 400 }
-      );
-    }
-
     connection = await getConnection();
     
     const [result] = await connection.execute(
       'INSERT INTO projects (NameProject, ProjectAddress) VALUES (?, ?)',
       [NameProject, ProjectAddress]
     );
-    
-    await connection.release();
     
     const insertedId = (result as any).insertId;
     
@@ -89,12 +96,9 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
+    
   } catch (error) {
     console.error('Error creating project:', error);
-    
-    if (connection) {
-      await connection.release();
-    }
     
     return NextResponse.json(
       { 
@@ -103,5 +107,9 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+  } finally {
+    if (connection) {
+      await connection.release();
+    }
   }
 }
