@@ -13,13 +13,13 @@ export async function GET(req: NextRequest) {
     const sessionId = req.cookies.get("session")?.value;
 
     if (!sessionId) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+      return NextResponse.json({ error: "NO AUTORIZADO" }, { status: 401 });
     }
 
     const user = await validateAndRenewSession(sessionId);
 
     if (!user || user.UserTypeID !== 1) {
-      return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
+      return NextResponse.json({ error: "ACCESO DENEGADO" }, { status: 403 });
     }
 
     connection = await getConnection();
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error("Fetch users error:", error);
     return NextResponse.json(
-      { error: "Error al obtener usuarios" },
+      { error: "ERROR AL OBTENER USUARIOS" },
       { status: 500 }
     );
   } finally {
@@ -69,33 +69,16 @@ export async function POST(req: NextRequest) {
     const sessionId = req.cookies.get("session")?.value;
 
     if (!sessionId) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+      return NextResponse.json({ error: "NO AUTORIZADO" }, { status: 401 });
     }
 
     const user = await validateAndRenewSession(sessionId);
 
     if (!user || user.UserTypeID !== 1) {
-      return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
+      return NextResponse.json({ error: "ACCESO DENEGADO" }, { status: 403 });
     }
 
     const data = await req.json();
-
-    // Validaciones
-    if (!data.EmployeeID || data.EmployeeID === 0) {
-      return NextResponse.json({ error: "EmployeeID es requerido" }, { status: 400 });
-    }
-
-    if (!data.UserTypeID || data.UserTypeID === 0) {
-      return NextResponse.json({ error: "UserTypeID es requerido" }, { status: 400 });
-    }
-
-    if (!data.UserName || data.UserName.trim() === '') {
-      return NextResponse.json({ error: "UserName es requerido" }, { status: 400 });
-    }
-
-    if (!data.Password || data.Password.trim() === '') {
-      return NextResponse.json({ error: "Password es requerido" }, { status: 400 });
-    }
 
     connection = await getConnection();
     await connection.beginTransaction();
@@ -109,7 +92,7 @@ export async function POST(req: NextRequest) {
     if (existingUser.length > 0) {
       await connection.rollback();
       return NextResponse.json(
-        { error: "El empleado ya tiene un usuario asignado" },
+        { error: "EL EMPLEADO YA TIENE UN USUARIO ASIGNADO" },
         { status: 400 }
       );
     }
@@ -123,7 +106,7 @@ export async function POST(req: NextRequest) {
     if (existingUsername.length > 0) {
       await connection.rollback();
       return NextResponse.json(
-        { error: "El nombre de usuario ya existe" },
+        { error: "EL NOMBRE DE USUARIO YA EXISTE" },
         { status: 400 }
       );
     }
@@ -144,7 +127,7 @@ export async function POST(req: NextRequest) {
     await connection.commit();
 
     return NextResponse.json(
-      { message: "Usuario creado correctamente", systemUserID },
+      { message: "USUARIO CREADO CORRECTAMENTE", systemUserID },
       { status: 201 }
     );
 
@@ -155,13 +138,13 @@ export async function POST(req: NextRequest) {
     
     if (error.code === 'ER_DUP_ENTRY') {
       return NextResponse.json(
-        { error: "El nombre de usuario ya existe" },
+        { error: "EL NOMBRE DE USUARIO YA EXISTE" },
         { status: 400 }
       );
     }
 
     return NextResponse.json(
-      { error: "Error al crear usuario: " + error.message },
+      { error: "ERROR AL CREAR USUARIO: " + error.message },
       { status: 500 }
     );
   } finally {
