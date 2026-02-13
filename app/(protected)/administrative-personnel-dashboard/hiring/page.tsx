@@ -262,6 +262,13 @@ export default function SystemAdminDashboard() {
     folleto: []
   });
 
+  // Estado para verificar duplicados
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+  const [duplicateError, setDuplicateError] = useState<{
+    field: string;
+    message: string;
+  } | null>(null);
+
   // Estado para proyectos
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
@@ -310,6 +317,40 @@ export default function SystemAdminDashboard() {
       console.error('Error al cargar proyectos:', error);
     } finally {
       setLoadingProjects(false);
+    }
+  };
+
+  // Función para verificar duplicados en tiempo real
+  const checkDuplicates = async (field: string, value: string) => {
+    if (!value || value.length < 3) return;
+
+    setCheckingDuplicates(true);
+    setDuplicateError(null);
+
+    try {
+      const response = await fetch('/api/empleados/check-duplicates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          field,
+          value: field === 'email' ? value.toLowerCase() : value.toUpperCase()
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.exists) {
+        setDuplicateError({
+          field,
+          message: data.message || `El ${fieldNames[field] || field} ya está registrado en el sistema`
+        });
+      }
+    } catch (error) {
+      console.error('Error al verificar duplicados:', error);
+    } finally {
+      setCheckingDuplicates(false);
     }
   };
 
@@ -558,7 +599,7 @@ export default function SystemAdminDashboard() {
     return activeTab === 'proyecto' ? beneficiarioProyecto : beneficiarioBase;
   };
 
-  // Manejar cambios en los inputs del formulario activo
+  // Manejar cambios en los inputs del formulario activo con verificación de duplicados
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     
@@ -572,6 +613,11 @@ export default function SystemAdminDashboard() {
         ...prev,
         [name]: name === 'email' ? value : value.toUpperCase()
       }));
+    }
+
+    // Verificar duplicados para campos específicos
+    if (['rfc', 'curp', 'nss'].includes(name)) {
+      checkDuplicates(name, value);
     }
   };
 
@@ -665,6 +711,15 @@ export default function SystemAdminDashboard() {
     return true;
   };
 
+  // Validar que no haya errores de duplicados
+  const validateNoDuplicates = (): boolean => {
+    if (duplicateError) {
+      setErrorMessage(duplicateError.message);
+      return false;
+    }
+    return true;
+  };
+
   // Subir documentos
   const uploadDocuments = async (): Promise<Record<keyof Documentos, string[]>> => {
     const uploadedUrls: Record<keyof Documentos, string[]> = {
@@ -707,7 +762,7 @@ export default function SystemAdminDashboard() {
     return uploadedUrls;
   };
 
-  // Validar formulario según la pestaña activa
+  // Validar formulario según la pestaña activa - SOLO VALIDACIONES DE CAMPOS REQUERIDOS
   const validateForm = () => {
     const formData = getActiveFormData();
     const beneficiario = getActiveBeneficiario();
@@ -742,24 +797,6 @@ export default function SystemAdminDashboard() {
       }
     }
 
-    // Validar formato de CURP (18 caracteres)
-    if (formData.curp && formData.curp.length !== 18) {
-      setErrorMessage('La CURP debe tener 18 caracteres');
-      return false;
-    }
-
-    // Validar formato de NSS (11 dígitos)
-    if (formData.nss && !/^\d{11}$/.test(formData.nss)) {
-      setErrorMessage('El NSS debe tener 11 dígitos');
-      return false;
-    }
-
-    // Validar RFC (12-13 caracteres)
-    if (formData.rfc && (formData.rfc.length < 12 || formData.rfc.length > 13)) {
-      setErrorMessage('El RFC debe tener entre 12 y 13 caracteres');
-      return false;
-    }
-
     // Validar formato de email
     if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
       setErrorMessage('El email no tiene un formato válido');
@@ -768,6 +805,11 @@ export default function SystemAdminDashboard() {
 
     // Validar documentos
     if (!validateDocuments()) {
+      return false;
+    }
+
+    // Validar que no haya errores de duplicados
+    if (!validateNoDuplicates()) {
       return false;
     }
 
@@ -905,6 +947,7 @@ export default function SystemAdminDashboard() {
 
     setSuccessMessage('');
     setErrorMessage('');
+    setDuplicateError(null);
     setShowSuccessModal(false);
     setUploadProgress(0);
   };
@@ -1450,12 +1493,20 @@ export default function SystemAdminDashboard() {
                       type="text"
                       name="nss"
                       value={formData.nss}
-                      onChange={handleInputChange}
-                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      onChange={(e) => {
+                        handleInputChange(e);
+                        checkDuplicates('nss', e.target.value);
+                      }}
+                      className={`w-full pl-10 pr-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
+                        duplicateError?.field === 'nss' ? 'border-red-500' : 'border-gray-400'
+                      }`}
                       placeholder="Ingrese el NSS"
                       required
                     />
                   </div>
+                  {duplicateError?.field === 'nss' && (
+                    <p className="text-xs text-red-500 mt-1">{duplicateError.message}</p>
+                  )}
                 </div>
                 
                 <div>
@@ -1466,11 +1517,19 @@ export default function SystemAdminDashboard() {
                     type="text"
                     name="curp"
                     value={formData.curp}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    onChange={(e) => {
+                      handleInputChange(e);
+                      checkDuplicates('curp', e.target.value);
+                    }}
+                    className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
+                      duplicateError?.field === 'curp' ? 'border-red-500' : 'border-gray-400'
+                    }`}
                     placeholder="Ingrese el CURP"
                     required
                   />
+                  {duplicateError?.field === 'curp' && (
+                    <p className="text-xs text-red-500 mt-1">{duplicateError.message}</p>
+                  )}
                 </div>
 
                 <div>
@@ -1481,11 +1540,19 @@ export default function SystemAdminDashboard() {
                     type="text"
                     name="rfc"
                     value={formData.rfc}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                    onChange={(e) => {
+                      handleInputChange(e);
+                      checkDuplicates('rfc', e.target.value);
+                    }}
+                    className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
+                      duplicateError?.field === 'rfc' ? 'border-red-500' : 'border-gray-400'
+                    }`}
                     placeholder="Ingrese el RFC"
                     required
                   />
+                  {duplicateError?.field === 'rfc' && (
+                    <p className="text-xs text-red-500 mt-1">{duplicateError.message}</p>
+                  )}
                 </div>
 
                 <div>
@@ -1668,7 +1735,7 @@ export default function SystemAdminDashboard() {
                     NÚMERO DE UNIDAD DE MEDICINA FAMILIAR *
                   </label>
                   <input
-                    type="Number"
+                    type="number"
                     name="umf"
                     value={formData.umf}
                     onChange={handleInputChange}
@@ -1957,16 +2024,14 @@ export default function SystemAdminDashboard() {
               <DocumentInput tipo="ine" required />
               <DocumentInput tipo="comprobanteDomicilio" required />
               <DocumentInput tipo="foto" required />
-              
-              {/* Documentos opcionales */}
-              <DocumentInput tipo="comprobanteEstudios" required/>
-              <DocumentInput tipo="comprobanteCapacitacion" required/>
+              <DocumentInput tipo="comprobanteEstudios" required />
+              <DocumentInput tipo="comprobanteCapacitacion" required />
               <DocumentInput tipo="licenciaManejo" />
               <DocumentInput tipo="cartaAntecedentes" />
-              <DocumentInput tipo="cartaRecomendacion" required/>
-              <DocumentInput tipo="retencionInfonavit" required/>
-              <DocumentInput tipo="examenMedico" required/>
-              <DocumentInput tipo="folleto" required/>
+              <DocumentInput tipo="cartaRecomendacion" required />
+              <DocumentInput tipo="retencionInfonavit" required />
+              <DocumentInput tipo="examenMedico" required />
+              <DocumentInput tipo="folleto" required />
             </div>
 
             {/* Barra de progreso */}
@@ -1992,15 +2057,15 @@ export default function SystemAdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* HEADER */}
+      {/* HEADER - Fixed */}
       <AppHeader 
         title="PANEL ADMINISTRATIVO"
       />
 
-      {/* MODAL DE CONFIRMACIÓN EXITOSA CON VISTA PREVIA DE PDF */}
+      {/* MODAL DE CONFIRMACIÓN EXITOSA CON VISTA PREVIA DE PDF - Corregido para que se muestre sobre todo */}
       {showSuccessModal && successDetails && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/70">
-          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full h-[90vh] flex flex-col animate-fade-in">
+        <div className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70" style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}>
+          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full h-[90vh] flex flex-col animate-fade-in relative z-[10000]">
             {/* Encabezado del modal */}
             <div className="p-6 pb-4 border-b flex items-center justify-between">
               <div>
@@ -2276,38 +2341,35 @@ export default function SystemAdminDashboard() {
                         <span className="block text-xs font-bold text-gray-700 uppercase">
                           DESCARGAR TODOS LOS PDF
                         </span>
-
                         <button
                           onClick={handleDownloadAllPDFs}
                           disabled={downloadingZip}
                           className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
                         >
-                         <Download className="h-4 w-4 text-gray-700" />
+                          {downloadingZip ? (
+                            <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Download className="h-4 w-4 text-gray-700" />
+                          )}
                         </button>
                       </div>
-
                       <div className="flex items-center justify-between">
                         <span className="block text-xs font-bold text-gray-700 uppercase">
                           DESCARGAR TODOS LOS EDITABLES
                         </span>
-                      <button
-                        onClick={handleDownloadAllEditables}
-                        disabled={downloadingZip}
-                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
-                      >
-                         <Download className="h-4 w-4 text-gray-700" />
-                      </button>
+                        <button
+                          onClick={handleDownloadAllEditables}
+                          disabled={downloadingZip}
+                          className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+                        >
+                          {downloadingZip ? (
+                            <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Download className="h-4 w-4 text-gray-700" />
+                          )}
+                        </button>
                       </div>
                     </div>
-                  </div>
-                  
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <h4 className="font-bold text-yellow-800 mb-2 text-sm">SIGUIENTES PASOS</h4>
-                    <ul className="text-sm text-yellow-700 space-y-1">
-                      <li>• Revisar la vista previa de cada documento</li>
-                      <li>• Descargar archivos individuales o en ZIP</li>
-                      <li>• Archivar la documentación física</li>
-                    </ul>
                   </div>
                 </div>
               </div>
@@ -2361,100 +2423,107 @@ export default function SystemAdminDashboard() {
         </div>
       )}
 
-      {/* CONTENT */}
-      <main className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
-        <div className="mb-6 sm:mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5] w-full">
-              <h1 className="text-xl font-bold text-white tracking-tight">INGRESO / CONTRATACIÓN</h1>
-              <p className="text-sm text-gray-200 mt-1">
-                Para dar de alta a un nuevo empleado en el sistema, seleccione el tipo de personal y complete el formulario correspondiente.
-              </p>
-            </div>
-          </div>
-
-          {/* PESTAÑAS - Versión minimalista */}
-          <div className="mb-6">
-            <div className="flex space-x-1 border-b border-gray-200">
-              <button
-                onClick={() => setActiveTab('proyecto')}
-                className={`flex-1 py-3 px-4 text-center font-bold text-sm uppercase tracking-tight transition-all duration-200 ${
-                  activeTab === 'proyecto'
-                    ? 'text-[#3a6ea5] border-b-2 border-[#3a6ea5] -mb-px'
-                    : 'text-black hover:text-black'
-                }`}
-              >
-                PERSONAL DE PROYECTO
-              </button>
-              
-              <button
-                onClick={() => setActiveTab('base')}
-                className={`flex-1 py-3 px-4 text-center font-bold text-sm uppercase tracking-tight transition-all duration-200 ${
-                  activeTab === 'base'
-                    ? 'text-[#3a6ea5] border-b-2 border-[#3a6ea5] -mb-px'
-                    : 'text-black hover:text-black'
-                }`}
-              >
-                PERSONAL BASE
-              </button>
-            </div>
-          </div>
-
-          {/* CONTENIDO DE LAS PESTAÑAS */}
-          <div className="space-y-6">
-            {errorMessage && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
-                <div className="flex items-center">
-                  <svg className="h-5 w-5 text-red-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-red-700 font-bold text-center uppercase">{errorMessage}</p>
-                </div>
+      {/* CONTENT - Ajustado para header y footer fijos */}
+      <main className="pt-[72px] pb-[80px] min-h-screen bg-gray-100">
+        <div className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 max-w-7xl mx-auto">
+          <div className="mb-6 sm:mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+              <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5] w-full">
+                <h1 className="text-xl font-bold text-white tracking-tight">INGRESO / CONTRATACIÓN</h1>
+                <p className="text-sm text-gray-200 mt-1">
+                  Para dar de alta a un nuevo empleado en el sistema, seleccione el tipo de personal y complete el formulario correspondiente.
+                </p>
               </div>
-            )}
+            </div>
 
-            {renderFormulario()}
+            {/* PESTAÑAS */}
+            <div className="mb-6">
+              <div className="flex space-x-1 border-b border-gray-200">
+                <button
+                  onClick={() => setActiveTab('proyecto')}
+                  className={`flex-1 py-3 px-4 text-center font-bold text-sm uppercase tracking-tight transition-all duration-200 ${
+                    activeTab === 'proyecto'
+                      ? 'text-[#3a6ea5] border-b-2 border-[#3a6ea5] -mb-px'
+                      : 'text-black hover:text-black'
+                  }`}
+                >
+                  PERSONAL DE PROYECTO
+                </button>
+                
+                <button
+                  onClick={() => setActiveTab('base')}
+                  className={`flex-1 py-3 px-4 text-center font-bold text-sm uppercase tracking-tight transition-all duration-200 ${
+                    activeTab === 'base'
+                      ? 'text-[#3a6ea5] border-b-2 border-[#3a6ea5] -mb-px'
+                      : 'text-black hover:text-black'
+                  }`}
+                >
+                  PERSONAL BASE
+                </button>
+              </div>
+            </div>
 
-            {/* BOTONES */}
-            <div className="flex flex-col sm:flex-row gap-4 pt-8 pb-8 justify-center">
-              <button
-                type="submit"
-                form={activeTab === 'proyecto' ? undefined : undefined}
-                onClick={(e) => {
-                  const form = document.querySelector('form');
-                  if (form) {
-                    form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-                  }
-                }}
-                disabled={loading || uploadProgress > 0 && uploadProgress < 100}
-                className="w-full sm:w-auto min-w-[280px] bg-[#3a6ea5] text-white font-bold py-3 px-8 rounded-md hover:bg-[#2d5592] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center uppercase tracking-tight"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    {uploadProgress > 0 && uploadProgress < 100 ? `SUBIDO ${uploadProgress}%` : 'REGISTRANDO...'}
-                  </>
-                ) : (
-                  `REGISTRAR ${activeTab === 'proyecto' ? 'PERSONAL DE PROYECTO' : 'PERSONAL BASE'}`
-                )}
-              </button>
-              
-              <button
-                type="button"
-                onClick={limpiarTodosFormularios}
-                disabled={loading || uploadProgress > 0 && uploadProgress < 100}
-                className="w-full sm:w-auto min-w-[280px] bg-gray-200 text-gray-800 font-bold py-3 px-8 rounded-md hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-tight"
-              >
-                LIMPIAR FORMULARIO
-              </button>
+            {/* CONTENIDO DE LAS PESTAÑAS */}
+            <div className="space-y-6">
+              {errorMessage && (
+              <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
+                  <div className="flex items-center">
+                    <svg className="h-5 w-5 text-red-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg> 
+                  <p className="text-sm font-medium text-gray-600 leading-5">
+                      {errorMessage}</p>
+                  </div>
+                </div>
+              )}
+              {renderFormulario()}
+
+              {/* BOTONES */}
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <button
+                  type="submit"
+                  onClick={(e) => {
+                    const form = document.querySelector('form');
+                    if (form) {
+                      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                    }
+                  }}
+                  disabled={loading || checkingDuplicates || (uploadProgress > 0 && uploadProgress < 100)}
+                  className="w-full sm:w-auto min-w-[280px] bg-[#3a6ea5] text-white font-bold py-3 px-8 rounded-md hover:bg-[#2d5592] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center uppercase tracking-tight"
+                >
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                      {uploadProgress > 0 && uploadProgress < 100 ? `SUBIDO ${uploadProgress}%` : 'REGISTRANDO...'}
+                    </>
+                  ) : checkingDuplicates ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                      VERIFICANDO...
+                    </>
+                  ) : (
+                    `REGISTRAR ${activeTab === 'proyecto' ? 'PERSONAL DE PROYECTO' : 'PERSONAL BASE'}`
+                  )}
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={limpiarTodosFormularios}
+                  disabled={loading || uploadProgress > 0 && uploadProgress < 100}
+                  className="w-full sm:w-auto min-w-[280px] bg-gray-200 text-gray-800 font-bold py-3 px-8 rounded-md hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-tight"
+                >
+                  LIMPIAR FORMULARIO
+                </button>
+              </div>
             </div>
           </div>
         </div>
-
-        <Footer/>
       </main>
 
-      {/* Agregar estilos para animaciones */}
+      {/* FOOTER - Fixed */}
+      <Footer />
+
+      {/* Agregar estilos para animaciones y layout */}
       <style jsx global>{`
         @keyframes fade-in {
           from {
@@ -2468,6 +2537,29 @@ export default function SystemAdminDashboard() {
         }
         .animate-fade-in {
           animation: fade-in 0.3s ease-out;
+        }
+        
+        /* Ajustes de layout para header y footer fijos */
+        body {
+          padding-top: 0;
+          padding-bottom: 0;
+          margin: 0;
+          overflow-x: hidden;
+        }
+        
+        /* Asegurar que el modal esté por encima de todo */
+        .fixed.inset-0.z-\\[9999\\] {
+          z-index: 9999 !important;
+        }
+        
+        /* Asegurar que el header y footer tengan z-index adecuado */
+        header, footer {
+          z-index: 50 !important;
+        }
+        
+        /* El modal debe estar por encima del header y footer */
+        .fixed.inset-0.z-\\[9999\\] {
+          z-index: 9999 !important;
         }
       `}</style>
     </div>
