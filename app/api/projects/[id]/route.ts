@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '@/lib/db';
+import { validateAndRenewSession } from "@/lib/auth";
 
 // Función para normalizar texto a mayúsculas
 const normalizarMayusculas = (texto: string): string => {
@@ -17,6 +18,32 @@ export async function GET(
   let connection;
 
   try {
+    const sessionId = request.cookies.get("session")?.value;
+
+    if (!sessionId) {
+      return NextResponse.json(
+        { message: 'NO AUTORIZADO' },
+        { status: 401 }
+      );
+    }
+
+    // Validar y renovar la sesión
+    const user = await validateAndRenewSession(sessionId);
+
+    if (!user) {
+      return NextResponse.json(
+        { message: 'SESIÓN INVÁLIDA O EXPIRADA' },
+        { status: 401 }
+      );
+    }
+
+     if (user.UserTypeID !== 2) {
+     return NextResponse.json(
+     { message: 'ACCESO DENEGADO - SE REQUIEREN PERMISOS DE ADMINISTRADOR' },
+         { status: 403 }
+       );
+     }
+
     const { id } = await context.params;
 
     if (!id || isNaN(Number(id))) {
@@ -33,8 +60,6 @@ export async function GET(
       [id]
     );
 
-    await connection.release();
-
     const result = projects as any[];
 
     if (result.length === 0) {
@@ -45,15 +70,16 @@ export async function GET(
     }
 
     return NextResponse.json(result[0], { status: 200 });
+    
   } catch (error) {
-    if (connection) await connection.release();
-
     console.error('GET project error:', error);
 
     return NextResponse.json(
       { message: 'ERROR AL OBTENER EL PROYECTO' },
       { status: 500 }
     );
+  } finally {
+    if (connection) await connection.release();
   }
 }
 
@@ -67,6 +93,32 @@ export async function PUT(
   let connection;
 
   try {
+    const sessionId = request.cookies.get("session")?.value;
+
+    if (!sessionId) {
+      return NextResponse.json(
+        { message: 'NO AUTORIZADO' },
+        { status: 401 }
+      );
+    }
+
+    // Validar y renovar la sesión
+    const user = await validateAndRenewSession(sessionId);
+
+    if (!user) {
+      return NextResponse.json(
+        { message: 'SESIÓN INVÁLIDA O EXPIRADA' },
+        { status: 401 }
+      );
+    }
+
+     if (user.UserTypeID !== 2) {
+       return NextResponse.json(
+         { message: 'ACCESO DENEGADO - SE REQUIEREN PERMISOS DE ADMINISTRADOR' },
+         { status: 403 }
+       );
+     }
+
     const { id } = await context.params;
 
     if (!id || isNaN(Number(id))) {
@@ -104,7 +156,6 @@ export async function PUT(
     );
 
     if ((exists as any[]).length === 0) {
-      await connection.release();
       return NextResponse.json(
         { message: 'PROYECTO NO ENCONTRADO' },
         { status: 404 }
@@ -118,21 +169,20 @@ export async function PUT(
       [NameProject, ProjectAddress, id]
     );
 
-    await connection.release();
-
     return NextResponse.json(
       { message: 'PROYECTO ACTUALIZADO EXITOSAMENTE', success: true },
       { status: 200 }
     );
+    
   } catch (error) {
-    if (connection) await connection.release();
-
     console.error('PUT project error:', error);
 
     return NextResponse.json(
       { message: 'ERROR AL ACTUALIZAR EL PROYECTO' },
       { status: 500 }
     );
+  } finally {
+    if (connection) await connection.release();
   }
 }
 
@@ -146,6 +196,32 @@ export async function DELETE(
   let connection;
 
   try {
+    const sessionId = request.cookies.get("session")?.value;
+
+    if (!sessionId) {
+      return NextResponse.json(
+        { message: 'NO AUTORIZADO' },
+        { status: 401 }
+      );
+    }
+
+    // Validar y renovar la sesión
+    const user = await validateAndRenewSession(sessionId);
+
+    if (!user) {
+      return NextResponse.json(
+        { message: 'SESIÓN INVÁLIDA O EXPIRADA' },
+        { status: 401 }
+      );
+    }
+
+     if (user.UserTypeID !== 2) {
+       return NextResponse.json(
+         { message: 'ACCESO DENEGADO - SE REQUIEREN PERMISOS DE ADMINISTRADOR' },
+         { status: 403 }
+       );
+     }
+
     const { id } = await context.params;
 
     if (!id || isNaN(Number(id))) {
@@ -163,7 +239,6 @@ export async function DELETE(
     );
 
     if ((exists as any[]).length === 0) {
-      await connection.release();
       return NextResponse.json(
         { message: 'PROYECTO NO ENCONTRADO' },
         { status: 404 }
@@ -175,20 +250,19 @@ export async function DELETE(
       [id]
     );
 
-    await connection.release();
-
     return NextResponse.json(
       { message: 'PROYECTO ELIMINADO EXITOSAMENTE', success: true },
       { status: 200 }
     );
+    
   } catch (error) {
-    if (connection) await connection.release();
-
     console.error('DELETE project error:', error);
 
     return NextResponse.json(
       { message: 'ERROR AL ELIMINAR EL PROYECTO' },
       { status: 500 }
     );
+  } finally {
+    if (connection) await connection.release();
   }
 }
