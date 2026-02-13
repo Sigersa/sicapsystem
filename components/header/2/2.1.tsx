@@ -109,8 +109,8 @@ export default function AppHeader({
   const initials = displayName.charAt(0).toUpperCase();
 
   return (
-    <header className="bg-[#3a6ea5] shadow-sm border-b-1 border-[#3a6ea5] relative z-30">
-      <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <header className="fixed top-0 left-0 w-full bg-[#3a6ea5] shadow-sm border-b border-[#3a6ea5] z-50">
+      <div className="w-full px-6 py-3 flex items-center justify-between">
 
         {/* Logo (sin fondo) y título */}
         <div className="flex items-center space-x-4">
@@ -151,7 +151,7 @@ export default function AppHeader({
           </button>
 
           {/* Separador */}
-          <div className="h-6 w-px bg-white" />
+          <div className="h-6 w-px bg-white/50" />
 
           {/* Notificaciones */}
           <div className="relative" ref={notificationsRef}>
@@ -160,7 +160,7 @@ export default function AppHeader({
                 setIsNotificationsOpen(!isNotificationsOpen);
                 setIsUserMenuOpen(false);
               }}
-              className="relative p-2 text-white hover:bg-white/20 rounded border border-white transition-colors"
+              className="relative p-2 text-white hover:bg-white/20 rounded-lg border border-white transition-colors"
               aria-label="Notificaciones"
             >
               <Bell className="w-5 h-5" />
@@ -174,17 +174,17 @@ export default function AppHeader({
 
             {/* Panel de notificaciones */}
             {isNotificationsOpen && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border-2 border-gray-400 z-50">
-                <div className="p-3 border-b-2 border-gray-400 bg-gray-200">
-                  <h3 className="text-sm font-bold text-gray-900">NOTIFICACIONES</h3>
-                  <p className="text-xs text-gray-700">{unreadCount} sin leer</p>
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                <div className="p-3 border-b border-gray-200 bg-gray-50">
+                  <h3 className="text-sm font-semibold text-gray-900">NOTIFICACIONES</h3>
+                  <p className="text-xs text-gray-600">{unreadCount} sin leer</p>
                 </div>
                 
                 <div className="max-h-80 overflow-y-auto">
                   {notifications.map((notification) => (
                     <div
                       key={notification.id}
-                      className={`p-3 border-b border-gray-300 hover:bg-gray-50 ${
+                      className={`p-3 border-b border-gray-100 hover:bg-gray-50 ${
                         !notification.read ? 'bg-blue-50' : ''
                       }`}
                     >
@@ -194,13 +194,13 @@ export default function AppHeader({
                           <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-600 mt-1">{notification.time}</p>
+                      <p className="text-xs text-gray-500 mt-1">{notification.time}</p>
                     </div>
                   ))}
                 </div>
                 
-                <div className="p-2 border-t border-gray-300 bg-gray-100">
-                  <button className="w-full text-center text-xs text-[#3a6ea5] font-medium hover:text-[#2a4a75] py-1">
+                <div className="p-2 border-t border-gray-200 bg-gray-50">
+                  <button className="w-full text-center text-xs text-[#3a6ea5] hover:text-[#2a4a75] py-1">
                     Ver todas las notificaciones
                   </button>
                 </div>
@@ -209,7 +209,7 @@ export default function AppHeader({
           </div>
 
           {/* Separador */}
-          <div className="h-6 w-px bg-white" />
+          <div className="h-6 w-px bg-white/50" />
 
           {/* Usuario */}
           <div className="relative" ref={userMenuRef}>
@@ -218,17 +218,17 @@ export default function AppHeader({
                 setIsUserMenuOpen(!isUserMenuOpen);
                 setIsNotificationsOpen(false);
               }}
-              className="flex items-center space-x-3 px-3 py-2 bg-white/2 hover:bg-white/20 rounded border border-white transition-colors"
+              className="flex items-center space-x-3 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg border border-white transition-colors"
               disabled={loading}
             >
-              <div className="flex items-center justify-center w-8 h-8 bg-white rounded border border-gray-400">
-                <span className="text-[#3a6ea5] font-bold text-sm">
+              <div className="flex items-center justify-center w-8 h-8 bg-white rounded-full border border-gray-200">
+                <span className="text-[#3a6ea5] font-semibold text-sm">
                   {loading ? '...' : initials}
                 </span>
               </div>
 
               <div className="hidden md:block text-left">
-                <p className="text-sm font-bold text-white">
+                <p className="text-sm font-medium text-white">
                   {loading ? 'Cargando...' : displayName}
                 </p>
                 {displayEmail && (
@@ -247,19 +247,19 @@ export default function AppHeader({
 
             {/* Menú desplegable del usuario */}
             {isUserMenuOpen && userData && (
-              <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border-1 border-white z-50">
+              <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
                 {/* Encabezado del menú */}
-                <div className="p-3 border-b-1 border-gray-300 bg-gray-200">
-                  <h3 className="text-sm font-bold text-gray-900">INFORMACIÓN DEL USUARIO</h3>
+                <div className="p-3 border-b border-gray-200 bg-gray-50">
+                  <h3 className="text-sm font-semibold text-gray-900">INFORMACIÓN DEL USUARIO</h3>
                 </div>
                 
                 {/* Información del usuario */}
-                <div className="p-3 border-b border-white bg-gray-50">
-                  <p className="text-sm font-bold text-gray-900 truncate">{displayName}</p>
-                  <p className="text-xs text-gray-700 truncate">{displayEmail}</p>
-                  <div className="flex items-center mt-1">
-                    <span className="inline-flex items-center px-2 py-0.5 bg-gray-100 text-gray-900 text-xs font-medium rounded border border-gray-300">
-                      ID: SICAP-{userData.SystemUserID.toString().padStart(6, '0')}
+                <div className="p-3 border-b border-gray-100 bg-white">
+                  <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
+                  <p className="text-xs text-gray-600 truncate">{displayEmail}</p>
+                  <div className="flex items-center mt-2">
+                    <span className="inline-flex items-center px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-full border border-gray-200">
+                      ID: {userData.SystemUserID.toString()}
                     </span>
                   </div>
                 </div>
@@ -268,14 +268,14 @@ export default function AppHeader({
                 <div className="py-1">
                   <a
                     href="/administrative-personnel-dashboard/profile"
-                    className="flex items-center px-4 py-2 text-sm text-gray-900 hover:bg-gray-100 border-b border-gray-200"
+                    className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                   >
-                    <User className="w-4 h-4 mr-2 text-gray-600" />
+                    <User className="w-4 h-4 mr-2 text-gray-500" />
                     Mi perfil
                   </a>
                   <button
                     onClick={handleLogout}
-                    className="flex items-center w-full text-left px-4 py-2 text-sm font-bold text-red-700 hover:bg-red-50 border-t border-gray-300"
+                    className="flex items-center w-full text-left px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 border-t border-gray-100"
                   >
                     <LogOut className="w-4 h-4 mr-2" />
                     Cerrar sesión
@@ -283,9 +283,9 @@ export default function AppHeader({
                 </div>
                 
                 {/* Pie del menú */}
-                <div className="p-2 border-t border-gray-300 bg-gray-100">
-                  <p className="text-xs text-gray-600 text-center">
-                    Sistema v1.0.0
+                <div className="p-2 border-t border-gray-200 bg-gray-50">
+                  <p className="text-xs text-gray-500 text-center">
+                    SICAP v1.0.0
                   </p>
                 </div>
               </div>
