@@ -23,19 +23,20 @@ export async function GET(req: NextRequest) {
     // Obtener empleados base personnel que no tienen usuario (solo base personnel, sin proyectos)
     const [rows]: any = await connection.execute(`
       SELECT 
-        e.EmployeeID,
-        CONCAT(bp.FirstName, ' ', bp.LastName, ' ', IFNULL(bp.MiddleName, '')) AS FullName,
-        bpi.Email
+    e.EmployeeID,
+    CONCAT(bp.FirstName, ' ', bp.LastName, ' ', IFNULL(bp.MiddleName, '')) AS FullName,
+    bpi.Email
       FROM employees e
       INNER JOIN basepersonnel bp 
-        ON e.BasePersonnelID = bp.BasePersonnelID
+          ON e.EmployeeID = bp.EmployeeID  
       LEFT JOIN basepersonnelpersonalinfo bpi 
-        ON bp.BasePersonnelID = bpi.BasePersonnelID
+          ON bp.BasePersonnelID = bpi.BasePersonnelID
       LEFT JOIN systemusers su 
-        ON e.EmployeeID = su.EmployeeID
+          ON e.EmployeeID = su.EmployeeID
       WHERE su.SystemUserID IS NULL
-      ORDER BY bp.LastName, bp.FirstName
-    `);
+          AND e.EmployeeType = 'BASE'  -- Filtramos solo empleados de tipo BASE
+      ORDER BY bp.LastName, bp.FirstName;
+          `);
 
     return NextResponse.json(rows, { status: 200 });
 
