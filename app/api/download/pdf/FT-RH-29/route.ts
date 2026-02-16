@@ -8,6 +8,24 @@ import { createReport } from "docx-templates";
 
 const convertapi = new ConvertAPI(process.env.CONVERTAPI_SECRET!);
 
+/* ================================
+   FUNCIÓN PARA FORMATEAR FECHAS
+================================== */
+function formatFecha(fecha: string): string {
+  if (!fecha) return "";
+  try {
+    const d = new Date(fecha);
+    if (isNaN(d.getTime())) return fecha;
+    const dia = d.getDate().toString().padStart(2, "0");
+    const mes = new Intl.DateTimeFormat("es-MX", { month: "long" }).format(d);
+    const anio = d.getFullYear();
+    return `${dia} de ${mes} del ${anio}`;
+  } catch (error) {
+    console.warn("Error al formatear fecha:", error);
+    return fecha;
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const empleadoId = searchParams.get("empleadoId");
@@ -37,7 +55,7 @@ export async function GET(request: NextRequest) {
     // Primero, obtener información del empleado desde la tabla employees
     const [employeeInfo] = await connection.query<any[]>(
       `
-      SELECT EmployeeType, BasePersonnelID, ProjectPersonnelID 
+      SELECT EmployeeType
       FROM employees 
       WHERE EmployeeID = ?
     `,
@@ -71,9 +89,9 @@ export async function GET(request: NextRequest) {
           pc.LetterFileURL
         FROM projectpersonnel pp
         LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
-        WHERE pp.ProjectPersonnelID = ?
+        WHERE pp.EmployeeID = ?
       `,
-        [employee.ProjectPersonnelID]
+        [empleadoId]
       );
 
       if (!rows.length) {
@@ -84,7 +102,7 @@ export async function GET(request: NextRequest) {
       }
 
       const r = rows[0];
-      fullName = `${r.FirstName} ${r.LastName} ${r.MiddleName || ""}`.trim();
+      fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
       position = r.Position || "";
       startDate = r.StartDate || "";
       letterFileURL = r.LetterFileURL || "";
@@ -101,9 +119,9 @@ export async function GET(request: NextRequest) {
           bc.LetterFileURL
         FROM basepersonnel bp
         LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
-        WHERE bp.BasePersonnelID = ?
+        WHERE bp.EmployeeID = ?
       `,
-        [employee.BasePersonnelID]
+        [empleadoId]
       );
 
       if (!rows.length) {
@@ -114,28 +132,22 @@ export async function GET(request: NextRequest) {
       }
 
       const r = rows[0];
-      fullName = `${r.FirstName} ${r.LastName} ${r.MiddleName || ""}`.trim();
+      fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
       position = r.Position || "";
       startDate = r.StartDate || "";
       letterFileURL = r.LetterFileURL || "";
     }
 
-    // Formatear la fecha de ingreso
-    let fechaFormateada = "";
-    if (startDate) {
-      try {
-        const dateObj = new Date(startDate);
-        const dia = dateObj.getDate().toString().padStart(2, "0");
-        const mes = new Intl.DateTimeFormat("es-MX", {
-          month: "long",
-        }).format(dateObj);
-        const anio = dateObj.getFullYear();
-        fechaFormateada = `${dia} de ${mes} del ${anio}`;
-      } catch (error) {
-        console.warn("Error al formatear fecha:", error);
-        fechaFormateada = startDate;
-      }
+    // Validar que se obtuvo el nombre
+    if (!fullName) {
+      return NextResponse.json(
+        { error: "No se pudo obtener el nombre del empleado" },
+        { status: 404 }
+      );
     }
+
+    // Formatear la fecha de ingreso
+    const fechaFormateada = formatFecha(startDate);
 
     // Si ya tenemos un PDF guardado, retornarlo
     if (letterFileURL) {
@@ -190,10 +202,14 @@ export async function GET(request: NextRequest) {
     const report = await createReport({
       template,
       data: {
-        NOMBRE_COMPLETO: fullName,
-        FECHA_DE_INGRESO: fechaFormateada,
-        PUESTO_DEL_EMPLEADO: position,
-        FECHA_GENERACION: new Date().toLocaleDateString("es-MX"),
+        NOMBRE_COMPLETO: fullName || "NO ESPECIFICADO",
+        FECHA_DE_INGRESO: fechaFormateada || "NO ESPECIFICADO",
+        PUESTO_DEL_EMPLEADO: position || "NO ESPECIFICADO",
+        FECHA_GENERACION: new Date().toLocaleDateString("es-MX", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric"
+        }),
       },
       cmdDelimiter: ["[[", "]]"],
     });
@@ -232,24 +248,30 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error(error);
+    console.error("Error al generar FT-RH-29 PDF:", error);
     return NextResponse.json(
       { error: error.message || "Error al generar PDF" },
       { status: 500 }
     );
   } finally {
-    connection?.release?.();
-    // Limpiar archivos temporales
-    if (fs.existsSync(tempWordPath)) {
-      fs.unlinkSync(tempWordPath);
+    if (connection) {
+      connection.release();
     }
-    if (fs.existsSync(tempPdfPath)) {
-      fs.unlinkSync(tempPdfPath);
+    // Limpiar archivos temporales
+    try {
+      if (fs.existsSync(tempWordPath)) {
+        fs.unlinkSync(tempWordPath);
+      }
+      if (fs.existsSync(tempPdfPath)) {
+        fs.unlinkSync(tempPdfPath);
+      }
+    } catch (cleanupError) {
+      console.warn("Error al limpiar archivos temporales:", cleanupError);
     }
   }
 }
 
-// Nuevo endpoint para subir y guardar el PDF
+// Endpoint para generar y guardar el PDF
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -268,7 +290,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (!pdfResponse.ok) {
-      const error = await pdfResponse.json();
+      const error = await pdfResponse.json().catch(() => ({ error: "Error desconocido" }));
       return NextResponse.json(
         { error: error.error || "Error al generar el PDF" },
         { status: 500 }
@@ -283,7 +305,7 @@ export async function POST(request: NextRequest) {
       fileName: `FT-RH-29-${empleadoId}.pdf`,
     });
   } catch (error: any) {
-    console.error(error);
+    console.error("Error en POST FT-RH-29:", error);
     return NextResponse.json(
       { error: error.message || "Error al procesar la solicitud" },
       { status: 500 }
