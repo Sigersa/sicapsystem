@@ -32,8 +32,10 @@ export async function GET(
           ELSE NULL
         END as WarningFileURL
       FROM employees e
-      LEFT JOIN basecontracts bc ON e.BasePersonnelID = bc.BasePersonnelID AND e.EmployeeType = 'BASE'
-      LEFT JOIN projectcontracts pc ON e.ProjectPersonnelID = pc.ProjectPersonnelID AND e.EmployeeType = 'PROJECT'
+      LEFT JOIN basepersonnel bp ON bp.EmployeeID = e.EmployeeID
+      LEFT JOIN projectspersonnel pp ON pp.EmployeeID = e.EmployeeID
+      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID AND e.EmployeeType = 'BASE'
+      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID AND e.EmployeeType = 'PROJECT'
       WHERE e.EmployeeID = ?
       LIMIT 1
     `, [parseInt(employeeId)]);
