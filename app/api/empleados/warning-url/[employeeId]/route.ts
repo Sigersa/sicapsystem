@@ -23,8 +23,8 @@ export async function GET(
       SELECT 
         e.EmployeeID,
         e.EmployeeType,
-        e.BasePersonnelID,
-        e.ProjectPersonnelID,
+        bp.BasePersonnelID,
+        pp.ProjectPersonnelID,
         bc.WarningFileURL,
         bc.LetterFileURL as BaseLetterFileURL,
         pc.WarningFileURL as ProjectWarningFileURL,
@@ -34,8 +34,8 @@ export async function GET(
       FROM employees e
       LEFT JOIN basecontracts bc ON e.BasePersonnelID = bc.BasePersonnelID AND e.EmployeeType = 'BASE'
       LEFT JOIN projectcontracts pc ON e.ProjectPersonnelID = pc.ProjectPersonnelID AND e.EmployeeType = 'PROJECT'
-      LEFT JOIN basepersonnel bp ON e.BasePersonnelID = bp.BasePersonnelID
-      LEFT JOIN projectpersonnel pp ON e.ProjectPersonnelID = pp.ProjectPersonnelID
+      LEFT JOIN basepersonnel e ON bp.EmployeeID = e.EmployeeID
+      LEFT JOIN projectpersonnel e ON e.EmployeeID = e.EmployeeID
       WHERE e.EmployeeID = ?
       LIMIT 1
     `, [parseInt(employeeId)]);
