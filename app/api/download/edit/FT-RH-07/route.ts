@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     // Primero, obtener información del empleado desde la tabla employees
     const [employeeInfo] = await connection.query<any[]>(`
-      SELECT EmployeeType, BasePersonnelID, ProjectPersonnelID 
+      SELECT EmployeeType 
       FROM employees 
       WHERE EmployeeID = ?
     `, [empleadoId]);
@@ -43,15 +43,15 @@ export async function GET(request: NextRequest) {
           pp.LastName,
           pp.MiddleName
         FROM projectpersonnel pp
-        WHERE pp.ProjectPersonnelID = ?
-      `, [employee.ProjectPersonnelID]);
+        WHERE pp.EmployeeID = ?
+      `, [empleadoId]);
 
       if (!rows.length) {
         return NextResponse.json({ error: "Información de proyecto no encontrada" }, { status: 404 });
       }
 
       const r = rows[0];
-      fullName = `${r.FirstName} ${r.LastName} ${r.MiddleName || ""}`.trim();
+      fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
 
     } else {
       // Personal Base
@@ -61,15 +61,20 @@ export async function GET(request: NextRequest) {
           bp.LastName,
           bp.MiddleName
         FROM basepersonnel bp
-        WHERE bp.BasePersonnelID = ?
-      `, [employee.BasePersonnelID]);
+        WHERE bp.EmployeeID = ?
+      `, [empleadoId]);
 
       if (!rows.length) {
         return NextResponse.json({ error: "Información de personal base no encontrada" }, { status: 404 });
       }
 
       const r = rows[0];
-      fullName = `${r.FirstName} ${r.LastName} ${r.MiddleName || ""}`.trim();
+      fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
+    }
+
+    // Si no se pudo obtener el nombre completo
+    if (!fullName) {
+      return NextResponse.json({ error: "No se pudo obtener el nombre del empleado" }, { status: 404 });
     }
 
     // Usar la misma plantilla para ambos tipos
@@ -95,6 +100,11 @@ export async function GET(request: NextRequest) {
       template,
       data: {
         NOMBRE_COMPLETO: fullName,
+        FECHA_GENERACION: new Date().toLocaleDateString("es-MX", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric"
+        }),
       },
       cmdDelimiter: ["[[", "]]"],
     });
@@ -114,9 +124,13 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error(error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Error al generar FT-RH-07:", error);
+    return NextResponse.json({ 
+      error: "Error al generar el documento: " + (error.message || "Error desconocido") 
+    }, { status: 500 });
   } finally {
-    connection?.release?.();
+    if (connection) {
+      connection.release();
+    }
   }
 }
