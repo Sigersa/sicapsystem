@@ -116,6 +116,7 @@ function formatFecha(fecha: string): string {
   if (!fecha) return "";
   try {
     const d = new Date(fecha);
+    if (isNaN(d.getTime())) return fecha;
     const dia = d.getDate().toString().padStart(2, "0");
     const mes = new Intl.DateTimeFormat("es-MX", { month: "long" }).format(d);
     const anio = d.getFullYear();
@@ -155,7 +156,7 @@ export async function GET(request: NextRequest) {
     // Primero, obtener información del empleado desde la tabla employees
     const [employeeInfo] = await connection.query<any[]>(
       `
-      SELECT EmployeeType, BasePersonnelID, ProjectPersonnelID 
+      SELECT EmployeeType 
       FROM employees 
       WHERE EmployeeID = ?
     `,
@@ -182,15 +183,15 @@ export async function GET(request: NextRequest) {
           pp.FirstName,
           pp.LastName,
           pp.MiddleName,
-          pi.Municipality,
-          pi.Nationality,
-          pi.Gender,
-          pi.Birthdate,
-          pi.MaritalStatus,
-          pi.RFC,
-          pi.NSS,
-          pi.CURP,
-          pi.Address,
+          ppi.Municipality,
+          ppi.Nationality,
+          ppi.Gender,
+          ppi.Birthdate,
+          ppi.MaritalStatus,
+          ppi.RFC,
+          ppi.NSS,
+          ppi.CURP,
+          ppi.Address,
           pc.EndDate,
           pc.SalaryIMSS,
           pc.Position,
@@ -204,17 +205,17 @@ export async function GET(request: NextRequest) {
           pb.Percentage,
           pc.LetterFileURL
         FROM projectpersonnel pp
-        LEFT JOIN projectpersonnelpersonalinfo pi 
-          ON pi.ProjectPersonnelID = pp.ProjectPersonnelID
+        LEFT JOIN projectpersonnelpersonalinfo ppi 
+          ON ppi.ProjectPersonnelID = pp.ProjectPersonnelID
         LEFT JOIN projectpersonnelbeneficiaries pb 
           ON pb.ProjectPersonnelID = pp.ProjectPersonnelID
         LEFT JOIN projectcontracts pc 
           ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
         LEFT JOIN projects pr 
           ON pr.ProjectID = pc.ProjectID
-        WHERE pp.ProjectPersonnelID = ?
+        WHERE pp.EmployeeID = ?
       `,
-        [employee.ProjectPersonnelID]
+        [empleadoId]
       );
 
       if (!rows.length) {
@@ -260,9 +261,9 @@ export async function GET(request: NextRequest) {
           ON bb.BasePersonnelID = bp.BasePersonnelID
         LEFT JOIN basecontracts bc 
           ON bc.BasePersonnelID = bp.BasePersonnelID
-        WHERE bp.BasePersonnelID = ?
+        WHERE bp.EmployeeID = ?
       `,
-        [employee.BasePersonnelID]
+        [empleadoId]
       );
 
       if (!rows.length) {
@@ -347,27 +348,31 @@ export async function GET(request: NextRequest) {
     const report = await createReport({
       template,
       data: {
-        NOMBRE_COMPLETO: nombreCompleto,
-        FECHA_DE_INGRESO: formatFecha(employeeData.StartDate),
-        FECHA_DE_NACIMIENTO_DEL_EMPLEADO: formatFecha(employeeData.Birthdate),
-        FECHA_TERMINO: formatFecha(employeeData.EndDate),
-        PUESTO_DEL_EMPLEADO: employeeData.Position || "",
-        MUNICIPIO_DEL_EMPLEADO: employeeData.Municipality || "",
-        NACIONALIDAD_DEL_EMPLEADO: employeeData.Nationality || "",
-        GENERO_DEL_EMPLEADO: employeeData.Gender || "",
-        ESTADO_CIVIL_DEL_EMPLEADO: employeeData.MaritalStatus || "",
-        RFC_DEL_EMPLEADO: employeeData.RFC || "",
-        NSS_DEL_EMPLEADO: employeeData.NSS || "",
-        CURP_DEL_EMPLEADO: employeeData.CURP || "",
-        DIRECCION_DEL_EMPLEADO: employeeData.Address || "",
-        NOMBRE_DEL_PROYECTO: employeeData.NameProject || employeeData.CompanyName || "",
-        DIRECCION_DEL_PROYECTO: employeeData.ProjectAddress || employeeData.CompanyAddress || "",
+        NOMBRE_COMPLETO: nombreCompleto || "NO ESPECIFICADO",
+        FECHA_DE_INGRESO: formatFecha(employeeData.StartDate) || "NO ESPECIFICADO",
+        FECHA_DE_NACIMIENTO_DEL_EMPLEADO: formatFecha(employeeData.Birthdate) || "NO ESPECIFICADO",
+        FECHA_TERMINO: formatFecha(employeeData.EndDate) || "NO ESPECIFICADO",
+        PUESTO_DEL_EMPLEADO: employeeData.Position || "NO ESPECIFICADO",
+        MUNICIPIO_DEL_EMPLEADO: employeeData.Municipality || "NO ESPECIFICADO",
+        NACIONALIDAD_DEL_EMPLEADO: employeeData.Nationality || "NO ESPECIFICADO",
+        GENERO_DEL_EMPLEADO: employeeData.Gender || "NO ESPECIFICADO",
+        ESTADO_CIVIL_DEL_EMPLEADO: employeeData.MaritalStatus || "NO ESPECIFICADO",
+        RFC_DEL_EMPLEADO: employeeData.RFC || "NO ESPECIFICADO",
+        NSS_DEL_EMPLEADO: employeeData.NSS || "NO ESPECIFICADO",
+        CURP_DEL_EMPLEADO: employeeData.CURP || "NO ESPECIFICADO",
+        DIRECCION_DEL_EMPLEADO: employeeData.Address || "NO ESPECIFICADO",
+        NOMBRE_DEL_PROYECTO: employeeData.NameProject || employeeData.CompanyName || "NO ESPECIFICADO",
+        DIRECCION_DEL_PROYECTO: employeeData.ProjectAddress || employeeData.CompanyAddress || "NO ESPECIFICADO",
         SALARIO_IMSS_DEL_EMPLEADO: salarioNumero.toFixed(2),
-        SALARIO_IMSS_LETRA: SALARIO_IMSS_LETRA,
+        SALARIO_IMSS_LETRA: SALARIO_IMSS_LETRA || "NO ESPECIFICADO",
         NOMBRE_COMPLETO_B: nombreCompletoB || "NO ESPECIFICADO",
         PARENTESCO_B: employeeData.Relationship || "NO ESPECIFICADO",
-        PORCENTAGE_B: employeeData.Percentage || "0",
-        FECHA_GENERACION: new Date().toLocaleDateString("es-MX"),
+        PORCENTAGE_B: employeeData.Percentage ? employeeData.Percentage.toString() : "0",
+        FECHA_GENERACION: new Date().toLocaleDateString("es-MX", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric"
+        }),
       },
       cmdDelimiter: ["[[", "]]"],
     });
@@ -406,19 +411,25 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error(error);
+    console.error("Error al generar FT-RH-02 PDF:", error);
     return NextResponse.json(
       { error: error.message || "Error al generar PDF" },
       { status: 500 }
     );
   } finally {
-    connection?.release?.();
-    // Limpiar archivos temporales
-    if (fs.existsSync(tempWordPath)) {
-      fs.unlinkSync(tempWordPath);
+    if (connection) {
+      connection.release();
     }
-    if (fs.existsSync(tempPdfPath)) {
-      fs.unlinkSync(tempPdfPath);
+    // Limpiar archivos temporales
+    try {
+      if (fs.existsSync(tempWordPath)) {
+        fs.unlinkSync(tempWordPath);
+      }
+      if (fs.existsSync(tempPdfPath)) {
+        fs.unlinkSync(tempPdfPath);
+      }
+    } catch (cleanupError) {
+      console.warn("Error al limpiar archivos temporales:", cleanupError);
     }
   }
 }
@@ -442,7 +453,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (!pdfResponse.ok) {
-      const error = await pdfResponse.json();
+      const error = await pdfResponse.json().catch(() => ({ error: "Error desconocido" }));
       return NextResponse.json(
         { error: error.error || "Error al generar el PDF" },
         { status: 500 }
@@ -455,7 +466,7 @@ export async function POST(request: NextRequest) {
       fileName: `FT-RH-02-${empleadoId}.pdf`,
     });
   } catch (error: any) {
-    console.error(error);
+    console.error("Error en POST FT-RH-02:", error);
     return NextResponse.json(
       { error: error.message || "Error al procesar la solicitud" },
       { status: 500 }
