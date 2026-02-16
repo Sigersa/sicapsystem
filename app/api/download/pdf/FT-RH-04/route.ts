@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     // Primero, obtener información del empleado desde la tabla employees
     const [employeeInfo] = await connection.query<any[]>(`
-      SELECT EmployeeType, BasePersonnelID, ProjectPersonnelID 
+      SELECT EmployeeType 
       FROM employees 
       WHERE EmployeeID = ?
     `, [empleadoId]);
@@ -50,7 +50,6 @@ export async function GET(request: NextRequest) {
     }
 
     const employee = employeeInfo[0];
-    let query;
     let fullName = "";
     let projectName = "N/A";
     let startDate = "";
@@ -76,21 +75,21 @@ export async function GET(request: NextRequest) {
           pc.WorkSchedule,
           pc.Salary,
           pr.NameProject,
-          pc.ProjectPersonnelID,
+          pp.ProjectPersonnelID,
           pc.WarningFileURL
         FROM projectpersonnel pp
-        INNER JOIN projectpersonneldocumentation pd ON pp.ProjectPersonnelID = pd.ProjectPersonnelID
+        LEFT JOIN projectpersonneldocumentation pd ON pp.ProjectPersonnelID = pd.ProjectPersonnelID
         LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
         LEFT JOIN projects pr ON pr.ProjectID = pc.ProjectID
-        WHERE pp.ProjectPersonnelID = ?
-      `, [employee.ProjectPersonnelID]);
+        WHERE pp.EmployeeID = ?
+      `, [empleadoId]);
 
       if (!rows.length) {
         return NextResponse.json({ error: "Información de proyecto no encontrada" }, { status: 404 });
       }
 
       const r = rows[0];
-      fullName = `${r.FirstName} ${r.LastName} ${r.MiddleName || ""}`.trim();
+      fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
       projectName = r.NameProject || "N/A";
       startDate = r.StartDate || "";
       position = r.Position || "";
@@ -106,7 +105,7 @@ export async function GET(request: NextRequest) {
         SELECT * FROM projectpersonneldocumentation 
         WHERE ProjectPersonnelID = ?
       `;
-      docParams = [employee.ProjectPersonnelID];
+      docParams = [r.ProjectPersonnelID];
 
     } else {
       // Personal Base
@@ -121,20 +120,20 @@ export async function GET(request: NextRequest) {
           bp.Area,
           bd.*,
           DATE_FORMAT(bc.StartDate, '%Y/%m/%d') AS StartDate,
-          bc.BasePersonnelID,
+          bp.BasePersonnelID,
           bc.WarningFileURL
         FROM basepersonnel bp
         LEFT JOIN basepersonneldocumentation bd ON bp.BasePersonnelID = bd.BasePersonnelID
         LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
-        WHERE bp.BasePersonnelID = ?
-      `, [employee.BasePersonnelID]);
+        WHERE bp.EmployeeID = ?
+      `, [empleadoId]);
 
       if (!rows.length) {
         return NextResponse.json({ error: "Información de personal base no encontrada" }, { status: 404 });
       }
 
       const r = rows[0];
-      fullName = `${r.FirstName} ${r.LastName} ${r.MiddleName || ""}`.trim();
+      fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
       startDate = r.StartDate || "";
       position = r.Position || "";
       workSchedule = r.WorkSchedule || "";
@@ -150,32 +149,39 @@ export async function GET(request: NextRequest) {
         SELECT * FROM basepersonneldocumentation 
         WHERE BasePersonnelID = ?
       `;
-      docParams = [employee.BasePersonnelID];
+      docParams = [r.BasePersonnelID];
     }
 
     // Si ya tenemos un PDF guardado y no estamos forzando la regeneración, retornarlo
     if (pdfUrl && !saveToUploadThing) {
-      const pdfResponse = await fetch(pdfUrl);
-      const pdfBuffer = await pdfResponse.arrayBuffer();
-      
-      return new NextResponse(pdfBuffer, {
-        headers: {
-          "Content-Type": "application/pdf",
-          "Content-Disposition": isPreview
-            ? 'inline; filename="FT-RH-04.pdf"'
-            : 'attachment; filename="FT-RH-04.pdf"',
-        },
-      });
+      try {
+        const pdfResponse = await fetch(pdfUrl);
+        if (pdfResponse.ok) {
+          const pdfBuffer = await pdfResponse.arrayBuffer();
+          
+          const fileName = employee.EmployeeType === 'PROJECT'
+            ? `FT-RH-04-PROYECTO-${empleadoId}.pdf`
+            : `FT-RH-04-BASE-${empleadoId}.pdf`;
+
+          return new NextResponse(pdfBuffer, {
+            headers: {
+              "Content-Type": "application/pdf",
+              "Content-Disposition": isPreview
+                ? `inline; filename="${fileName}"`
+                : `attachment; filename="${fileName}"`,
+            },
+          });
+        }
+      } catch (error) {
+        console.warn("Error al obtener PDF existente, generando uno nuevo:", error);
+      }
     }
 
     // Obtener documentos
     const [docRows] = await connection.query<any[]>(documentationQuery, docParams);
     
-    if (!docRows.length) {
-      return NextResponse.json({ error: "Documentación no encontrada" }, { status: 404 });
-    }
-
-    const doc = docRows[0];
+    // Si no hay documentos, crear un objeto vacío
+    const doc = docRows.length > 0 ? docRows[0] : {};
 
     // Cargar plantilla Excel
     const templatePath = path.join(
@@ -196,59 +202,42 @@ export async function GET(request: NextRequest) {
     const yesNo = (v: any) => (v ? "SI" : "NO");
 
     // Llenar datos comunes
-    ws.getCell("F6").value = employee.EmployeeType === 'PROJECT' ? projectName : area;
-    ws.getCell("F7").value = fullName;
-    ws.getCell("F8").value = startDate;
-    ws.getCell("F9").value = position;
-    ws.getCell("F10").value = workSchedule;
+    ws.getCell("F6").value = employee.EmployeeType === 'PROJECT' ? projectName : area || "NO ESPECIFICADO";
+    ws.getCell("F7").value = fullName || "NO ESPECIFICADO";
+    ws.getCell("F8").value = startDate || "NO ESPECIFICADO";
+    ws.getCell("F9").value = position || "NO ESPECIFICADO";
+    ws.getCell("F10").value = workSchedule || "NO ESPECIFICADO";
 
     if (salary > 0) {
       ws.getCell("F11").value = Number(salary);
       ws.getCell("F11").numFmt = '"$"#,##0.00';
+    } else {
+      ws.getCell("F11").value = 0;
+      ws.getCell("F11").numFmt = '"$"#,##0.00';
     }
 
-    ws.getCell("F12").value = employee.EmployeeType === 'PROJECT' ? "TEMPORAL" : "BASE";
+    ws.getCell("F12").value = employee.EmployeeType === 'PROJECT' ? "PROYECTO" : "BASE";
 
     // Documentos
-    if (employee.EmployeeType === 'PROJECT') {
-      ws.getCell("F18").value = yesNo(doc.CVFileURL);
-      ws.getCell("F19").value = yesNo(doc.ANFileURL);
-      ws.getCell("F20").value = yesNo(doc.CURPFileURL);
-      ws.getCell("F21").value = yesNo(doc.RFCFileURL);
-      ws.getCell("F22").value = yesNo(doc.IMSSFileURL);
-      ws.getCell("F23").value = yesNo(doc.INEFileURL);
-      ws.getCell("F24").value = yesNo(doc.CDFileURL);
-      ws.getCell("F25").value = yesNo(doc.CEFileURL);
+    ws.getCell("F18").value = yesNo(doc.CVFileURL);
+    ws.getCell("F19").value = yesNo(doc.ANFileURL);
+    ws.getCell("F20").value = yesNo(doc.CURPFileURL);
+    ws.getCell("F21").value = yesNo(doc.RFCFileURL);
+    ws.getCell("F22").value = yesNo(doc.IMSSFileURL);
+    ws.getCell("F23").value = yesNo(doc.INEFileURL);
+    ws.getCell("F24").value = yesNo(doc.CDFileURL);
+    ws.getCell("F25").value = yesNo(doc.CEFileURL);
 
-      ws.getCell("L18").value = yesNo(doc.CPFileURL);
-      ws.getCell("L19").value = yesNo(doc.LMFileURL);
-      ws.getCell("L20").value = yesNo(doc.ANPFileURL);
-      ws.getCell("L21").value = yesNo(doc.CRFileURL);
-      ws.getCell("L22").value = yesNo(doc.RIFileURL);
-      ws.getCell("L23").value = yesNo(doc.EMFileURL);
-      ws.getCell("L24").value = yesNo(doc.FotoFileURL);
-      ws.getCell("L25").value = yesNo(doc.FolletoFileURL);
-    } else {
-      ws.getCell("F18").value = yesNo(doc.CVFileURL);
-      ws.getCell("F19").value = yesNo(doc.ANFileURL);
-      ws.getCell("F20").value = yesNo(doc.CURPFileURL);
-      ws.getCell("F21").value = yesNo(doc.RFCFileURL);
-      ws.getCell("F22").value = yesNo(doc.IMSSFileURL);
-      ws.getCell("F23").value = yesNo(doc.INEFileURL);
-      ws.getCell("F24").value = yesNo(doc.CDFileURL);
-      ws.getCell("F25").value = yesNo(doc.CEFileURL);
+    ws.getCell("L18").value = yesNo(doc.CPFileURL);
+    ws.getCell("L19").value = yesNo(doc.LMFileURL);
+    ws.getCell("L20").value = yesNo(doc.ANPFileURL);
+    ws.getCell("L21").value = yesNo(doc.CRFileURL);
+    ws.getCell("L22").value = yesNo(doc.RIFileURL);
+    ws.getCell("L23").value = yesNo(doc.EMFileURL);
+    ws.getCell("L24").value = yesNo(doc.FotoFileURL);
+    ws.getCell("L25").value = yesNo(doc.FolletoFileURL);
 
-      ws.getCell("L18").value = yesNo(doc.CPFileURL);
-      ws.getCell("L19").value = yesNo(doc.LMFileURL);
-      ws.getCell("L20").value = yesNo(doc.ANPFileURL);
-      ws.getCell("L21").value = yesNo(doc.CRFileURL);
-      ws.getCell("L22").value = yesNo(doc.RIFileURL);
-      ws.getCell("L23").value = yesNo(doc.EMFileURL);
-      ws.getCell("L24").value = yesNo(doc.FotoFileURL);
-      ws.getCell("L25").value = yesNo(doc.FolletoFileURL);
-    }
-
-    ws.getCell("F45").value = fullName;
+    ws.getCell("F45").value = fullName || "NO ESPECIFICADO";
 
     // Guardar Excel temporal
     await workbook.xlsx.writeFile(tempExcelPath);
@@ -268,7 +257,7 @@ export async function GET(request: NextRequest) {
     // Subir a UploadThing si se solicita
     if (saveToUploadThing) {
       try {
-        const fileName = `contrato_${fullName.replace(/\s+/g, '_')}_${Date.now()}.pdf`;
+        const fileName = `FT-RH-04-${fullName.replace(/\s+/g, '_')}-${Date.now()}.pdf`;
         const file = new File([Buffer.from(pdfBuffer)], fileName, { type: 'application/pdf' });
         
         // Usar UTApi para subir el archivo
@@ -281,12 +270,12 @@ export async function GET(request: NextRequest) {
           if (employee.EmployeeType === 'PROJECT') {
             await connection.execute(
               `UPDATE projectcontracts SET WarningFileURL = ? WHERE ProjectPersonnelID = ?`,
-              [pdfUrl, employee.ProjectPersonnelID]
+              [pdfUrl, docParams[0]]
             );
           } else {
             await connection.execute(
               `UPDATE basecontracts SET WarningFileURL = ? WHERE BasePersonnelID = ?`,
-              [pdfUrl, employee.BasePersonnelID]
+              [pdfUrl, docParams[0]]
             );
           }
           
@@ -298,28 +287,38 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const fileName = employee.EmployeeType === 'PROJECT'
+      ? `FT-RH-04-PROYECTO-${empleadoId}.pdf`
+      : `FT-RH-04-BASE-${empleadoId}.pdf`;
+
     return new NextResponse(Buffer.from(pdfBuffer), {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": isPreview
-          ? 'inline; filename="FT-RH-04.pdf"'
-          : 'attachment; filename="FT-RH-04.pdf"',
+          ? `inline; filename="${fileName}"`
+          : `attachment; filename="${fileName}"`,
       },
     });
   } catch (error: any) {
-    console.error(error);
+    console.error("Error al generar FT-RH-04 PDF:", error);
     return NextResponse.json(
       { error: error.message || "Error al generar PDF" },
       { status: 500 }
     );
   } finally {
-    connection?.release?.();
-    // Limpiar archivos temporales
-    if (fs.existsSync(tempExcelPath)) {
-      fs.unlinkSync(tempExcelPath);
+    if (connection) {
+      connection.release();
     }
-    if (fs.existsSync(tempPdfPath)) {
-      fs.unlinkSync(tempPdfPath);
+    // Limpiar archivos temporales
+    try {
+      if (fs.existsSync(tempExcelPath)) {
+        fs.unlinkSync(tempExcelPath);
+      }
+      if (fs.existsSync(tempPdfPath)) {
+        fs.unlinkSync(tempPdfPath);
+      }
+    } catch (cleanupError) {
+      console.warn("Error al limpiar archivos temporales:", cleanupError);
     }
   }
 }
@@ -343,25 +342,23 @@ export async function POST(request: NextRequest) {
     );
 
     if (!pdfResponse.ok) {
+      const error = await pdfResponse.json().catch(() => ({ error: "Error desconocido" }));
       return NextResponse.json(
-        { error: "Error al generar el PDF" },
+        { error: error.error || "Error al generar el PDF" },
         { status: 500 }
       );
     }
 
-    // Obtener la URL del PDF de la respuesta
     const pdfBuffer = await pdfResponse.arrayBuffer();
-    const pdfUrl = pdfResponse.headers.get("x-uploadthing-url") || "";
 
     return NextResponse.json({
       success: true,
-      message: "PDF generado y guardado exitosamente",
-      pdfUrl: pdfUrl,
-      pdfBuffer: Buffer.from(pdfBuffer).toString("base64")
+      message: "PDF generado exitosamente",
+      fileName: `FT-RH-04-${empleadoId}.pdf`,
     });
 
   } catch (error: any) {
-    console.error(error);
+    console.error("Error en POST FT-RH-04:", error);
     return NextResponse.json(
       { error: error.message || "Error al procesar la solicitud" },
       { status: 500 }
