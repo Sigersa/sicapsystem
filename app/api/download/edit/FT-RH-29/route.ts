@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     // Primero, obtener información del empleado desde la tabla employees
     const [employeeInfo] = await connection.query<any[]>(
       `
-      SELECT EmployeeType, BasePersonnelID, ProjectPersonnelID 
+      SELECT EmployeeType
       FROM employees 
       WHERE EmployeeID = ?
     `,
@@ -55,9 +55,9 @@ export async function GET(request: NextRequest) {
           pc.Position
         FROM projectpersonnel pp
         LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
-        WHERE pp.ProjectPersonnelID = ?
+        WHERE pp.EmployeeID = ?
       `,
-        [employee.ProjectPersonnelID]
+        [empleadoId]
       );
 
       if (!rows.length) {
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
       }
 
       const r = rows[0];
-      fullName = `${r.FirstName} ${r.LastName} ${r.MiddleName || ""}`.trim();
+      fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
       position = r.Position || "";
       startDate = r.StartDate || "";
     } else {
@@ -83,9 +83,9 @@ export async function GET(request: NextRequest) {
           DATE_FORMAT(bc.StartDate, '%Y/%m/%d') AS StartDate
         FROM basepersonnel bp
         LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
-        WHERE bp.BasePersonnelID = ?
+        WHERE bp.EmployeeID = ?
       `,
-        [employee.BasePersonnelID]
+        [empleadoId]
       );
 
       if (!rows.length) {
@@ -96,9 +96,17 @@ export async function GET(request: NextRequest) {
       }
 
       const r = rows[0];
-      fullName = `${r.FirstName} ${r.LastName} ${r.MiddleName || ""}`.trim();
+      fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
       position = r.Position || "";
       startDate = r.StartDate || "";
+    }
+
+    // Validar que se obtuvieron los datos necesarios
+    if (!fullName) {
+      return NextResponse.json(
+        { error: "No se pudo obtener el nombre del empleado" },
+        { status: 404 }
+      );
     }
 
     // Formatear la fecha de ingreso
@@ -106,12 +114,17 @@ export async function GET(request: NextRequest) {
     if (startDate) {
       try {
         const dateObj = new Date(startDate);
-        const dia = dateObj.getDate().toString().padStart(2, "0");
-        const mes = new Intl.DateTimeFormat("es-MX", {
-          month: "long",
-        }).format(dateObj);
-        const anio = dateObj.getFullYear();
-        fechaFormateada = `${dia} de ${mes} del ${anio}`;
+        // Verificar si la fecha es válida
+        if (!isNaN(dateObj.getTime())) {
+          const dia = dateObj.getDate().toString().padStart(2, "0");
+          const mes = new Intl.DateTimeFormat("es-MX", {
+            month: "long",
+          }).format(dateObj);
+          const anio = dateObj.getFullYear();
+          fechaFormateada = `${dia} de ${mes} del ${anio}`;
+        } else {
+          fechaFormateada = startDate;
+        }
       } catch (error) {
         console.warn("Error al formatear fecha:", error);
         fechaFormateada = startDate;
@@ -141,9 +154,13 @@ export async function GET(request: NextRequest) {
       template,
       data: {
         NOMBRE_COMPLETO: fullName,
-        FECHA_DE_INGRESO: fechaFormateada,
-        PUESTO_DEL_EMPLEADO: position,
-        FECHA_GENERACION: new Date().toLocaleDateString("es-MX"),
+        FECHA_DE_INGRESO: fechaFormateada || "NO ESPECIFICADO",
+        PUESTO_DEL_EMPLEADO: position || "NO ESPECIFICADO",
+        FECHA_GENERACION: new Date().toLocaleDateString("es-MX", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric"
+        }),
       },
       cmdDelimiter: ["[[", "]]"],
     });
@@ -164,9 +181,14 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error(error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Error al generar FT-RH-29:", error);
+    return NextResponse.json(
+      { error: "Error al generar el documento: " + (error.message || "Error desconocido") },
+      { status: 500 }
+    );
   } finally {
-    connection?.release?.();
+    if (connection) {
+      connection.release();
+    }
   }
 }
