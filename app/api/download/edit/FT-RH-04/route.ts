@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     // Primero, obtener información del empleado desde la tabla employees
     const [employeeInfo] = await connection.query<any[]>(`
-      SELECT EmployeeType, BasePersonnelID, ProjectPersonnelID 
+      SELECT EmployeeType 
       FROM employees 
       WHERE EmployeeID = ?
     `, [empleadoId]);
@@ -55,20 +55,21 @@ export async function GET(request: NextRequest) {
           pc.Position,
           pc.WorkSchedule,
           pc.Salary,
-          pr.NameProject
+          pr.NameProject,
+          pp.ProjectPersonnelID
         FROM projectpersonnel pp
         LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
         LEFT JOIN projectpersonneldocumentation pd ON pp.ProjectPersonnelID = pd.ProjectPersonnelID
         LEFT JOIN projects pr ON pr.ProjectID = pc.ProjectID
-        WHERE pp.ProjectPersonnelID = ?
-      `, [employee.ProjectPersonnelID]);
+        WHERE pp.EmployeeID = ?
+      `, [empleadoId]);
 
       if (!rows.length) {
         return NextResponse.json({ error: "Información de proyecto no encontrada" }, { status: 404 });
       }
 
       const r = rows[0];
-      fullName = `${r.FirstName} ${r.LastName} ${r.MiddleName || ""}`.trim();
+      fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
       projectName = r.NameProject || "N/A";
       startDate = r.StartDate || "";
       position = r.Position || "";
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
         SELECT * FROM projectpersonneldocumentation 
         WHERE ProjectPersonnelID = ?
       `;
-      docParams = [employee.ProjectPersonnelID];
+      docParams = [r.ProjectPersonnelID];
 
     } else {
       // Personal Base
@@ -94,19 +95,20 @@ export async function GET(request: NextRequest) {
           bp.Salary,
           bp.Area,
           bd.*,
-          DATE_FORMAT(bc.StartDate, '%Y/%m/%d') AS StartDate
+          DATE_FORMAT(bc.StartDate, '%Y/%m/%d') AS StartDate,
+          bp.BasePersonnelID
         FROM basepersonnel bp
         LEFT JOIN basepersonneldocumentation bd ON bp.BasePersonnelID = bd.BasePersonnelID
         LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
-        WHERE bp.BasePersonnelID = ?
-      `, [employee.BasePersonnelID]);
+        WHERE bp.EmployeeID = ?
+      `, [empleadoId]);
 
       if (!rows.length) {
         return NextResponse.json({ error: "Información de personal base no encontrada" }, { status: 404 });
       }
 
       const r = rows[0];
-      fullName = `${r.FirstName} ${r.LastName} ${r.MiddleName || ""}`.trim();
+      fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
       startDate = r.StartDate || "";
       position = r.Position || "";
       workSchedule = r.WorkSchedule || "";
@@ -118,17 +120,14 @@ export async function GET(request: NextRequest) {
         SELECT * FROM basepersonneldocumentation 
         WHERE BasePersonnelID = ?
       `;
-      docParams = [employee.BasePersonnelID];
+      docParams = [r.BasePersonnelID];
     }
 
     // Obtener documentos
     const [docRows] = await connection.query<any[]>(documentationQuery, docParams);
     
-    if (!docRows.length) {
-      return NextResponse.json({ error: "Documentación no encontrada" }, { status: 404 });
-    }
-
-    const doc = docRows[0];
+    // Si no hay documentos, crear un objeto vacío
+    const doc = docRows.length > 0 ? docRows[0] : {};
 
     // Cargar plantilla Excel
     const templatePath = path.join(
@@ -143,18 +142,21 @@ export async function GET(request: NextRequest) {
     const ws = workbook.getWorksheet(1)!;
 
     // Llenar datos
-    ws.getCell("F6").value = employee.EmployeeType === 'PROJECT' ? projectName : area;
-    ws.getCell("F7").value = fullName;
-    ws.getCell("F8").value = startDate;
-    ws.getCell("F9").value = position;
-    ws.getCell("F10").value = workSchedule;
+    ws.getCell("F6").value = employee.EmployeeType === 'PROJECT' ? projectName : area || "NO ESPECIFICADO";
+    ws.getCell("F7").value = fullName || "NO ESPECIFICADO";
+    ws.getCell("F8").value = startDate || "NO ESPECIFICADO";
+    ws.getCell("F9").value = position || "NO ESPECIFICADO";
+    ws.getCell("F10").value = workSchedule || "NO ESPECIFICADO";
 
     if (salary > 0) {
       ws.getCell("F11").value = Number(salary);
       ws.getCell("F11").numFmt = '"$"#,##0.00';
+    } else {
+      ws.getCell("F11").value = 0;
+      ws.getCell("F11").numFmt = '"$"#,##0.00';
     }
 
-    ws.getCell("F12").value = employee.EmployeeType === 'PROJECT' ? "TEMPORAL" : "BASE";
+    ws.getCell("F12").value = employee.EmployeeType === 'PROJECT' ? "PROYECTO" : "BASE";
 
     const yesNo = (v: any) => (v ? "SI" : "NO");
 
@@ -176,7 +178,7 @@ export async function GET(request: NextRequest) {
     ws.getCell("L24").value = yesNo(doc.FotoFileURL);
     ws.getCell("L25").value = yesNo(doc.FolletoFileURL);
 
-    ws.getCell("F45").value = fullName;
+    ws.getCell("F45").value = fullName || "NO ESPECIFICADO";
 
     const buffer = await workbook.xlsx.writeBuffer();
 
@@ -192,9 +194,13 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error(error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Error al generar FT-RH-04:", error);
+    return NextResponse.json({ 
+      error: error.sqlMessage || error.message || "Error al generar el documento" 
+    }, { status: 500 });
   } finally {
-    connection?.release?.();
+    if (connection) {
+      connection.release();
+    }
   }
 }
