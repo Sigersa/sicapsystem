@@ -398,7 +398,7 @@ export async function POST(request: NextRequest) {
           [
             normalizarMayusculas(formData.nombre.trim()),
             normalizarMayusculas(formData.apellidoPaterno.trim()),
-            normalizarMayusculas(formData.apellidoMaterno.trim()),
+            normalizarMayusculas(formData.apellidoMaterno ? formData.apellidoMaterno.trim() : ''),
             normalizarMayusculas(formData.puesto.trim()),
             normalizarMayusculas(formData.horarioLaboral || ''),
             parseFloat(formData.salario.replace(/[^0-9.-]+/g, "")) || 0,
@@ -409,23 +409,21 @@ export async function POST(request: NextRequest) {
         const basePersonnelId = (basePersonnelResult as any).insertId;
         employeeIdNumber = basePersonnelId;
 
-        // 2. Insertar en la tabla employees (siempre con EmployeeType = 'BASE') y obtener EmployeeID
+        // 2. Insertar en la tabla employees y obtener el EmployeeID generado
         const [employeeResult] = await connection.execute(
-          `INSERT INTO employees (EmployeeType, BasePersonnelID) VALUES (?, ?)`,
-          ['BASE', basePersonnelId]
+          `INSERT INTO employees (EmployeeType) VALUES (?)`,
+          ['BASE']
         );
 
-        const employeeInsertId = (employeeResult as any).insertId;
-        
-        // Obtener el EmployeeID generado
-        const [employeeRows] = await connection.query(
-          `SELECT EmployeeID FROM employees WHERE EmployeeID = ?`,
-          [employeeInsertId]
-        );
-        
-        employeeId = (employeeRows as any[])[0]?.EmployeeID;
+        employeeId = (employeeResult as any).insertId;
 
-        // 3. Insertar en basepersonnelpersonalinfo
+        // 3. Actualizar basepersonnel con el EmployeeID
+        await connection.execute(
+          `UPDATE basepersonnel SET EmployeeID = ? WHERE BasePersonnelID = ?`,
+          [employeeId, basePersonnelId]
+        );
+
+        // 4. Insertar en basepersonnelpersonalinfo
         const direccionCompleta = `${normalizarMayusculas(formData.calle.trim())} ${normalizarMayusculas(formData.numeroExterior.trim())}${
           formData.numeroInterior ? ' INT. ' + normalizarMayusculas(formData.numeroInterior.trim()) : ''
         }, COL. ${normalizarMayusculas(formData.colonia.trim())}, ${normalizarMayusculas(formData.municipio.trim())}, ${normalizarMayusculas(formData.estado)}, C.P. ${formData.codigoPostal}`;
@@ -455,7 +453,7 @@ export async function POST(request: NextRequest) {
           ]
         );
 
-        // 4. Insertar en basecontracts - con todos los campos de archivos
+        // 5. Insertar en basecontracts - con todos los campos de archivos
         await connection.execute(
           `INSERT INTO basecontracts 
            (BasePersonnelID, StartDate, SalaryIMSS, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL) 
@@ -471,7 +469,7 @@ export async function POST(request: NextRequest) {
           ]
         );
 
-        // 5. Insertar beneficiario (si existe)
+        // 6. Insertar beneficiario (si existe)
         if (formData.beneficiarios && formData.beneficiarios.length > 0) {
           const beneficiario = formData.beneficiarios[0];
           
@@ -489,7 +487,7 @@ export async function POST(request: NextRequest) {
                 basePersonnelId,
                 normalizarMayusculas(beneficiario.nombre.trim()),
                 normalizarMayusculas(beneficiario.apellidoPaterno.trim()),
-                normalizarMayusculas(beneficiario.apellidoMaterno || ''),
+                normalizarMayusculas(beneficiario.apellidoMaterno ? beneficiario.apellidoMaterno.trim() : ''),
                 normalizarMayusculas(beneficiario.parentesco || ''),
                 porcentajeFinal
               ]
@@ -497,7 +495,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // 6. Insertar documentación
+        // 7. Insertar documentación
         const cvUrl = documentos.cv && documentos.cv.length > 0 ? documentos.cv[0] : null;
         const actaNacimientoUrl = documentos.actaNacimiento && documentos.actaNacimiento.length > 0 ? documentos.actaNacimiento[0] : null;
         const curpUrl = documentos.curp && documentos.curp.length > 0 ? documentos.curp[0] : null;
@@ -555,30 +553,28 @@ export async function POST(request: NextRequest) {
           [
             normalizarMayusculas(formData.nombre.trim()),
             normalizarMayusculas(formData.apellidoPaterno.trim()),
-            normalizarMayusculas(formData.apellidoMaterno.trim())
+            normalizarMayusculas(formData.apellidoMaterno ? formData.apellidoMaterno.trim() : '')
           ]
         );
 
         const projectPersonnelId = (projectPersonnelResult as any).insertId;
         employeeIdNumber = projectPersonnelId;
 
-        // 2. Insertar en la tabla employees (siempre con EmployeeType = 'PROJECT') y obtener EmployeeID
+        // 2. Insertar en la tabla employees y obtener el EmployeeID generado
         const [employeeResult] = await connection.execute(
-          `INSERT INTO employees (EmployeeType, ProjectPersonnelID) VALUES (?, ?)`,
-          ['PROJECT', projectPersonnelId]
+          `INSERT INTO employees (EmployeeType) VALUES (?)`,
+          ['PROJECT']
         );
 
-        const employeeInsertId = (employeeResult as any).insertId;
-        
-        // Obtener el EmployeeID generado
-        const [employeeRows] = await connection.query(
-          `SELECT EmployeeID FROM employees WHERE EmployeeID = ?`,
-          [employeeInsertId]
-        );
-        
-        employeeId = (employeeRows as any[])[0]?.EmployeeID;
+        employeeId = (employeeResult as any).insertId;
 
-        // 3. Insertar en projectpersonnelpersonalinfo
+        // 3. Actualizar projectpersonnel con el EmployeeID
+        await connection.execute(
+          `UPDATE projectpersonnel SET EmployeeID = ? WHERE ProjectPersonnelID = ?`,
+          [employeeId, projectPersonnelId]
+        );
+
+        // 4. Insertar en projectpersonnelpersonalinfo
         const direccionCompleta = `${normalizarMayusculas(formData.calle.trim())} ${normalizarMayusculas(formData.numeroExterior.trim())}${
           formData.numeroInterior ? ' INT. ' + normalizarMayusculas(formData.numeroInterior.trim()) : ''
         }, COL. ${normalizarMayusculas(formData.colonia.trim())}, ${normalizarMayusculas(formData.municipio.trim())}, ${normalizarMayusculas(formData.estado)}, C.P. ${formData.codigoPostal}`;
@@ -602,13 +598,13 @@ export async function POST(request: NextRequest) {
             normalizarMayusculas(formData.curp.trim()),
             formData.nss,
             normalizarMayusculas(formData.nci || ''),
-            formData.umf ? parseInt(formData.umf) : null,
+            formData.umf ? formData.umf : null,
             formData.telefono || null,
             formData.email.toLowerCase().trim()
           ]
         );
 
-        // 4. Insertar en projectcontracts - con todos los campos de archivos
+        // 5. Insertar en projectcontracts - con todos los campos de archivos
         const proyectoId = parseInt(formData.proyectoId) || null;
         
         await connection.execute(
@@ -632,7 +628,7 @@ export async function POST(request: NextRequest) {
           ]
         );
 
-        // 5. Insertar beneficiario (si existe)
+        // 6. Insertar beneficiario (si existe)
         if (formData.beneficiarios && formData.beneficiarios.length > 0) {
           const beneficiario = formData.beneficiarios[0];
           
@@ -650,7 +646,7 @@ export async function POST(request: NextRequest) {
                 projectPersonnelId,
                 normalizarMayusculas(beneficiario.nombre.trim()),
                 normalizarMayusculas(beneficiario.apellidoPaterno.trim()),
-                normalizarMayusculas(beneficiario.apellidoMaterno || ''),
+                normalizarMayusculas(beneficiario.apellidoMaterno ? beneficiario.apellidoMaterno.trim() : ''),
                 normalizarMayusculas(beneficiario.parentesco || ''),
                 porcentajeFinal
               ]
@@ -658,7 +654,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // 6. Insertar documentación
+        // 7. Insertar documentación
         const cvUrl = documentos.cv && documentos.cv.length > 0 ? documentos.cv[0] : null;
         const actaNacimientoUrl = documentos.actaNacimiento && documentos.actaNacimiento.length > 0 ? documentos.actaNacimiento[0] : null;
         const curpUrl = documentos.curp && documentos.curp.length > 0 ? documentos.curp[0] : null;
@@ -708,25 +704,25 @@ export async function POST(request: NextRequest) {
       // Confirmar transacción de registro
       await connection.commit();
 
-      // **PASO 7: Generar PDFs, subirlos a UploadThing y actualizar la base de datos**
+      // **PASO 8: Generar PDFs, subirlos a UploadThing y actualizar la base de datos**
       try {
         // Generar el PDF FT-RH-02
-        const ftRh02PdfBuffer = await generateFT_RH_02_PDF(employeeId);
+        const ftRh02PdfBuffer = await generateFT_RH_02_PDF(employeeId.toString());
         const ftRh02FileName = `FT-RH-02_${formData.tipoPersonal}_${employeeId}_${Date.now()}.pdf`;
         contractFileURL = await uploadFileToUploadThing(ftRh02PdfBuffer, ftRh02FileName, 'application/pdf');
         
         // Generar el PDF FT-RH-04
-        const ftRh04PdfBuffer = await generateFT_RH_04_PDF(employeeId);
+        const ftRh04PdfBuffer = await generateFT_RH_04_PDF(employeeId.toString());
         const ftRh04FileName = `FT-RH-04_${formData.tipoPersonal}_${employeeId}_${Date.now()}.pdf`;
         warningFileURL = await uploadFileToUploadThing(ftRh04PdfBuffer, ftRh04FileName, 'application/pdf');
         
         // Generar el PDF FT-RH-07
-        const ftRh07PdfBuffer = await generateFT_RH_07_PDF(employeeId);
+        const ftRh07PdfBuffer = await generateFT_RH_07_PDF(employeeId.toString());
         const ftRh07FileName = `FT-RH-07_${formData.tipoPersonal}_${employeeId}_${Date.now()}.pdf`;
         letterFileURL = await uploadFileToUploadThing(ftRh07PdfBuffer, ftRh07FileName, 'application/pdf');
         
         // Generar el PDF FT-RH-29
-        const ftRh29PdfBuffer = await generateFT_RH_29_PDF(employeeId);
+        const ftRh29PdfBuffer = await generateFT_RH_29_PDF(employeeId.toString());
         const ftRh29FileName = `FT-RH-29_${formData.tipoPersonal}_${employeeId}_${Date.now()}.pdf`;
         agreementFileURL = await uploadFileToUploadThing(ftRh29PdfBuffer, ftRh29FileName, 'application/pdf');
         
