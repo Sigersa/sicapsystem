@@ -141,10 +141,10 @@ export async function GET(request: NextRequest) {
     // Primero, obtener información del empleado desde la tabla employees
     const [employeeInfo] = await connection.query<any[]>(
       `
-      SELECT EmployeeType, BasePersonnelID, ProjectPersonnelID 
+      SELECT EmployeeType 
       FROM employees 
       WHERE EmployeeID = ?
-    `,
+      `,
       [empleadoId]
     );
 
@@ -160,45 +160,48 @@ export async function GET(request: NextRequest) {
 
     // Obtener información según el tipo de empleado
     if (employee.EmployeeType === "PROJECT") {
-      // Personal de Proyecto
+      // Personal de Proyecto - CORREGIDO
       const [rows] = await connection.query<any[]>(
         `
         SELECT 
           pp.FirstName,
           pp.LastName,
           pp.MiddleName,
-          pi.Municipality,
-          pi.Nationality,
-          pi.Gender,
-          pi.Birthdate,
-          pi.MaritalStatus,
-          pi.RFC,
-          pi.NSS,
-          pi.CURP,
-          pi.Address,
+          ppi.Municipality,
+          ppi.Nationality,
+          ppi.Gender,
+          ppi.Birthdate,
+          ppi.MaritalStatus,
+          ppi.RFC,
+          ppi.NSS,
+          ppi.CURP,
+          ppi.Address,
           pc.EndDate,
           pc.SalaryIMSS,
           pc.Position,
+          pc.Salary,
+          pc.WorkSchedule,
+          pc.ProjectID,
           DATE_FORMAT(pc.StartDate, '%Y-%m-%d') AS StartDate,
-          pr.NameProject,
-          pr.ProjectAddress,
+          p.NameProject,
+          p.ProjectAddress,
           pb.BeneficiaryFirstName,
           pb.BeneficiaryLastName,
           pb.BeneficiaryMiddleName,
           pb.Relationship,
           pb.Percentage
         FROM projectpersonnel pp
-        LEFT JOIN projectpersonnelpersonalinfo pi 
-          ON pi.ProjectPersonnelID = pp.ProjectPersonnelID
+        LEFT JOIN projectpersonnelpersonalinfo ppi 
+          ON ppi.ProjectPersonnelID = pp.ProjectPersonnelID
         LEFT JOIN projectpersonnelbeneficiaries pb 
           ON pb.ProjectPersonnelID = pp.ProjectPersonnelID
         LEFT JOIN projectcontracts pc 
           ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
-        LEFT JOIN projects pr 
-          ON pr.ProjectID = pc.ProjectID
-        WHERE pp.ProjectPersonnelID = ?
-      `,
-        [employee.ProjectPersonnelID]
+        LEFT JOIN projects p 
+          ON p.ProjectID = pc.ProjectID
+        WHERE pp.EmployeeID = ?
+        `,
+        [empleadoId]
       );
 
       if (!rows.length) {
@@ -210,13 +213,17 @@ export async function GET(request: NextRequest) {
 
       employeeData = rows[0];
     } else {
-      // Personal Base
+      // Personal Base - CORREGIDO
       const [rows] = await connection.query<any[]>(
         `
         SELECT 
           bp.FirstName,
           bp.LastName,
           bp.MiddleName,
+          bp.Position,
+          bp.Salary,
+          bp.WorkSchedule,
+          bp.Area,
           bpi.Municipality,
           bpi.Nationality,
           bpi.Gender,
@@ -228,7 +235,6 @@ export async function GET(request: NextRequest) {
           bpi.Address,
           bc.EndDate,
           bc.SalaryIMSS,
-          bp.Position,
           DATE_FORMAT(bc.StartDate, '%Y-%m-%d') AS StartDate,
           bb.BeneficiaryFirstName,
           bb.BeneficiaryLastName,
@@ -242,9 +248,9 @@ export async function GET(request: NextRequest) {
           ON bb.BasePersonnelID = bp.BasePersonnelID
         LEFT JOIN basecontracts bc 
           ON bc.BasePersonnelID = bp.BasePersonnelID
-        WHERE bp.BasePersonnelID = ?
-      `,
-        [employee.BasePersonnelID]
+        WHERE bp.EmployeeID = ?
+        `,
+        [empleadoId]
       );
 
       if (!rows.length) {
@@ -265,8 +271,15 @@ export async function GET(request: NextRequest) {
     const nombreCompleto = `${employeeData.FirstName || ""} ${employeeData.LastName || ""} ${employeeData.MiddleName || ""}`.trim();
     const nombreCompletoB = `${employeeData.BeneficiaryFirstName || ""} ${employeeData.BeneficiaryLastName || ""} ${employeeData.BeneficiaryMiddleName || ""}`.trim();
 
+    // Determinar el puesto (Position puede venir de diferentes tablas)
+    const puesto = employeeData.Position || "";
+    
+    // Determinar el salario a usar (priorizar SalaryIMSS, si no, usar Salary)
+    const salarioIMSS = employeeData.SalaryIMSS ? Number(employeeData.SalaryIMSS) : 
+                       (employeeData.Salary ? Number(employeeData.Salary) : 0);
+    
     // Calcular salario a letra con decimales
-    const salarioNumero = Number(employeeData.SalaryIMSS) || 0;
+    const salarioNumero = salarioIMSS;
     let SALARIO_IMSS_LETRA = "";
     try {
       SALARIO_IMSS_LETRA = salarioIMSSALetras(salarioNumero);
@@ -301,7 +314,7 @@ export async function GET(request: NextRequest) {
         FECHA_DE_INGRESO: formatFecha(employeeData.StartDate),
         FECHA_DE_NACIMIENTO_DEL_EMPLEADO: formatFecha(employeeData.Birthdate),
         FECHA_TERMINO: formatFecha(employeeData.EndDate),
-        PUESTO_DEL_EMPLEADO: employeeData.Position || "",
+        PUESTO_DEL_EMPLEADO: puesto,
         MUNICIPIO_DEL_EMPLEADO: employeeData.Municipality || "",
         NACIONALIDAD_DEL_EMPLEADO: employeeData.Nationality || "",
         GENERO_DEL_EMPLEADO: employeeData.Gender || "",
@@ -316,7 +329,7 @@ export async function GET(request: NextRequest) {
         SALARIO_IMSS_LETRA: SALARIO_IMSS_LETRA,
         NOMBRE_COMPLETO_B: nombreCompletoB || "NO ESPECIFICADO",
         PARENTESCO_B: employeeData.Relationship || "NO ESPECIFICADO",
-        PORCENTAGE_B: employeeData.Percentage || "0",
+        PORCENTAGE_B: employeeData.Percentage ? employeeData.Percentage.toString() : "0",
         FECHA_GENERACION: new Date().toLocaleDateString("es-MX"),
       },
       cmdDelimiter: ["[[", "]]"],
@@ -341,6 +354,8 @@ export async function GET(request: NextRequest) {
     console.error(error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   } finally {
-    connection?.release?.();
+    if (connection) {
+      connection.release();
+    }
   }
 }
