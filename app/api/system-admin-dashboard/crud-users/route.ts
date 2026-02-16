@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       INNER JOIN employees e 
         ON su.EmployeeID = e.EmployeeID
       INNER JOIN basepersonnel bp 
-        ON e.BasePersonnelID = bp.BasePersonnelID
+        ON e.EmployeeID = bp.EmployeeID
       LEFT JOIN basepersonnelpersonalinfo bpi 
         ON bp.BasePersonnelID = bpi.BasePersonnelID
       ORDER BY su.SystemUserID DESC
