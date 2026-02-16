@@ -262,12 +262,12 @@ export default function SystemAdminDashboard() {
     folleto: []
   });
 
-  // Estado para verificar duplicados
+  // Estado para verificar duplicados - AHORA ES UN ARRAY
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
-  const [duplicateError, setDuplicateError] = useState<{
+  const [duplicateErrors, setDuplicateErrors] = useState<Array<{
     field: string;
     message: string;
-  } | null>(null);
+  }>>([]);
 
   // Estado para proyectos
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
@@ -299,6 +299,8 @@ export default function SystemAdminDashboard() {
 
   // Referencias para inputs de archivo
   const fileInputRefs = useRef<{ [key in keyof Documentos]?: HTMLInputElement }>({});
+  // Referencia para el formulario
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Cargar proyectos al montar el componente
   useEffect(() => {
@@ -320,12 +322,15 @@ export default function SystemAdminDashboard() {
     }
   };
 
-  // Función para verificar duplicados en tiempo real
+  // Función para verificar duplicados en tiempo real - AHORA MANEJA MÚLTIPLES ERRORES
   const checkDuplicates = async (field: string, value: string) => {
-    if (!value || value.length < 3) return;
+    if (!value || value.length < 3) {
+      // Si el campo está vacío, eliminar el error de ese campo si existe
+      setDuplicateErrors(prev => prev.filter(error => error.field !== field));
+      return;
+    }
 
     setCheckingDuplicates(true);
-    setDuplicateError(null);
 
     try {
       const response = await fetch('/api/empleados/check-duplicates', {
@@ -341,12 +346,23 @@ export default function SystemAdminDashboard() {
 
       const data = await response.json();
 
-      if (data.exists) {
-        setDuplicateError({
-          field,
-          message: data.message || `El ${fieldNames[field] || field} ya está registrado en el sistema`
-        });
-      }
+      setDuplicateErrors(prev => {
+        // Eliminar cualquier error existente para este campo
+        const filtered = prev.filter(error => error.field !== field);
+        
+        // Si hay un nuevo error, agregarlo
+        if (data.exists) {
+          return [
+            ...filtered,
+            {
+              field,
+              message: data.message || `El ${fieldNames[field] || field} ya está registrado en el sistema`
+            }
+          ];
+        }
+        
+        return filtered;
+      });
     } catch (error) {
       console.error('Error al verificar duplicados:', error);
     } finally {
@@ -618,6 +634,9 @@ export default function SystemAdminDashboard() {
     // Verificar duplicados para campos específicos
     if (['rfc', 'curp', 'nss'].includes(name)) {
       checkDuplicates(name, value);
+    } else {
+      // Para otros campos, eliminar el error si existe
+      setDuplicateErrors(prev => prev.filter(error => error.field !== name));
     }
   };
 
@@ -711,13 +730,25 @@ export default function SystemAdminDashboard() {
     return true;
   };
 
-  // Validar que no haya errores de duplicados
+  // Validar que no haya errores de duplicados - AHORA VERIFICA TODOS LOS CAMPOS
   const validateNoDuplicates = (): boolean => {
-    if (duplicateError) {
-      setErrorMessage(duplicateError.message);
+    if (duplicateErrors.length > 0) {
+      // Mostrar el primer error como mensaje principal
+      setErrorMessage(duplicateErrors[0].message);
       return false;
     }
     return true;
+  };
+
+  // Función para verificar si un campo tiene error de duplicado
+  const hasDuplicateError = (field: string): boolean => {
+    return duplicateErrors.some(error => error.field === field);
+  };
+
+  // Función para obtener el mensaje de error de un campo específico
+  const getDuplicateErrorMessage = (field: string): string => {
+    const error = duplicateErrors.find(error => error.field === field);
+    return error ? error.message : '';
   };
 
   // Subir documentos
@@ -808,7 +839,7 @@ export default function SystemAdminDashboard() {
       return false;
     }
 
-    // Validar que no haya errores de duplicados
+    // Validar que no haya errores de duplicados - AHORA VERIFICA TODOS LOS CAMPOS
     if (!validateNoDuplicates()) {
       return false;
     }
@@ -947,7 +978,7 @@ export default function SystemAdminDashboard() {
 
     setSuccessMessage('');
     setErrorMessage('');
-    setDuplicateError(null);
+    setDuplicateErrors([]);
     setShowSuccessModal(false);
     setUploadProgress(0);
   };
@@ -959,12 +990,13 @@ export default function SystemAdminDashboard() {
 
   // Manejar envío del formulario
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+    e.preventDefault(); // Prevenir envío por defecto
     setSuccessMessage('');
     setErrorMessage('');
     setSuccessDetails(null);
     setUploadProgress(0);
 
+    // Validar el formulario - si validateForm() retorna false, no continúa
     if (!validateForm()) {
       return;
     }
@@ -1334,7 +1366,7 @@ export default function SystemAdminDashboard() {
     const beneficiario = getActiveBeneficiario();
 
     return (
-      <form onSubmit={handleSubmit}>
+      <form ref={formRef} onSubmit={handleSubmit}>
         {/* TARJETA DE INFORMACIÓN PERSONAL */}
         <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden mb-6">
           <div className="bg-gray-200 px-6 py-4 border-b-2 border-gray-300">
@@ -1498,14 +1530,14 @@ export default function SystemAdminDashboard() {
                         checkDuplicates('nss', e.target.value);
                       }}
                       className={`w-full pl-10 pr-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
-                        duplicateError?.field === 'nss' ? 'border-red-500' : 'border-gray-400'
+                        hasDuplicateError('nss') ? 'border-red-500' : 'border-gray-400'
                       }`}
                       placeholder="Ingrese el NSS"
                       required
                     />
                   </div>
-                  {duplicateError?.field === 'nss' && (
-                    <p className="text-xs text-red-500 mt-1">{duplicateError.message}</p>
+                  {hasDuplicateError('nss') && (
+                    <p className="text-xs text-red-500 mt-1">{getDuplicateErrorMessage('nss')}</p>
                   )}
                 </div>
                 
@@ -1522,13 +1554,13 @@ export default function SystemAdminDashboard() {
                       checkDuplicates('curp', e.target.value);
                     }}
                     className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
-                      duplicateError?.field === 'curp' ? 'border-red-500' : 'border-gray-400'
+                      hasDuplicateError('curp') ? 'border-red-500' : 'border-gray-400'
                     }`}
                     placeholder="Ingrese el CURP"
                     required
                   />
-                  {duplicateError?.field === 'curp' && (
-                    <p className="text-xs text-red-500 mt-1">{duplicateError.message}</p>
+                  {hasDuplicateError('curp') && (
+                    <p className="text-xs text-red-500 mt-1">{getDuplicateErrorMessage('curp')}</p>
                   )}
                 </div>
 
@@ -1545,13 +1577,13 @@ export default function SystemAdminDashboard() {
                       checkDuplicates('rfc', e.target.value);
                     }}
                     className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
-                      duplicateError?.field === 'rfc' ? 'border-red-500' : 'border-gray-400'
+                      hasDuplicateError('rfc') ? 'border-red-500' : 'border-gray-400'
                     }`}
                     placeholder="Ingrese el RFC"
                     required
                   />
-                  {duplicateError?.field === 'rfc' && (
-                    <p className="text-xs text-red-500 mt-1">{duplicateError.message}</p>
+                  {hasDuplicateError('rfc') && (
+                    <p className="text-xs text-red-500 mt-1">{getDuplicateErrorMessage('rfc')}</p>
                   )}
                 </div>
 
@@ -2051,6 +2083,38 @@ export default function SystemAdminDashboard() {
             )}
           </div>
         </div>
+
+        {/* BOTONES DENTRO DEL FORMULARIO */}
+        <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+          <button
+            type="submit"
+            disabled={loading || checkingDuplicates || duplicateErrors.length > 0 || (uploadProgress > 0 && uploadProgress < 100)}
+            className="w-full sm:w-auto min-w-[280px] bg-[#3a6ea5] text-white font-bold py-3 px-8 rounded-md hover:bg-[#2d5592] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center uppercase tracking-tight"
+          >
+            {loading ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                {uploadProgress > 0 && uploadProgress < 100 ? `SUBIDO ${uploadProgress}%` : 'REGISTRANDO...'}
+              </>
+            ) : checkingDuplicates ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                VERIFICANDO...
+              </>
+            ) : (
+              `REGISTRAR ${activeTab === 'proyecto' ? 'PERSONAL DE PROYECTO' : 'PERSONAL BASE'}`
+            )}
+          </button>
+          
+          <button
+            type="button"
+            onClick={limpiarTodosFormularios}
+            disabled={loading || (uploadProgress > 0 && uploadProgress < 100)}
+            className="w-full sm:w-auto min-w-[280px] bg-gray-200 text-gray-800 font-bold py-3 px-8 rounded-md hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-tight"
+          >
+            LIMPIAR FORMULARIO
+          </button>
+        </div>
       </form>
     );
   };
@@ -2466,55 +2530,16 @@ export default function SystemAdminDashboard() {
             {/* CONTENIDO DE LAS PESTAÑAS */}
             <div className="space-y-6">
               {errorMessage && (
-              <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
+                <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
                   <div className="flex items-center">
                     <svg className="h-5 w-5 text-red-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg> 
-                  <p className="text-sm font-medium text-gray-600 leading-5">
-                      {errorMessage}</p>
+                    <p className="text-sm font-medium text-gray-600 leading-5">{errorMessage}</p>
                   </div>
                 </div>
               )}
               {renderFormulario()}
-
-              {/* BOTONES */}
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <button
-                  type="submit"
-                  onClick={(e) => {
-                    const form = document.querySelector('form');
-                    if (form) {
-                      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-                    }
-                  }}
-                  disabled={loading || checkingDuplicates || (uploadProgress > 0 && uploadProgress < 100)}
-                  className="w-full sm:w-auto min-w-[280px] bg-[#3a6ea5] text-white font-bold py-3 px-8 rounded-md hover:bg-[#2d5592] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center uppercase tracking-tight"
-                >
-                  {loading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                      {uploadProgress > 0 && uploadProgress < 100 ? `SUBIDO ${uploadProgress}%` : 'REGISTRANDO...'}
-                    </>
-                  ) : checkingDuplicates ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                      VERIFICANDO...
-                    </>
-                  ) : (
-                    `REGISTRAR ${activeTab === 'proyecto' ? 'PERSONAL DE PROYECTO' : 'PERSONAL BASE'}`
-                  )}
-                </button>
-                
-                <button
-                  type="button"
-                  onClick={limpiarTodosFormularios}
-                  disabled={loading || uploadProgress > 0 && uploadProgress < 100}
-                  className="w-full sm:w-auto min-w-[280px] bg-gray-200 text-gray-800 font-bold py-3 px-8 rounded-md hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-tight"
-                >
-                  LIMPIAR FORMULARIO
-                </button>
-              </div>
             </div>
           </div>
         </div>
