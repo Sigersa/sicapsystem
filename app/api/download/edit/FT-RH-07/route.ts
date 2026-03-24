@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
     const templatePath = path.join(
       process.cwd(),
       "public",
+      "administrative-personnel-dashboard",
       "hiring",
       "FT-RH-07.docx"
     );
