@@ -8,11 +8,11 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
 
   ssl: {
-    rejectUnauthorized: false, // 🔥 CLAVE para Railway
+    rejectUnauthorized: false, 
   },
 
   waitForConnections: true,
-  connectionLimit: 3, // recomendado en Vercel
+  connectionLimit: 3, 
   queueLimit: 0,
 });
 
