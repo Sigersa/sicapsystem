@@ -11,14 +11,28 @@ type Project = {
   ProjectID: number;
   NameProject: string;
   ProjectAddress: string;
-  createdAt?: string;
-  updatedAt?: string;
+  AdminProjectID: string;
+  FirstName?: string;
+  LastName?: string;
+  MiddleName?: string;
 };
 
 type UserType = {
   UserTypeID: number;
   Type: string;
 };
+
+// NUEVO TIPO: Tipo para jefes directos
+type JefeDirecto = {
+  id: number;
+  nombre: string;
+  apellidoPaterno: string;
+  apellidoMaterno: string;
+  puesto: string;
+  tipoPersonal: 'BASE' | 'PROJECT';
+  nombreCompleto: string;
+};
+
 export default function SystemAdminDashboard() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
@@ -32,7 +46,8 @@ export default function SystemAdminDashboard() {
   // Estados para el formulario
   const [formData, setFormData] = useState({
     NameProject: '',
-    ProjectAddress: ''
+    ProjectAddress: '',
+    AdminProjectID: ''
   });
 
   // Estados para operaciones
@@ -42,7 +57,11 @@ export default function SystemAdminDashboard() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<{ show: boolean; id: number | null }>({ show: false, id: null });
-
+  
+  // NUEVO ESTADO: Estado para jefes directos
+  const [jefesDirectos, setJefesDirectos] = useState<JefeDirecto[]>([]);
+  const [loadingJefes, setLoadingJefes] = useState(false);
+  
   // Cargar proyectos al montar el componente
   useEffect(() => {
     if (user) { // Solo cargar proyectos si hay usuario
@@ -62,6 +81,29 @@ export default function SystemAdminDashboard() {
       setFilteredProjects(filtered);
     }
   }, [searchTerm, projects]);
+
+    // Cargar proyectos y jefes directos al montar el componente
+  useEffect(() => {
+    fetchJefesDirectos(); // NUEVA FUNCIÓN
+  }, []);
+
+    // NUEVA FUNCIÓN: Obtener jefes directos
+  const fetchJefesDirectos = async () => {
+    try {
+      setLoadingJefes(true);
+      const response = await fetch('/api/catalogs/jefes-directos');
+      if (response.ok) {
+        const data = await response.json();
+        setJefesDirectos(data);
+      } else {
+        console.error('Error al cargar jefes directos:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error al cargar jefes directos:', error);
+    } finally {
+      setLoadingJefes(false);
+    }
+  };
 
   // Mostrar loading mientras se verifica la sesión
   if (sessionLoading) {
@@ -89,7 +131,7 @@ export default function SystemAdminDashboard() {
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/projects');
+      const response = await fetch('/api/administrative-personnel-dashboard/projects');
       if (response.ok) {
         const data = await response.json();
         setProjects(data);
@@ -106,7 +148,7 @@ export default function SystemAdminDashboard() {
   };
 
   // Manejar cambios en el formulario
-  const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -121,6 +163,10 @@ export default function SystemAdminDashboard() {
       return false;
     }
     if (!formData.ProjectAddress.trim()) {
+      setErrorMessage('LA DIRECCIÓN DEL PROYECTO ES REQUERIDA');
+      return false;
+    }
+    if (!formData.AdminProjectID.trim()) {
       setErrorMessage('LA DIRECCIÓN DEL PROYECTO ES REQUERIDA');
       return false;
     }
@@ -139,13 +185,14 @@ export default function SystemAdminDashboard() {
 
     setLoading(true);
     try {
-      const url = isEditing ? `/api/projects/${editingId}` : '/api/projects';
+      const url = isEditing ? `/api/administrative-personnel-dashboard/projects/${editingId}` : '/api/administrative-personnel-dashboard/projects';
       const method = isEditing ? 'PUT' : 'POST';
 
       // Preparar datos en mayúsculas
       const datosEnviar = {
         NameProject: normalizarMayusculas(formData.NameProject.trim()),
-        ProjectAddress: normalizarMayusculas(formData.ProjectAddress.trim())
+        ProjectAddress: normalizarMayusculas(formData.ProjectAddress.trim()),
+        AdminProjectID: formData.AdminProjectID
       };
 
       const response = await fetch(url, {
@@ -188,7 +235,8 @@ export default function SystemAdminDashboard() {
   const handleEdit = (project: Project) => {
     setFormData({
       NameProject: project.NameProject,
-      ProjectAddress: project.ProjectAddress
+      ProjectAddress: project.ProjectAddress,
+      AdminProjectID: project.AdminProjectID,
     });
     setEditingId(project.ProjectID);
     setIsEditing(true);
@@ -199,7 +247,7 @@ export default function SystemAdminDashboard() {
   const handleDelete = async (id: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/projects/${id}`, {
+      const response = await fetch(`/api/administrative-personnel-dashboard/projects/${id}`, {
         method: 'DELETE',
       });
 
@@ -225,7 +273,8 @@ export default function SystemAdminDashboard() {
   const resetForm = () => {
     setFormData({
       NameProject: '',
-      ProjectAddress: ''
+      ProjectAddress: '',
+      AdminProjectID: ''
     });
     setIsEditing(false);
     setEditingId(null);
@@ -294,6 +343,32 @@ export default function SystemAdminDashboard() {
                     maxLength={1000}
                     required
                   />
+                </div>
+
+                {/* ADMINISTRADOR DE PROYECTO */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    ADMINISTRADOR DE PROYECTO *
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                    </div>
+                    <select
+                      name="AdminProjectID"
+                      value={formData.AdminProjectID}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                      disabled={loadingJefes}
+                    >
+                      <option value="">Seleccione un administrador de proyecto</option>
+                      {jefesDirectos.map((jefe) => (
+                        <option key={jefe.id} value={jefe.id}>
+                          {jefe.nombreCompleto} - {jefe.puesto} ({jefe.tipoPersonal})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div>
@@ -463,6 +538,7 @@ export default function SystemAdminDashboard() {
                       <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ID</th>
                       <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">NOMBRE DEL PROYECTO</th>
                       <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">DIRECCIÓN</th>
+                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ADMINISTRADOR DE PROYECTO</th>
                       <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
                     </tr>
                   </thead>
@@ -493,6 +569,9 @@ export default function SystemAdminDashboard() {
                           <td className="py-3 px-4 text-sm text-gray-800 font-medium">{project.ProjectID}</td>
                           <td className="py-3 px-4 text-sm text-gray-800 uppercase">{project.NameProject}</td>
                           <td className="py-3 px-4 text-sm text-gray-600 uppercase max-w-xs truncate">{project.ProjectAddress}</td>
+                          <td className="py-3 px-4 text-sm text-gray-800 uppercase">
+                            {project.FirstName} {project.LastName} {project.MiddleName}
+                          </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center justify-center gap-2">
                               <button
