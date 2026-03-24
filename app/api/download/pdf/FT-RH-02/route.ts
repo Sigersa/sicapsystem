@@ -127,6 +127,41 @@ function formatFecha(fecha: string): string {
   }
 }
 
+/* ================================
+   FUNCIÓN PARA CONSTRUIR DIRECCIÓN COMPLETA
+================================== */
+function construirDireccionCompleta(
+  calle: string,
+  numExt: string | number,
+  numInt: string | number | null,
+  colonia: string,
+  municipio: string,
+  estado: string,
+  cp: string | number
+): string {
+  const partes: string[] = [];
+  
+  // Calle y números
+  let calleNum = calle || "";
+  if (numExt) calleNum += ` ${numExt}`;
+  if (numInt) calleNum += ` INT. ${numInt}`;
+  if (calleNum) partes.push(calleNum);
+  
+  // Colonia
+  if (colonia) partes.push(`COL. ${colonia}`);
+  
+  // Municipio
+  if (municipio) partes.push(municipio);
+  
+  // Estado
+  if (estado) partes.push(estado);
+  
+  // Código Postal
+  if (cp) partes.push(`C.P. ${cp}`);
+  
+  return partes.join(", ");
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const empleadoId = searchParams.get("empleadoId");
@@ -176,14 +211,20 @@ export async function GET(request: NextRequest) {
 
     // Obtener información según el tipo de empleado
     if (employee.EmployeeType === "PROJECT") {
-      // Personal de Proyecto
+      // Personal de Proyecto - CON CAMPOS SEPARADOS DE DIRECCIÓN
       const [rows] = await connection.query<any[]>(
         `
         SELECT 
           pp.FirstName,
           pp.LastName,
           pp.MiddleName,
+          ppi.Street,
+          ppi.ExteriorNumber,
+          ppi.InteriorNumber,
+          ppi.Suburb,
           ppi.Municipality,
+          ppi.State,
+          ppi.ZipCode,
           ppi.Nationality,
           ppi.Gender,
           ppi.Birthdate,
@@ -191,7 +232,6 @@ export async function GET(request: NextRequest) {
           ppi.RFC,
           ppi.NSS,
           ppi.CURP,
-          ppi.Address,
           pc.EndDate,
           pc.SalaryIMSS,
           pc.Position,
@@ -228,14 +268,20 @@ export async function GET(request: NextRequest) {
       employeeData = rows[0];
       letterFileURL = employeeData.LetterFileURL || "";
     } else {
-      // Personal Base
+      // Personal Base - CON CAMPOS SEPARADOS DE DIRECCIÓN
       const [rows] = await connection.query<any[]>(
         `
         SELECT 
           bp.FirstName,
           bp.LastName,
           bp.MiddleName,
+          bpi.Street,
+          bpi.ExteriorNumber,
+          bpi.InteriorNumber,
+          bpi.Suburb,
           bpi.Municipality,
+          bpi.State,
+          bpi.ZipCode,
           bpi.Nationality,
           bpi.Gender,
           bpi.Birthdate,
@@ -243,7 +289,6 @@ export async function GET(request: NextRequest) {
           bpi.RFC,
           bpi.NSS,
           bpi.CURP,
-          bpi.Address,
           bc.EndDate,
           bc.SalaryIMSS,
           bp.Position,
@@ -284,6 +329,17 @@ export async function GET(request: NextRequest) {
     // Procesar los datos del empleado
     const nombreCompleto = `${employeeData.FirstName || ""} ${employeeData.LastName || ""} ${employeeData.MiddleName || ""}`.trim();
     const nombreCompletoB = `${employeeData.BeneficiaryFirstName || ""} ${employeeData.BeneficiaryLastName || ""} ${employeeData.BeneficiaryMiddleName || ""}`.trim();
+
+    // Construir la dirección completa a partir de los campos separados
+    const direccionCompleta = construirDireccionCompleta(
+      employeeData.Street,
+      employeeData.ExteriorNumber,
+      employeeData.InteriorNumber,
+      employeeData.Suburb,
+      employeeData.Municipality,
+      employeeData.State,
+      employeeData.ZipCode
+    );
 
     // Calcular salario a letra con decimales
     const salarioNumero = Number(employeeData.SalaryIMSS) || 0;
@@ -330,6 +386,7 @@ export async function GET(request: NextRequest) {
     const templatePath = path.join(
       process.cwd(),
       "public",
+      "administrative-personnel-dashboard",
       "hiring",
       "FT-RH-02.docx"
     );
@@ -360,7 +417,7 @@ export async function GET(request: NextRequest) {
         RFC_DEL_EMPLEADO: employeeData.RFC || "NO ESPECIFICADO",
         NSS_DEL_EMPLEADO: employeeData.NSS || "NO ESPECIFICADO",
         CURP_DEL_EMPLEADO: employeeData.CURP || "NO ESPECIFICADO",
-        DIRECCION_DEL_EMPLEADO: employeeData.Address || "NO ESPECIFICADO",
+        DIRECCION_DEL_EMPLEADO: direccionCompleta || "NO ESPECIFICADO",
         NOMBRE_DEL_PROYECTO: employeeData.NameProject || employeeData.CompanyName || "NO ESPECIFICADO",
         DIRECCION_DEL_PROYECTO: employeeData.ProjectAddress || employeeData.CompanyAddress || "NO ESPECIFICADO",
         SALARIO_IMSS_DEL_EMPLEADO: salarioNumero.toFixed(2),
