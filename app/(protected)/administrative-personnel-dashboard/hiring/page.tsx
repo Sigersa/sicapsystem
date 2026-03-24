@@ -4,7 +4,7 @@ import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useState, ChangeEvent, FormEvent, useRef, useEffect } from 'react';
-import { User, Calendar, CheckCircle, X, Upload, File, XCircle, Download, Eye, FileText, ChevronLeft, ChevronRight, Archive } from 'lucide-react';
+import { User, Calendar, CheckCircle, X, Upload, File, XCircle, Download, Eye, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useUploadThing } from '@/lib/uploadthing';
 import JSZip from 'jszip';
 
@@ -39,7 +39,7 @@ type FormDataBase = {
   nci: string;
   umf: string;
   salaryIMSS: string;
-  proyectoId: string;
+  jefeDirectoId: string; // NUEVO CAMPO
 };
 
 // Tipo para formulario de proyecto
@@ -88,6 +88,17 @@ type Proyecto = {
   NameProject: string;
 };
 
+// NUEVO TIPO: Tipo para jefes directos
+type JefeDirecto = {
+  id: number;
+  nombre: string;
+  apellidoPaterno: string;
+  apellidoMaterno: string;
+  puesto: string;
+  tipoPersonal: 'BASE' | 'PROJECT';
+  nombreCompleto: string;
+};
+
 // Tipo para los detalles del éxito
 type SuccessDetails = {
   empleadoId: string;
@@ -129,7 +140,8 @@ const fieldNames: Record<string, string> = {
   colonia: 'Colonia',
   municipio: 'Municipio',
   estado: 'Estado',
-  codigoPostal: 'Código Postal'
+  codigoPostal: 'Código Postal',
+  jefeDirectoId: 'Jefe Directo' // NUEVO CAMPO
 };
 
 // Mapa de nombres de documentos
@@ -190,7 +202,8 @@ export default function SystemAdminDashboard() {
     nci: '',
     umf: '',
     salaryIMSS: '',
-    proyectoId: ''
+    proyectoId: '',
+    jefeDirectoId: '' // NUEVO CAMPO
   });
 
   // Estados para el formulario de personal base
@@ -222,7 +235,8 @@ export default function SystemAdminDashboard() {
     codigoPostal: '',
     nci: '',
     umf: '',
-    salaryIMSS: ''
+    salaryIMSS: '',
+    jefeDirectoId: '' // NUEVO CAMPO
   });
 
   // Estados para beneficiarios
@@ -262,7 +276,7 @@ export default function SystemAdminDashboard() {
     folleto: []
   });
 
-  // Estado para verificar duplicados - AHORA ES UN ARRAY
+  // Estado para verificar duplicados
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [duplicateErrors, setDuplicateErrors] = useState<Array<{
     field: string;
@@ -272,6 +286,10 @@ export default function SystemAdminDashboard() {
   // Estado para proyectos
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
+
+  // NUEVO ESTADO: Estado para jefes directos
+  const [jefesDirectos, setJefesDirectos] = useState<JefeDirecto[]>([]);
+  const [loadingJefes, setLoadingJefes] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -302,15 +320,16 @@ export default function SystemAdminDashboard() {
   // Referencia para el formulario
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Cargar proyectos al montar el componente
+  // Cargar proyectos y jefes directos al montar el componente
   useEffect(() => {
     fetchProjects();
+    fetchJefesDirectos(); // NUEVA FUNCIÓN
   }, []);
 
   const fetchProjects = async () => {
     try {
       setLoadingProjects(true);
-      const response = await fetch('/api/projects');
+      const response = await fetch('/api/catalogs/projects');
       if (response.ok) {
         const data = await response.json();
         setProyectos(data);
@@ -322,10 +341,27 @@ export default function SystemAdminDashboard() {
     }
   };
 
-  // Función para verificar duplicados en tiempo real - AHORA MANEJA MÚLTIPLES ERRORES
+  // NUEVA FUNCIÓN: Obtener jefes directos
+  const fetchJefesDirectos = async () => {
+    try {
+      setLoadingJefes(true);
+      const response = await fetch('/api/catalogs/jefes-directos');
+      if (response.ok) {
+        const data = await response.json();
+        setJefesDirectos(data);
+      } else {
+        console.error('Error al cargar jefes directos:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error al cargar jefes directos:', error);
+    } finally {
+      setLoadingJefes(false);
+    }
+  };
+
+  // Función para verificar duplicados en tiempo real
   const checkDuplicates = async (field: string, value: string) => {
     if (!value || value.length < 3) {
-      // Si el campo está vacío, eliminar el error de ese campo si existe
       setDuplicateErrors(prev => prev.filter(error => error.field !== field));
       return;
     }
@@ -333,7 +369,7 @@ export default function SystemAdminDashboard() {
     setCheckingDuplicates(true);
 
     try {
-      const response = await fetch('/api/empleados/check-duplicates', {
+      const response = await fetch('/api/administrative-personnel-dashboard/hiring/check-duplicates', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -347,10 +383,8 @@ export default function SystemAdminDashboard() {
       const data = await response.json();
 
       setDuplicateErrors(prev => {
-        // Eliminar cualquier error existente para este campo
         const filtered = prev.filter(error => error.field !== field);
         
-        // Si hay un nuevo error, agregarlo
         if (data.exists) {
           return [
             ...filtered,
@@ -378,7 +412,7 @@ export default function SystemAdminDashboard() {
     agreementFileURL?: string;
   }> => {
     try {
-      const response = await fetch(`/api/empleados/document-urls/${employeeId}`);
+      const response = await fetch(`/api/administrative-personnel-dashboard/hiring/document-urls/${employeeId}`);
       const data = await response.json();
       
       if (response.ok && data.success) {
@@ -434,7 +468,6 @@ export default function SystemAdminDashboard() {
       
       const zip = new JSZip();
       
-      // Descargar FT-RH-02 PDF
       if (successDetails.ftRh02PdfDownloadUrl) {
         const response = await fetch(successDetails.ftRh02PdfDownloadUrl);
         if (response.ok) {
@@ -443,7 +476,6 @@ export default function SystemAdminDashboard() {
         }
       }
       
-      // Descargar FT-RH-04 PDF
       if (successDetails.ftRh04PdfDownloadUrl) {
         const response = await fetch(successDetails.ftRh04PdfDownloadUrl);
         if (response.ok) {
@@ -452,7 +484,6 @@ export default function SystemAdminDashboard() {
         }
       }
       
-      // Descargar FT-RH-07 PDF
       if (successDetails.ftRh07PdfDownloadUrl) {
         const response = await fetch(successDetails.ftRh07PdfDownloadUrl);
         if (response.ok) {
@@ -461,7 +492,6 @@ export default function SystemAdminDashboard() {
         }
       }
       
-      // Descargar FT-RH-29 PDF
       if (successDetails.ftRh29PdfDownloadUrl) {
         const response = await fetch(successDetails.ftRh29PdfDownloadUrl);
         if (response.ok) {
@@ -470,7 +500,6 @@ export default function SystemAdminDashboard() {
         }
       }
       
-      // Generar el archivo ZIP
       const content = await zip.generateAsync({ type: "blob" });
       const downloadUrl = window.URL.createObjectURL(content);
       const a = document.createElement('a');
@@ -498,7 +527,6 @@ export default function SystemAdminDashboard() {
       
       const zip = new JSZip();
       
-      // Descargar FT-RH-02 Word
       if (successDetails.ftRh02WordUrl) {
         const response = await fetch(successDetails.ftRh02WordUrl);
         if (response.ok) {
@@ -507,7 +535,6 @@ export default function SystemAdminDashboard() {
         }
       }
       
-      // Descargar FT-RH-04 Excel
       if (successDetails.ftRh04ExcelUrl) {
         const response = await fetch(successDetails.ftRh04ExcelUrl);
         if (response.ok) {
@@ -516,7 +543,6 @@ export default function SystemAdminDashboard() {
         }
       }
       
-      // Descargar FT-RH-07 Word
       if (successDetails.ftRh07WordUrl) {
         const response = await fetch(successDetails.ftRh07WordUrl);
         if (response.ok) {
@@ -525,7 +551,6 @@ export default function SystemAdminDashboard() {
         }
       }
       
-      // Descargar FT-RH-29 Word
       if (successDetails.ftRh29WordUrl) {
         const response = await fetch(successDetails.ftRh29WordUrl);
         if (response.ok) {
@@ -534,7 +559,6 @@ export default function SystemAdminDashboard() {
         }
       }
       
-      // Generar el archivo ZIP
       const content = await zip.generateAsync({ type: "blob" });
       const downloadUrl = window.URL.createObjectURL(content);
       const a = document.createElement('a');
@@ -574,19 +598,15 @@ export default function SystemAdminDashboard() {
     ftRh07WordUrl: string;
     ftRh29WordUrl: string;
   }> => {
-    // URLs para FT-RH-02 (Contract)
     const ftRh02PdfUrl = contractFileURL || `/api/download/pdf/FT-RH-02?empleadoId=${empleadoId}&preview=1`;
     const ftRh02PdfDownloadUrl = contractFileURL || `/api/download/pdf/FT-RH-02?empleadoId=${empleadoId}`;
     
-    // URLs para FT-RH-04 (Warning)
     const ftRh04PdfUrl = warningFileURL || `/api/download/pdf/FT-RH-04?empleadoId=${empleadoId}&preview=1`;
     const ftRh04PdfDownloadUrl = warningFileURL || `/api/download/pdf/FT-RH-04?empleadoId=${empleadoId}`;
     
-    // URLs para FT-RH-07 (Letter)
     const ftRh07PdfUrl = letterFileURL || `/api/download/pdf/FT-RH-07?empleadoId=${empleadoId}&preview=1`;
     const ftRh07PdfDownloadUrl = letterFileURL || `/api/download/pdf/FT-RH-07?empleadoId=${empleadoId}`;
     
-    // URLs para FT-RH-29 (Agreement)
     const ftRh29PdfUrl = agreementFileURL || `/api/download/pdf/FT-RH-29?empleadoId=${empleadoId}&preview=1`;
     const ftRh29PdfDownloadUrl = agreementFileURL || `/api/download/pdf/FT-RH-29?empleadoId=${empleadoId}`;
     
@@ -631,11 +651,9 @@ export default function SystemAdminDashboard() {
       }));
     }
 
-    // Verificar duplicados para campos específicos
     if (['rfc', 'curp', 'nss'].includes(name)) {
       checkDuplicates(name, value);
     } else {
-      // Para otros campos, eliminar el error si existe
       setDuplicateErrors(prev => prev.filter(error => error.field !== name));
     }
   };
@@ -655,18 +673,15 @@ export default function SystemAdminDashboard() {
     }
   };
 
-  // Manejar cambios en documentos - SOLO PDF y JPG/PNG
+  // Manejar cambios en documentos
   const handleDocumentChange = (tipo: keyof Documentos, files: FileList) => {
     const filesArray = Array.from(files);
     
-    // Validar tipo de archivo basado en el tipo de documento
     let validExtensions: string[] = [];
     
     if (tipo === 'foto') {
-      // Solo imágenes para la foto
       validExtensions = ['.jpg', '.jpeg', '.png'];
     } else {
-      // Solo PDF para todos los demás documentos
       validExtensions = ['.pdf'];
     }
     
@@ -681,8 +696,7 @@ export default function SystemAdminDashboard() {
       return;
     }
 
-    // Validar tamaño máximo (4MB)
-    const maxSize = 4 * 1024 * 1024; // 4MB
+    const maxSize = 4 * 1024 * 1024;
     const oversizedFiles = filesArray.filter(file => file.size > maxSize);
 
     if (oversizedFiles.length > 0) {
@@ -730,10 +744,9 @@ export default function SystemAdminDashboard() {
     return true;
   };
 
-  // Validar que no haya errores de duplicados - AHORA VERIFICA TODOS LOS CAMPOS
+  // Validar que no haya errores de duplicados
   const validateNoDuplicates = (): boolean => {
     if (duplicateErrors.length > 0) {
-      // Mostrar el primer error como mensaje principal
       setErrorMessage(duplicateErrors[0].message);
       return false;
     }
@@ -763,14 +776,12 @@ export default function SystemAdminDashboard() {
     let totalFiles = 0;
     let uploadedFiles = 0;
 
-    // Contar total de archivos
     Object.values(documentos).forEach(files => {
       totalFiles += files.length;
     });
 
     if (totalFiles === 0) return uploadedUrls;
 
-    // Subir archivos por tipo
     for (const [docType, files] of Object.entries(documentos)) {
       if (files.length > 0) {
         try {
@@ -793,20 +804,18 @@ export default function SystemAdminDashboard() {
     return uploadedUrls;
   };
 
-  // Validar formulario según la pestaña activa - SOLO VALIDACIONES DE CAMPOS REQUERIDOS
+  // Validar formulario según la pestaña activa
   const validateForm = () => {
     const formData = getActiveFormData();
     const beneficiario = getActiveBeneficiario();
 
-    // Campos requeridos para ambos tipos
     const requiredFieldsBase = [
       'nombre', 'apellidoPaterno', 'nss', 'curp', 'rfc',
       'fechaNacimiento', 'telefono', 'email', 'puesto',
       'salario', 'calle', 'numeroExterior',
-      'colonia', 'municipio', 'estado', 'codigoPostal'
+      'colonia', 'municipio', 'estado', 'codigoPostal', 'jefeDirectoId' // NUEVO CAMPO REQUERIDO
     ];
 
-    // Validar campos adicionales según el tipo
     if (activeTab === 'proyecto') {
       const proyectoData = formData as FormDataProyecto;
       if (!proyectoData.proyectoId?.trim()) {
@@ -819,7 +828,6 @@ export default function SystemAdminDashboard() {
       }
     }
 
-    // Validar campos requeridos del formulario principal
     for (const field of requiredFieldsBase) {
       if (!formData[field as keyof typeof formData]?.trim()) {
         const fieldName = fieldNames[field] || field;
@@ -828,23 +836,19 @@ export default function SystemAdminDashboard() {
       }
     }
 
-    // Validar formato de email
     if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
       setErrorMessage('El email no tiene un formato válido');
       return false;
     }
 
-    // Validar documentos
     if (!validateDocuments()) {
       return false;
     }
 
-    // Validar que no haya errores de duplicados - AHORA VERIFICA TODOS LOS CAMPOS
     if (!validateNoDuplicates()) {
       return false;
     }
 
-    // Validar que si se llena algún campo de beneficiario, todos los requeridos estén completos
     if (beneficiario.nombre || beneficiario.apellidoPaterno || beneficiario.porcentaje) {
       if (!beneficiario.nombre.trim()) {
         setErrorMessage('El nombre del beneficiario es requerido');
@@ -863,7 +867,6 @@ export default function SystemAdminDashboard() {
         return false;
       }
       
-      // Validar que el porcentaje sea 100% (solo un beneficiario)
       const porcentaje = parseFloat(beneficiario.porcentaje) || 0;
       if (Math.abs(porcentaje - 100) > 0.01) {
         setErrorMessage('El porcentaje del beneficiario debe ser 100% (solo se permite un beneficiario)');
@@ -876,7 +879,6 @@ export default function SystemAdminDashboard() {
 
   // Limpiar todos los formularios
   const limpiarTodosFormularios = () => {
-    // Limpiar formulario de proyecto
     setFormDataProyecto({
       nombre: '',
       apellidoPaterno: '',
@@ -907,7 +909,8 @@ export default function SystemAdminDashboard() {
       nci: '',
       umf: '',
       salaryIMSS: '',
-      proyectoId: ''
+      proyectoId: '',
+      jefeDirectoId: '' // NUEVO CAMPO
     });
     setBeneficiarioProyecto({
       nombre: '',
@@ -917,7 +920,6 @@ export default function SystemAdminDashboard() {
       porcentaje: ''
     });
 
-    // Limpiar formulario de personal base
     setFormDataBase({
       nombre: '',
       apellidoPaterno: '',
@@ -946,7 +948,8 @@ export default function SystemAdminDashboard() {
       codigoPostal: '',
       nci: '',
       umf: '',
-      salaryIMSS: ''
+      salaryIMSS: '',
+      jefeDirectoId: '' // NUEVO CAMPO
     });
     setBeneficiarioBase({
       nombre: '',
@@ -956,7 +959,6 @@ export default function SystemAdminDashboard() {
       porcentaje: ''
     });
 
-    // Limpiar documentos
     setDocumentos({
       cv: [],
       actaNacimiento: [],
@@ -990,13 +992,12 @@ export default function SystemAdminDashboard() {
 
   // Manejar envío del formulario
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); // Prevenir envío por defecto
+    e.preventDefault();
     setSuccessMessage('');
     setErrorMessage('');
     setSuccessDetails(null);
     setUploadProgress(0);
 
-    // Validar el formulario - si validateForm() retorna false, no continúa
     if (!validateForm()) {
       return;
     }
@@ -1007,12 +1008,10 @@ export default function SystemAdminDashboard() {
       const formData = getActiveFormData();
       const beneficiario = getActiveBeneficiario();
 
-      // Subir documentos primero
       setUploadProgress(10);
       const documentosUrls = await uploadDocuments();
       setUploadProgress(50);
 
-      // Solo incluir beneficiario si tiene datos
       const beneficiariosFiltrados = beneficiario.nombre.trim() && beneficiario.apellidoPaterno.trim()
         ? [{
             nombre: toUpperCaseWithAccents(beneficiario.nombre.trim()),
@@ -1023,9 +1022,7 @@ export default function SystemAdminDashboard() {
           }]
         : [];
 
-      // Crear objeto con formato correcto según el tipo de personal
       const formDataToSend: any = {
-        // Información personal (común para ambos)
         nombre: toUpperCaseWithAccents(formData.nombre.trim()),
         apellidoPaterno: toUpperCaseWithAccents(formData.apellidoPaterno.trim()),
         apellidoMaterno: toUpperCaseWithAccents(formData.apellidoMaterno.trim()),
@@ -1036,44 +1033,38 @@ export default function SystemAdminDashboard() {
         telefono: formData.telefono,
         email: formData.email.toLowerCase().trim(),
         
-        // Documentos
         nss: formData.nss,
         curp: toUpperCaseWithAccents(formData.curp.trim()),
         rfc: toUpperCaseWithAccents(formData.rfc.trim()),
         nci: toUpperCaseWithAccents(formData.nci.trim()),
         umf: formData.umf,
         
-        // Dirección
         calle: toUpperCaseWithAccents(formData.calle.trim()),
-        numeroExterior: toUpperCaseWithAccents(formData.numeroExterior.trim()),
-        numeroInterior: toUpperCaseWithAccents(formData.numeroInterior.trim()),
+        numeroExterior: formData.numeroExterior,
+        numeroInterior: formData.numeroInterior,
         colonia: toUpperCaseWithAccents(formData.colonia.trim()),
         municipio: toUpperCaseWithAccents(formData.municipio.trim()),
         estado: toUpperCaseWithAccents(formData.estado),
         codigoPostal: formData.codigoPostal,
         
-        // Información laboral
         puesto: toUpperCaseWithAccents(formData.puesto.trim()),
         departamento: toUpperCaseWithAccents(formData.departamento.trim()),
         salario: formData.salario,
         horarioLaboral: toUpperCaseWithAccents(formData.horarioLaboral),
         tipoContrato: toUpperCaseWithAccents(formData.tipoContrato),
         
-        // Información de contrato
         fechaInicioContrato: formData.fechaInicioContrato,
         salaryIMSS: formData.salaryIMSS,
         
-        // Tipo de personal
         tipoPersonal: activeTab === 'proyecto' ? 'proyecto' : 'base',
         
-        // Beneficiarios
         beneficiarios: beneficiariosFiltrados,
 
-        // Documentos adjuntos
-        documentos: documentosUrls
+        documentos: documentosUrls,
+        
+        jefeDirectoId: formData.jefeDirectoId // NUEVO CAMPO
       };
 
-      // Agregar campos específicos según el tipo
       if (activeTab === 'proyecto') {
         const proyectoData = formData as FormDataProyecto;
         formDataToSend.fechaFinContrato = proyectoData.fechaFinContrato;
@@ -1081,7 +1072,7 @@ export default function SystemAdminDashboard() {
       }
 
       setUploadProgress(75);
-      const response = await fetch('/api/empleados/registrar', {
+      const response = await fetch('/api/administrative-personnel-dashboard/hiring/insert', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1095,10 +1086,8 @@ export default function SystemAdminDashboard() {
         setUploadProgress(100);
         setSuccessMessage(result.message);
         
-        // Obtener URLs de documentos desde la BD
         const documentUrls = await getDocumentUrls(result.empleadoId);
         
-        // Generar URLs para descarga
         const downloadUrls = await generateDownloadUrls(
           result.empleadoId,
           documentUrls.contractFileURL,
@@ -1130,7 +1119,6 @@ export default function SystemAdminDashboard() {
         setSuccessDetails(details);
         setShowSuccessModal(true);
         
-        // Limpiar solo el formulario activo después de éxito
         if (activeTab === 'proyecto') {
           setFormDataProyecto({
             nombre: '',
@@ -1162,7 +1150,8 @@ export default function SystemAdminDashboard() {
             nci: '',
             umf: '',
             salaryIMSS: '',
-            proyectoId: ''
+            proyectoId: '',
+            jefeDirectoId: ''
           });
           setBeneficiarioProyecto({
             nombre: '',
@@ -1200,7 +1189,8 @@ export default function SystemAdminDashboard() {
             codigoPostal: '',
             nci: '',
             umf: '',
-            salaryIMSS: ''
+            salaryIMSS: '',
+            jefeDirectoId: ''
           });
           setBeneficiarioBase({
             nombre: '',
@@ -1211,7 +1201,6 @@ export default function SystemAdminDashboard() {
           });
         }
 
-        // Limpiar documentos
         setDocumentos({
           cv: [],
           actaNacimiento: [],
@@ -1302,10 +1291,7 @@ export default function SystemAdminDashboard() {
 
   // Componente para input de documento
   const DocumentInput = ({ tipo, required = false }: { tipo: keyof Documentos, required?: boolean }) => {
-    // Definir accept basado en el tipo de documento
-    const accept = tipo === 'foto' 
-      ? '.jpg,.jpeg,.png' 
-      : '.pdf';
+    const accept = tipo === 'foto' ? '.jpg,.jpeg,.png' : '.pdf';
     
     return (
       <div className="space-y-2">
@@ -1335,9 +1321,7 @@ export default function SystemAdminDashboard() {
           <p className="text-xs text-red-500">Este documento es requerido</p>
         )}
         <p className="text-xs text-gray-500">
-          {tipo === 'foto' 
-            ? 'Formato: JPG/PNG • Máx: 4MB' 
-            : 'Formato: PDF • Máx: 4MB'}
+          {tipo === 'foto' ? 'Formato: JPG/PNG • Máx: 4MB' : 'Formato: PDF • Máx: 4MB'}
         </p>
       </div>
     );
@@ -1637,7 +1621,7 @@ export default function SystemAdminDashboard() {
 
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    NO. INTERIOR *
+                    NO. INTERIOR
                   </label>
                   <input
                     type="text"
@@ -1646,7 +1630,6 @@ export default function SystemAdminDashboard() {
                     onChange={handleInputChange}
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                     placeholder="Ingrese el número interior"
-                    required
                   />
                 </div>
 
@@ -1893,6 +1876,35 @@ export default function SystemAdminDashboard() {
                   </div>
                 </div>
                 
+                {/* NUEVO CAMPO: JEFE DIRECTO */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    JEFE DIRECTO *
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                    </div>
+                    <select
+                      name="jefeDirectoId"
+                      value={formData.jefeDirectoId}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                      disabled={loadingJefes}
+                    >
+                      <option value="">Seleccione un jefe directo</option>
+                      {jefesDirectos.map((jefe) => (
+                        <option key={jefe.id} value={jefe.id}>
+                          {jefe.nombreCompleto} - {jefe.puesto} ({jefe.tipoPersonal})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {loadingJefes && (
+                    <p className="text-xs text-gray-500 mt-1">Cargando jefes directos...</p>
+                  )}
+                </div>
+                
                 {/* Solo mostrar fecha de fin de contrato para personal de proyecto */}
                 {activeTab === 'proyecto' && (
                   <div>
@@ -1958,7 +1970,7 @@ export default function SystemAdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                  NOMBRE (S) *
+                  NOMBRE (S) 
                 </label>
                 <input
                   type="text"
@@ -1966,13 +1978,12 @@ export default function SystemAdminDashboard() {
                   onChange={(e) => handleBeneficiarioChange('nombre', e.target.value)}
                   className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                   placeholder="Ingrese el nombre (s) del beneficiario"
-                  required
                 />
               </div>
               
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                  APELLIDO PATERNO *
+                  APELLIDO PATERNO 
                 </label>
                 <input
                   type="text"
@@ -1980,13 +1991,12 @@ export default function SystemAdminDashboard() {
                   onChange={(e) => handleBeneficiarioChange('apellidoPaterno', e.target.value)}
                   className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                   placeholder="Ingrese el apellido paterno"
-                  required
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                  APELLIDO MATERNO *
+                  APELLIDO MATERNO 
                 </label>
                 <input
                   type="text"
@@ -1994,13 +2004,12 @@ export default function SystemAdminDashboard() {
                   onChange={(e) => handleBeneficiarioChange('apellidoMaterno', e.target.value)}
                   className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                   placeholder="Ingrese el apellido materno"
-                  required
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                  PARENTESCO *
+                  PARENTESCO 
                 </label>
                 <select
                   value={beneficiario.parentesco}
@@ -2019,7 +2028,7 @@ export default function SystemAdminDashboard() {
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                  PORCENTAJE (%) *
+                  PORCENTAJE (%)
                 </label>
                 <input
                   type="text"
@@ -2027,7 +2036,6 @@ export default function SystemAdminDashboard() {
                   onChange={(e) => handleBeneficiarioChange('porcentaje', e.target.value)}
                   className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                   placeholder="Ingrese el porcentaje"
-                  required
                 />
               </div>
             </div>
@@ -2126,7 +2134,7 @@ export default function SystemAdminDashboard() {
         title="PANEL ADMINISTRATIVO"
       />
 
-      {/* MODAL DE CONFIRMACIÓN EXITOSA CON VISTA PREVIA DE PDF - Corregido para que se muestre sobre todo */}
+      {/* MODAL DE CONFIRMACIÓN EXITOSA CON VISTA PREVIA DE PDF */}
       {showSuccessModal && successDetails && (
         <div className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70" style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}>
           <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full h-[90vh] flex flex-col animate-fade-in relative z-[10000]">
@@ -2209,7 +2217,6 @@ export default function SystemAdminDashboard() {
                     </div>
                     
                     <div className="space-y-3">
-                      {/* Documentos del formato activo */}
                       {formatoActivo === 'FT-RH-02' ? (
                         <>
                           <div className="flex items-center justify-between">
@@ -2487,7 +2494,7 @@ export default function SystemAdminDashboard() {
         </div>
       )}
 
-      {/* CONTENT - Ajustado para header y footer fijos */}
+      {/* CONTENT */}
       <main className="pt-[72px] pb-[80px] min-h-screen bg-gray-100">
         <div className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 max-w-7xl mx-auto">
           <div className="mb-6 sm:mb-8">
@@ -2545,7 +2552,7 @@ export default function SystemAdminDashboard() {
         </div>
       </main>
 
-      {/* FOOTER - Fixed */}
+      {/* FOOTER */}
       <Footer />
 
       {/* Agregar estilos para animaciones y layout */}
@@ -2564,7 +2571,6 @@ export default function SystemAdminDashboard() {
           animation: fade-in 0.3s ease-out;
         }
         
-        /* Ajustes de layout para header y footer fijos */
         body {
           padding-top: 0;
           padding-bottom: 0;
@@ -2572,17 +2578,14 @@ export default function SystemAdminDashboard() {
           overflow-x: hidden;
         }
         
-        /* Asegurar que el modal esté por encima de todo */
         .fixed.inset-0.z-\\[9999\\] {
           z-index: 9999 !important;
         }
         
-        /* Asegurar que el header y footer tengan z-index adecuado */
         header, footer {
           z-index: 50 !important;
         }
         
-        /* El modal debe estar por encima del header y footer */
         .fixed.inset-0.z-\\[9999\\] {
           z-index: 9999 !important;
         }
