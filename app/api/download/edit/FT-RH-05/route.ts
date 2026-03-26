@@ -183,7 +183,7 @@ export async function GET(request: NextRequest) {
 
        const buffer = await workbook.xlsx.writeBuffer();
     
-    const fileName = `FT-RH-05-${batchId}.xlsx`;
+        const fileName = `FT-RH-05-${batchId}.xlsx`;
 
         return new NextResponse(buffer, {
             headers: {
