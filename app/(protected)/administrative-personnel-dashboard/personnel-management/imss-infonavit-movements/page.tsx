@@ -6,12 +6,11 @@ import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useState, useEffect, ChangeEvent, useRef, KeyboardEvent } from 'react';
-import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Download, Eye } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Download, Eye, Plus, UserMinus } from 'lucide-react';
 
 // Interface para movimientos de empleados
 interface EmployeeMovement {
   BatchID: number;
-  EmployeeID: number;
   ProjectContractID: number;
   MovementType: string | null;
   DateMovement: string | null;
@@ -36,29 +35,37 @@ interface EmployeeSearchResult {
   NameProject?: string;
 }
 
+// Interface para empleado en el lote
+interface EmployeeInBatch {
+  id: string; // clave temporal para el frontend
+  EmployeeID: number;
+  EmployeeData: EmployeeSearchResult;
+}
+
 // Interface para formulario de movimientos
 interface MovementFormData {
-  EmployeeID: string;
   MovementType: string;
   DateMovement: string;
   ReasonForWithdrawal: string;
 }
 
-// Interface para filtros
-interface Filters {
-  search: string;
-}
-
 // Interface para detalles del éxito
 interface SuccessDetails {
   BatchID: number;
-  EmployeeID: number;
-  EmployeeName: string;
-  tipo: 'BASE' | 'PROJECT';
+  Employees: Array<{
+    EmployeeID: number;
+    EmployeeName: string;
+    tipo: 'BASE' | 'PROJECT';
+  }>;
   MovementType: string;
   DateMovement: string | null;
   pdfUrl: string;
   excelUrl: string;
+}
+
+// Interface para filtros
+interface Filters {
+  search: string;
 }
 
 const TYPE_OF_MOVEMENT_OPTIONS = [
@@ -95,7 +102,6 @@ const formatDateForInput = (dateString: string | null): string => {
   }
 };
 
-
 // Función para formatear fecha para mostrar
 const formatDate = (dateString: string | null): string => {
   if (!dateString) return 'N/A';
@@ -109,8 +115,6 @@ const formatDate = (dateString: string | null): string => {
     return dateString;
   }
 };
-
-
 
 // Función para descargar documento
 const downloadDocument = (url: string, fileName: string) => {
@@ -158,12 +162,12 @@ export default function EmployeeMovementsPage() {
     search: ''
   });
 
-  // Estados para búsqueda de empleados por ID
+  // Estados para búsqueda de empleados por ID (para agregar al lote)
   const [employeeIdInput, setEmployeeIdInput] = useState('');
   const [searchingEmployee, setSearchingEmployee] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeSearchResult | null>(null);
-  const [selectedEmployeeData, setSelectedEmployeeData] = useState<EmployeeSearchResult | null>(null);
+  const [employeeToAdd, setEmployeeToAdd] = useState<EmployeeSearchResult | null>(null);
   const [employeeNotFound, setEmployeeNotFound] = useState(false);
+  const [employeesInBatch, setEmployeesInBatch] = useState<EmployeeInBatch[]>([]);
 
   // Estados para modales
   const [showModal, setShowModal] = useState(false);
@@ -178,12 +182,8 @@ export default function EmployeeMovementsPage() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  // Estado para controlar si se muestra el rango de fechas
-  const [showDateRange, setShowDateRange] = useState(false);
-
   // Estado para formulario
   const [formData, setFormData] = useState<MovementFormData>({
-    EmployeeID: '',
     MovementType: '',
     DateMovement: '',
     ReasonForWithdrawal: '',
@@ -252,7 +252,7 @@ export default function EmployeeMovementsPage() {
       filtered = filtered.filter(record => {
         const employeeName = `${record.FirstName || ''} ${record.LastName || ''} ${record.MiddleName || ''}`.toLowerCase();
         return employeeName.includes(searchLower) || 
-               record.EmployeeID.toString().includes(searchLower) ||
+               record.BatchID.toString().includes(searchLower) ||
                (record.MovementType && record.MovementType.toLowerCase().includes(searchLower));
       });
     }
@@ -298,20 +298,20 @@ export default function EmployeeMovementsPage() {
         );
         
         if (employee) {
-          setSelectedEmployee(employee);
-          setSelectedEmployeeData(employee);
-          setFormData(prev => ({
-            ...prev,
-            EmployeeID: employee.EmployeeID.toString()
-          }));
-          setEmployeeNotFound(false);
+          // Verificar si el empleado ya está en el lote
+          const alreadyInBatch = employeesInBatch.some(e => e.EmployeeID === employee.EmployeeID);
+          if (alreadyInBatch) {
+            setError('ESTE EMPLEADO YA HA SIDO AGREGADO AL LOTE');
+            setEmployeeToAdd(null);
+          } else if (employeesInBatch.length >= 10) {
+            setError('MÁXIMO 10 EMPLEADOS POR LOTE');
+            setEmployeeToAdd(null);
+          } else {
+            setEmployeeToAdd(employee);
+            setEmployeeNotFound(false);
+          }
         } else {
-          setSelectedEmployee(null);
-          setSelectedEmployeeData(null);
-          setFormData(prev => ({
-            ...prev,
-            EmployeeID: ''
-          }));
+          setEmployeeToAdd(null);
           setEmployeeNotFound(true);
           setError('NO SE ENCONTRÓ UN EMPLEADO CON ESE ID');
         }
@@ -326,15 +326,35 @@ export default function EmployeeMovementsPage() {
     }
   };
 
+  // Función para agregar empleado al lote
+  const addEmployeeToBatch = () => {
+    if (!employeeToAdd) return;
+    
+    const newEmployee: EmployeeInBatch = {
+      id: `${Date.now()}-${employeeToAdd.EmployeeID}`,
+      EmployeeID: employeeToAdd.EmployeeID,
+      EmployeeData: employeeToAdd
+    };
+    
+    setEmployeesInBatch([...employeesInBatch, newEmployee]);
+    setEmployeeToAdd(null);
+    setEmployeeIdInput('');
+    setError('');
+    
+    if (employeeIdInputRef.current) {
+      employeeIdInputRef.current.focus();
+    }
+  };
+
+  // Función para eliminar empleado del lote
+  const removeEmployeeFromBatch = (id: string) => {
+    setEmployeesInBatch(employeesInBatch.filter(emp => emp.id !== id));
+  };
+
   // Función para limpiar la búsqueda de empleado
   const clearEmployeeSearch = () => {
     setEmployeeIdInput('');
-    setSelectedEmployee(null);
-    setSelectedEmployeeData(null);
-    setFormData(prev => ({
-      ...prev,
-      EmployeeID: ''
-    }));
+    setEmployeeToAdd(null);
     setEmployeeNotFound(false);
     setError('');
     if (employeeIdInputRef.current) {
@@ -342,18 +362,24 @@ export default function EmployeeMovementsPage() {
     }
   };
 
+  // Función para limpiar todo el lote
+  const clearBatch = () => {
+    setEmployeesInBatch([]);
+    setEmployeeToAdd(null);
+    setEmployeeIdInput('');
+    setEmployeeNotFound(false);
+  };
+
   // Función para abrir modal de creación
   const handleCreateRecord = () => {
     setModalMode('create');
     setFormData({
-      EmployeeID: '',
       MovementType: '',
       DateMovement: '',
       ReasonForWithdrawal: '',
     });
-    setShowDateRange(false);
-    setSelectedEmployee(null);
-    setSelectedEmployeeData(null);
+    setEmployeesInBatch([]);
+    setEmployeeToAdd(null);
     setEmployeeIdInput('');
     setEmployeeNotFound(false);
     setError('');
@@ -366,45 +392,67 @@ export default function EmployeeMovementsPage() {
     }, 100);
   };
 
+  const loadBatchForEdit = async (batchId: number) => {
+    try {
+      setLoading(true);
+      setError('');
+
+      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeeimssinfonavit/batch/${batchId}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          // Cargar los datos del movimiento
+          setFormData({
+            MovementType: data.batch.MovementType || '',
+            DateMovement: formatDateForInput(data.batch.DateMovement),
+            ReasonForWithdrawal: data.batch.ReasonForWithdrawal || '',
+          });
+          
+          // Cargar los empleados del lote
+          const employees = data.employees.map((emp: any, index: number) => ({
+            id: `edit-${index}-${emp.EmployeeID}`,
+            EmployeeID: emp.EmployeeID,
+            EmployeeData: emp
+          }));
+          setEmployeesInBatch(employees);
+        } else {
+          setError(data.message || 'Error al cargar los datos del lote');
+        }
+      } else {
+        setError('Error al cargar los datos del lote');
+      }
+    } catch (error) {
+      console.error('Error al cargar lote:', error);
+      setError('ERROR DE CONEXIÓN AL CARGAR DATOS DEL LOTE');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Función para abrir modal de edición
   const handleEditRecord = async (record: EmployeeMovement) => {
     setModalMode('edit');
     setRecordToEdit(record);
-    
-    try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeeimssinfonavit/search?term=${record.EmployeeID}`);
-      if (response.ok) {
-        const data = await response.json();
-        const employeeData = data.employees.find((emp: EmployeeSearchResult) => emp.EmployeeID === record.EmployeeID);
-        if (employeeData) {
-          setSelectedEmployeeData(employeeData);
-          setSelectedEmployee(employeeData);
-          setEmployeeIdInput(record.EmployeeID.toString());
-        }
-      }
-    } catch (error) {
-      console.error('Error al cargar datos del empleado:', error);
-    }
-    
-    
-    setFormData({
-      EmployeeID: record.EmployeeID.toString(),
-      MovementType: record.MovementType || '',
-      ReasonForWithdrawal: record.ReasonForWithdrawal || '',
-      DateMovement: formatDateForInput(record.DateMovement),
-    });
-    
     setShowModal(true);
+    
+    // Cargar los datos completos del lote
+    await loadBatchForEdit(record.BatchID);
+    
+    setTimeout(() => {
+      if (employeeIdInputRef.current) {
+        employeeIdInputRef.current.focus();
+      }
+    }, 100);
   };
 
   // Función para cerrar modal
   const handleCloseModal = () => {
     setShowModal(false);
-    setSelectedEmployeeData(null);
-    setSelectedEmployee(null);
+    setEmployeesInBatch([]);
+    setEmployeeToAdd(null);
     setEmployeeIdInput('');
     setEmployeeNotFound(false);
-    setShowDateRange(false);
     setError('');
   };
 
@@ -440,7 +488,7 @@ export default function EmployeeMovementsPage() {
     
     let newValue = value;
     
-    if (![ 'StartDate', 'EndDate' ].includes(name)) {
+    if (name !== 'DateMovement') {
       newValue = normalizarMayusculas(value);
     }
     
@@ -450,14 +498,14 @@ export default function EmployeeMovementsPage() {
     }));
   };
 
-  // Función para guardar registro de movimientos
+  // Función para guardar registro de movimientos (múltiples empleados)
   const handleSaveRecord = async () => {
     try {
       setSaving(true);
       setError('');
 
-      if (!formData.EmployeeID) {
-        setError('DEBE SELECCIONAR UN EMPLEADO VÁLIDO');
+      if (employeesInBatch.length === 0) {
+        setError('DEBE AGREGAR AL MENOS UN EMPLEADO AL LOTE');
         setSaving(false);
         return;
       }
@@ -468,12 +516,24 @@ export default function EmployeeMovementsPage() {
         return;
       }
 
+      if (!formData.DateMovement) {
+        setError('DEBE SELECCIONAR UNA FECHA DE MOVIMIENTO');
+        setSaving(false);
+        return;
+      }
+
+      // Validar motivo de baja solo cuando el tipo de movimiento es BAJA
+      if (formData.MovementType === 'BAJA' && !formData.ReasonForWithdrawal) {
+        setError('DEBE INGRESAR UN MOTIVO DE BAJA');
+        setSaving(false);
+        return;
+      }
 
       const recordData = {
-        EmployeeID: parseInt(formData.EmployeeID),
-        MovementType: formData.MovementType || null,
-        DateMovement: formData.DateMovement || null,
-        ReasonForWithdrawal: formData.ReasonForWithdrawal || null,
+        Employees: employeesInBatch.map(emp => emp.EmployeeID),
+        MovementType: formData.MovementType,
+        DateMovement: formData.DateMovement,
+        ReasonForWithdrawal: formData.MovementType === 'BAJA' ? formData.ReasonForWithdrawal : null,
       };
 
       let response;
@@ -502,7 +562,7 @@ export default function EmployeeMovementsPage() {
         handleCloseModal();
         await fetchRecords();
         
-        if (modalMode === 'create' && selectedEmployeeData && data.fileUrl) {
+        if (modalMode === 'create' && data.fileUrl) {
           // Mostrar modal de éxito con vista previa (para creación)
           const baseUrl = window.location.origin;
           const pdfUrl = data.fileUrl;
@@ -510,10 +570,12 @@ export default function EmployeeMovementsPage() {
           
           setSuccessDetails({
             BatchID: data.BatchID,
-            EmployeeID: parseInt(formData.EmployeeID),
-            EmployeeName: `${selectedEmployeeData.FirstName} ${selectedEmployeeData.LastName} ${selectedEmployeeData.MiddleName || ''}`.trim(),
-            tipo: selectedEmployeeData.tipo,
-            MovementType: formData.MovementType || 'NO ESPECIFICADO',
+            Employees: employeesInBatch.map(emp => ({
+              EmployeeID: emp.EmployeeID,
+              EmployeeName: `${emp.EmployeeData.FirstName} ${emp.EmployeeData.LastName} ${emp.EmployeeData.MiddleName || ''}`.trim(),
+              tipo: emp.EmployeeData.tipo
+            })),
+            MovementType: formData.MovementType,
             DateMovement: formData.DateMovement,
             pdfUrl: pdfUrl,
             excelUrl: excelUrl
@@ -596,7 +658,6 @@ export default function EmployeeMovementsPage() {
   // Función para obtener la URL de vista previa del PDF
   const getPreviewUrl = (documentUrl: string | null | undefined): string | null => {
     if (!documentUrl) return null;
-    // Si la URL ya es de UploadThing, la usamos directamente para vista previa
     return documentUrl;
   };
 
@@ -634,7 +695,7 @@ export default function EmployeeMovementsPage() {
                 CONFIRMAR ELIMINACIÓN
               </h2>
               <p className="text-sm text-gray-600 mt-2 leading-5">
-                ¿Está seguro que desea eliminar este movimiento? Esta acción no se puede deshacer.
+                ¿Está seguro que desea eliminar esta solicitud? Esta acción no se puede deshacer.
               </p>
             </div>
             
@@ -681,7 +742,7 @@ export default function EmployeeMovementsPage() {
                   ¡REGISTRO EXITOSO!
                 </h2>
                 <p className="text-gray-600 mt-1 text-sm">
-                  El movimiento ha sido registrado correctamente en el sistema.
+                  La solicitud se ha registrado correctamente para {successDetails.Employees.length} empleado(s).
                 </p>
               </div>
               <button
@@ -702,7 +763,7 @@ export default function EmployeeMovementsPage() {
                     <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DETALLES DEL REGISTRO</h3>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center">
-                        <span className="block text-xs font-bold text-gray-700 uppercase">ID MOVIMIENTO:</span>
+                        <span className="block text-xs font-bold text-gray-700 uppercase">ID SOLICITUD:</span>
                         <span className="text-gray-600 mt-1 text-sm">{successDetails.BatchID}</span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -713,6 +774,17 @@ export default function EmployeeMovementsPage() {
                         <span className="block text-xs font-bold text-gray-700 uppercase">FECHA DEL MOVIMIENTO:</span>
                         <span className="text-gray-600 mt-1 text-sm">{successDetails.DateMovement}</span>
                       </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">EMPLEADOS REGISTRADOS</h3>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {successDetails.Employees.map((emp, idx) => (
+                        <div key={idx} className="text-sm text-gray-700 py-1 border-b border-gray-200">
+                          {emp.EmployeeName}
+                        </div>
+                      ))}
                     </div>
                   </div>
                   
@@ -736,7 +808,7 @@ export default function EmployeeMovementsPage() {
                             <Eye className="h-4 w-4 text-gray-700" />
                           </a>
                           <button
-                            onClick={() => handleDownloadPDF(successDetails.pdfUrl, `FT-RH-05-${successDetails.tipo}-${successDetails.BatchID}.pdf`)}
+                            onClick={() => handleDownloadPDF(successDetails.pdfUrl, `FT-RH-05-${successDetails.BatchID}.pdf`)}
                             disabled={downloading}
                             className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Descargar PDF"
@@ -757,7 +829,7 @@ export default function EmployeeMovementsPage() {
                           <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-05 (EDITABLE)</span>
                         </div>
                         <button
-                          onClick={() => handleDownloadExcel(successDetails.excelUrl, `FT-RH-05-${successDetails.tipo}-${successDetails.BatchID}.xlsx`)}
+                          onClick={() => handleDownloadExcel(successDetails.excelUrl, `FT-RH-05-${successDetails.BatchID}.xlsx`)}
                           disabled={downloading}
                           className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Descargar Excel editable"
@@ -805,7 +877,7 @@ export default function EmployeeMovementsPage() {
         </div>
       )}
 
-      {/* MODAL DE REGISTRO DE MOVIMIENTO */}
+      {/* MODAL DE REGISTRO DE MOVIMIENTO (MÚLTIPLES EMPLEADOS) */}
       {showModal && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
@@ -816,12 +888,12 @@ export default function EmployeeMovementsPage() {
             <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 tracking-tight">
-                  {modalMode === 'create' ? 'NUEVO MOVIMIENTO' : 'EDITAR MOVIMIENTO'}
+                  {modalMode === 'create' ? 'NUEVA SOLICITUD' : 'EDITAR SOLICITUD'}
                 </h2>
                 <p className="text-gray-600 mt-1 text-sm">
                   {modalMode === 'create' 
-                    ? 'Registre un nuevo movimiento de personal.'
-                    : 'Modifique la información del movimiento seleccionado.'
+                    ? 'Registre una nueva solucitud de movimientos IMSS e INFONAVIT del personal.'
+                    : 'Modifique la información de la solicitud seleccionada.'
                   }
                 </p>
               </div>
@@ -836,10 +908,10 @@ export default function EmployeeMovementsPage() {
             {/* Contenido */}
             <div className="p-6">
               <div className="space-y-6">
-                {/* Búsqueda por ID del empleado */}
+                {/* Búsqueda por ID del empleado para agregar al lote */}
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                    ID DEL EMPLEADO 
+                    AGREGAR EMPLEADOS A LA SOLICITUD {employeesInBatch.length > 0 && `(${employeesInBatch.length}/10)`}
                   </h3>
                   
                   <div className="mb-4">
@@ -851,20 +923,21 @@ export default function EmployeeMovementsPage() {
                         onChange={(e) => {
                           setEmployeeIdInput(normalizarMayusculas(e.target.value));
                           if (employeeNotFound) setEmployeeNotFound(false);
+                          if (employeeToAdd) setEmployeeToAdd(null);
                         }}
                         onKeyDown={handleEmployeeIdKeyDown}
                         placeholder="Ingrese el ID del empleado"
                         className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
                           employeeNotFound ? 'border-red-500' : 'border-gray-400'
                         }`}
-                        disabled={modalMode === 'edit' || selectedEmployee !== null}
+                        disabled={employeesInBatch.length >= 10}
                       />
-                      {!selectedEmployee && (
+                      {!employeeToAdd && employeeIdInput && !employeeNotFound && (
                         <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
                           ENTER PARA BUSCAR
                         </div>
                       )}
-                      {selectedEmployee && (
+                      {employeeToAdd && (
                         <button
                           onClick={clearEmployeeSearch}
                           className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
@@ -887,58 +960,113 @@ export default function EmployeeMovementsPage() {
                     )}
                   </div>
 
-                  {/* Datos del empleado seleccionado */}
-                  {selectedEmployeeData && (
-                    <div className="space-y-6">
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                          INFORMACIÓN DEL EMPLEADO
-                        </h3>
-                      
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          <div>
-                            <span className="block text-xs font-bold text-gray-500 uppercase">Nombre completo</span>
-                            <span className="text-sm text-gray-900">
-                              {`${selectedEmployeeData.FirstName} ${selectedEmployeeData.LastName} ${selectedEmployeeData.MiddleName || ''}`.trim()}
-                            </span>
-                          </div>
-
-                          <div>
-                            <span className="block text-xs font-bold text-gray-500 uppercase">ID del empleado</span>
-                            <span className="text-sm text-gray-900">{selectedEmployeeData.EmployeeID}</span>
-                          </div>
-
-                          <div>
-                            <span className="block text-xs font-bold text-gray-500 uppercase">Tipo</span>
-                            <span className="text-sm text-gray-900">{selectedEmployeeData.tipo}</span>
-                          </div>
-
-                          <div>
-                            <span className="block text-xs font-bold text-gray-500 uppercase">Puesto</span>
-                            <span className="text-sm text-gray-900">{selectedEmployeeData.Position || 'N/A'}</span>
-                          </div>
-
-                          {selectedEmployeeData.tipo === 'BASE' ? (
+                  {/* Empleado encontrado para agregar */}
+                  {employeeToAdd && (
+                    <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-sm transition-shadow">
+                      <div className="flex justify-between items-start gap-4">
+                        <div className="flex-1">
+                          {/* Nombre del empleado */}
+                          <h3 className="font-semibold text-gray-800 mb-3 text-base border-b border-gray-200 pb-2">
+                            {`${employeeToAdd.FirstName} ${employeeToAdd.LastName} ${employeeToAdd.MiddleName || ''}`.trim()}
+                          </h3>
+                          
+                          {/* Información del empleado en grid */}
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                             <div>
-                              <span className="block text-xs font-bold text-gray-500 uppercase">Área</span>
-                              <span className="text-sm text-gray-900">{selectedEmployeeData.Area || 'N/A'}</span>
+                              <span className="text-xs font-semibold text-gray-600 uppercase">ID:</span>
+                              <p className="text-sm text-gray-700 mt-0.5">{employeeToAdd.EmployeeID}</p>
                             </div>
-                          ) : (
+                            
                             <div>
-                              <span className="block text-xs font-bold text-gray-500 uppercase">Proyecto</span>
-                              <span className="text-sm text-gray-900">{selectedEmployeeData.NameProject || 'N/A'}</span>
+                              <span className="text-xs font-semibold text-gray-600 uppercase">Tipo:</span>
+                              <p className="text-sm text-gray-700 mt-0.5">{employeeToAdd.tipo}</p>
                             </div>
-                          )}
+                            
+                            <div className="col-span-2">
+                              <span className="text-xs font-semibold text-gray-600 uppercase">Puesto:</span>
+                              <p className="text-sm text-gray-700 mt-0.5">{employeeToAdd.Position}</p>
+                            </div>
+                          </div>
                         </div>
+                        
+                        <button
+                          onClick={addEmployeeToBatch}
+                          className="px-5 py-2.5 bg-[#3a6ea5] text-white font-semibold rounded-lg hover:bg-[#2d5592] transition-all duration-200 flex items-center justify-center whitespace-nowrap shadow-sm hover:shadow-md self-center"
+                        >
+                          AGREGAR
+                        </button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Lista de empleados en el lote */}
+                  {employeesInBatch.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">EMPLEADOS EN LA SOLICITUD:</h4>
+                      
+                      <div className="space-y-2 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
+                        {employeesInBatch.map((emp) => (
+                          <div key={emp.id} className="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-200 hover:shadow-sm transition-shadow">
+                            <div className="flex-1">
+                              <p className="font-semibold text-gray-800 text-sm mb-1">
+                                {`${emp.EmployeeData.FirstName} ${emp.EmployeeData.LastName} ${emp.EmployeeData.MiddleName || ''}`.trim()}
+                              </p>
+                              <div className="grid grid-cols-3 gap-2 text-xs">
+                                <div>
+                                  <span className="font-semibold text-gray-600">ID:</span>
+                                  <span className="text-gray-700 ml-1">{emp.EmployeeID}</span>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-600">TIPO:</span>
+                                  <span className="text-gray-700 ml-1">{emp.EmployeeData.tipo}</span>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-600">PUESTO:</span>
+                                  <span className="text-gray-700 ml-1">{emp.EmployeeData.Position}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => removeEmployeeFromBatch(emp.id)}
+                              className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md transition-all duration-200 ml-2"
+                              title="Eliminar del lote"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                        
+                        {employeesInBatch.length === 0 && (
+                          <div className="text-center py-6 text-gray-400 text-sm">
+                            No hay empleados agregados
+                          </div>
+                        )}
+                      </div>
+                      
+                      {employeesInBatch.length === 10 && (
+                        <p className="mt-2 text-xs text-amber-600 font-medium flex items-center gap-1">
+                          <span className="inline-block w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
+                          Límite máximo de 10 empleados alcanzado
+                        </p>
+                      )}
+                      
+                      {employeesInBatch.length > 0 && (
+                        <button
+                          onClick={clearBatch}
+                          className="mt-3 text-sm text-red-600 hover:text-red-800 font-medium flex items-center gap-1.5 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          LIMPIAR TODOS
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Datos del Movimiento */}
+                {/* Datos de la solicitud */}
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                    DATOS DEL MOVIMIENTO
+                    DATOS DE LA SOLICITUD
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     
@@ -968,7 +1096,7 @@ export default function EmployeeMovementsPage() {
                     {/* FECHA DEL MOVIMIENTO */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                        FECHA DEL MOVIMIENTO* 
+                        FECHA DEL MOVIMIENTO *
                       </label>
                       <div className="relative">
                         <input
@@ -982,22 +1110,23 @@ export default function EmployeeMovementsPage() {
                       </div>
                     </div>
 
-                    {/* MOTIVO DE BAJA */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          MOTIVO DE BAJA * 
-                       </label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          name="ReasonForWithdrawal"
-                          value={formData.ReasonForWithdrawal}
-                          onChange={handleFormChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          required
-                        />
+                    {/* MOTIVO DE BAJA - Solo visible cuando el tipo de movimiento es BAJA */}
+                    {formData.MovementType === 'BAJA' && (
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                          MOTIVO DE BAJA *
+                        </label>
+                        <div className="relative">
+                          <textarea
+                            name="ReasonForWithdrawal"
+                            value={formData.ReasonForWithdrawal}
+                            onChange={handleFormChange}
+                            rows={3}
+                            className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                          />
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1014,7 +1143,7 @@ export default function EmployeeMovementsPage() {
               </button>
               <button
                 onClick={handleSaveRecord}
-                disabled={saving || !selectedEmployee || !formData.MovementType || !formData.DateMovement || !formData.ReasonForWithdrawal }
+                disabled={saving || employeesInBatch.length === 0 || !formData.MovementType || !formData.DateMovement || (formData.MovementType === 'BAJA' && !formData.ReasonForWithdrawal)}
                 className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap disabled:opacity-50"
               >
                 {saving ? (
@@ -1023,7 +1152,7 @@ export default function EmployeeMovementsPage() {
                     GUARDANDO...
                   </>
                 ) : (
-                  modalMode === 'create' ? 'CREAR' : 'ACTUALIZAR'
+                  modalMode === 'create' ? `CREAR` : 'ACTUALIZAR'
                 )}
               </button>
             </div>
@@ -1037,10 +1166,10 @@ export default function EmployeeMovementsPage() {
           <div className="mb-6">
             <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5]">
               <h1 className="text-xl font-bold text-white tracking-tight">
-                MOVIMIENTO DE PERSONAL
+                MOVIMIENTOS IMSS E INFONAVIT
               </h1>
               <p className="text-sm text-gray-200 mt-1">
-                Administre los movimientos de personal.
+                Administre las solicitudes de movimientos de IMSS e INFONAVIT de los empleados.
               </p>
             </div>
           </div>
@@ -1100,7 +1229,7 @@ export default function EmployeeMovementsPage() {
               onClick={handleCreateRecord}
               className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap"
             >
-              NUEVO MOVIMIENTO
+              NUEVA SOLICITUD
             </button>
           </div>
 
@@ -1121,34 +1250,33 @@ export default function EmployeeMovementsPage() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={15} className="py-12 text-center">
+                      <td colSpan={6} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
-                          <p className="text-gray-600">Cargando movimientos...</p>
+                          <p className="text-gray-600">Cargando solicitudes...</p>
                         </div>
                       </td>
                     </tr>
                   ) : filteredRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={15} className="py-12 text-center">
+                      <td colSpan={6} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
                           <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
                             {filters.search
                               ? 'No se encontraron registros que coincidan con la búsqueda'
-                              : 'No hay movimientos registrados'}
+                              : 'No hay solicitudes registradas'}
                           </p>
                         </div>
                       </td>
                     </tr>
                   ) : (
-                    currentRecords.map((record) => {
+                    currentRecords.map((record, index) => {
                       const previewUrl = getPreviewUrl(record.FileURL);
                       
                       return (
-                        <tr key={record.BatchID} className="hover:bg-gray-50 transition-colors border-b border-gray-300">
+                        <tr key={`${record.BatchID}-${index}-${record.MovementType || ''}`} className="hover:bg-gray-50 transition-colors border-b border-gray-300">
                           <td className="py-3 px-4 text-sm text-gray-800 font-medium">{record.BatchID}</td>
-                          <td className="py-3 px-4 text-sm text-gray-800 font-medium">{record.EmployeeID}</td>
                           <td className="py-3 px-4 text-sm text-gray-800">
                             <div className="text-sm text-gray-800 uppercase">{record.MovementType}</div>
                           </td>
@@ -1156,7 +1284,7 @@ export default function EmployeeMovementsPage() {
                             <div className="text-sm text-gray-800 uppercase">{formatDate(record.DateMovement)}</div>
                           </td>
                           <td className="py-3 px-4">
-                              <div className="text-sm text-gray-800 uppercase">{record.ReasonForWithdrawal}</div>
+                            <div className="text-sm text-gray-800 uppercase max-w-xs truncate">{record.ReasonForWithdrawal || "N/A"}</div>
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center justify-center">
@@ -1165,7 +1293,7 @@ export default function EmployeeMovementsPage() {
                                   href={previewUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                className="flex items-center text-xs text-gray-700 hover:underline"
+                                  className="flex items-center text-xs text-gray-700 hover:underline"
                                   title="Ver PDF"
                                 >
                                   Ver
