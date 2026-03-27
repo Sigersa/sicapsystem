@@ -4,6 +4,49 @@ import fs from "fs";
 import { getConnection } from "@/lib/db";
 import { createReport } from "docx-templates";
 
+function dias(num: number): string {
+  if (num < 0 || num > 100) {
+    throw new Error("La cantidad de días tiene que ser entre el rango de 0 y 100");
+  }
+
+  const unidades = [
+    "CERO", "UNO", "DOS", "TRES", "CUATRO",
+    "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE",
+  ];
+
+  const especiales: Record<number, string> = {
+    10: "DIEZ",
+    11: "ONCE",
+    12: "DOCE",
+    13: "TRECE",
+    14: "CATORCE",
+    15: "QUINCE",
+    20: "VEINTE",
+    100: "CIEN"
+  };
+
+  const decenas = [
+    "", "", "VEINTE", "TREINTA", "CUARENTA",
+    "CINCUENTA", "SESENTA", "SETENTA",
+    "OCHENTA", "NOVENTA",
+  ];
+
+  function convertir(n: number): string {
+    if (n < 10) return unidades[n];
+    if (especiales[n]) return especiales[n];
+    if (n < 20) return "DIECI" + unidades[n - 10];
+    if (n < 30) return "VEINTI" + unidades[n - 20];
+    if (n <= 100) {
+      const d = Math.floor(n / 10);
+      const u = n % 10;
+      return u === 0 ? decenas[d] : `${decenas[d]} Y ${unidades[u]}`;
+    }
+    return "";
+  }
+
+  return convertir(num);
+}
+
 function formatDateToSpanish(dateString: string | Date): string {
   if (!dateString) return "NO ESPECIFICADO";
   
@@ -18,13 +61,11 @@ function formatDateToSpanish(dateString: string | Date): string {
     const dia = dateObj.getDate().toString().padStart(2, "0");
     const mes = new Intl.DateTimeFormat("es-MX", {
       month: "long",
-    }).format(dateObj);
+    }).format(dateObj).toUpperCase();
     const anio = dateObj.getFullYear();
     
-    // Capitalizar la primera letra del mes
-    const mesCapitalizado = mes.charAt(0).toUpperCase() + mes.slice(1);
     
-    return `${dia} de ${mesCapitalizado} del ${anio}`;
+    return `${dia} DE ${mes} DEL ${anio}`;
   } catch (error) {
     console.warn("Error al formatear fecha:", error);
     return "NO ESPECIFICADO";
@@ -69,6 +110,9 @@ export async function GET(request: NextRequest) {
     let position = "";
     let startDate = "";
     let years = "";
+    let StartDays = "";
+    let EndDays = "";
+    let DaysOfVacations = "";
 
       // Personal Base
       const [rows] = await connection.query<any[]>(
@@ -79,8 +123,14 @@ export async function GET(request: NextRequest) {
           bp.MiddleName,
           bp.Position,
           DATE_FORMAT(bc.StartDate, '%Y/%m/%d') AS StartDate,
-          TIMESTAMPDIFF(YEAR, StartDate, CURDATE()) AS years
+          TIMESTAMPDIFF(YEAR, bc.StartDate, CURDATE()) AS years,
+          d.StartDate AS StartDays,
+          d.EndDate AS EndDays,
+          es.DaysOfVacations
         FROM basepersonnel bp
+        INNER JOIN employees e ON e.EmployeeID = bp.EmployeeID
+        LEFT JOIN employeeseniority es ON es.EmployeeID = e.EmployeeID
+        LEFT JOIN daystaken d ON d.EmployeeSeniorityID = es.EmployeeSeniorityID
         LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
         WHERE bp.EmployeeID = ?
       `,
@@ -99,6 +149,9 @@ export async function GET(request: NextRequest) {
       position = r.Position || "";
       startDate = r.StartDate || "";
       years = r.years || "";
+      StartDays = r.StartDays || "";
+      EndDays = r.EndDays || "";
+      DaysOfVacations = r.DaysOfVacations || "";
 
     // Validar que se obtuvieron los datos necesarios
     if (!fullName) {
@@ -112,6 +165,10 @@ export async function GET(request: NextRequest) {
 
     const ApplicationDate = formatDateToSpanish(new Date());
 
+    const StartDaysDate = formatDateToSpanish(StartDays);
+
+    const EndDaysDate = formatDateToSpanish(EndDays)
+    ;
     // Usar la plantilla FT-RH-29
     const templatePath = path.join(
       process.cwd(),
@@ -140,6 +197,9 @@ export async function GET(request: NextRequest) {
         PUESTO_DEL_EMPLEADO: position || "NO ESPECIFICADO",
         FECHA_GENERACION: ApplicationDate || "NO ESPECIFICADO",
         AÑOS: years || "NO ESPECIFICADO",
+        FECHA_INICIO: StartDaysDate || "NO ESPECIFICADO",
+        FECHA_TERMINO: EndDaysDate || "NO ESPECIFICADO",
+        DIAS_VACACIONES: dias (r.DaysOfVacations),
       },
       cmdDelimiter: ["[[", "]]"],
     });
