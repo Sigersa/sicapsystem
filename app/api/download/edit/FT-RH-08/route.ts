@@ -1,8 +1,61 @@
+// app/api/download/edit/FT-RH-08/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
 import { getConnection } from "@/lib/db";
 import { createReport } from "docx-templates";
+
+// Función para calcular años de antigüedad
+const calcularAniosAntiguedad = (fechaInicio: string | Date): number => {
+  if (!fechaInicio) return 0;
+  
+  const startDate = new Date(fechaInicio);
+  const currentDate = new Date();
+  
+  let years = currentDate.getFullYear() - startDate.getFullYear();
+  const monthDiff = currentDate.getMonth() - startDate.getMonth();
+  
+  if (monthDiff < 0 || (monthDiff === 0 && currentDate.getDate() < startDate.getDate())) {
+    years--;
+  }
+  
+  return years;
+};
+
+// Función para calcular días de vacaciones según años de antigüedad
+const calcularDiasVacaciones = (aniosAntiguedad: number): number => {
+  if (aniosAntiguedad >= 1 && aniosAntiguedad <= 5) {
+    return 12 + (aniosAntiguedad - 1) * 2;
+  } else if (aniosAntiguedad >= 6 && aniosAntiguedad <= 10) {
+    return 22;
+  } else if (aniosAntiguedad >= 11 && aniosAntiguedad <= 15) {
+    return 24;
+  } else if (aniosAntiguedad >= 16 && aniosAntiguedad <= 20) {
+    return 26;
+  } else if (aniosAntiguedad >= 21 && aniosAntiguedad <= 25) {
+    return 28;
+  } else if (aniosAntiguedad >= 26 && aniosAntiguedad <= 30) {
+    return 30;
+  } else if (aniosAntiguedad >= 31 && aniosAntiguedad <= 35) {
+    return 32;
+  } else if (aniosAntiguedad > 35) {
+    return 32;
+  } else {
+    return 12;
+  }
+};
+
+// Función para obtener los días totales usados en vacaciones
+const getTotalUsedVacationDays = async (connection: any, employeeId: number): Promise<number> => {
+  const [vacations] = await connection.execute(
+    `SELECT SUM(Days) as totalUsed
+     FROM employeevacations 
+     WHERE EmployeeID = ?`,
+    [employeeId]
+  );
+  
+  return (vacations as any[])[0]?.totalUsed || 0;
+};
 
 function dias(num: number): string {
   if (num < 0 || num > 100) {
@@ -53,7 +106,6 @@ function formatDateToSpanish(dateString: string | Date): string {
   try {
     const dateObj = typeof dateString === 'string' ? new Date(dateString) : dateString;
     
-    // Verificar si la fecha es válida
     if (isNaN(dateObj.getTime())) {
       return "NO ESPECIFICADO";
     }
@@ -63,7 +115,6 @@ function formatDateToSpanish(dateString: string | Date): string {
       month: "long",
     }).format(dateObj).toUpperCase();
     const anio = dateObj.getFullYear();
-    
     
     return `${dia} DE ${mes} DEL ${anio}`;
   } catch (error) {
@@ -75,6 +126,7 @@ function formatDateToSpanish(dateString: string | Date): string {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const empleadoId = searchParams.get("empleadoId");
+  const vacationId = searchParams.get("vacationId"); // Nuevo parámetro para obtener el período específico
 
   if (!empleadoId) {
     return NextResponse.json(
@@ -108,50 +160,99 @@ export async function GET(request: NextRequest) {
     const employee = employeeInfo[0];
     let fullName = "";
     let position = "";
-    let startDate = "";
-    let years = "";
-    let StartDays = "";
-    let EndDays = "";
-    let DaysOfVacations = "";
+    let contractStartDate = "";
+    let yearsOfSeniority = 0;
+    let daysOfVacations = 0;
+    let vacationStartDate = "";
+    let vacationEndDate = "";
+    let totalUsedDays = 0;
+    let remainingDays = 0;
+    let currentVacationDays = 0;
 
-      // Personal Base
-      const [rows] = await connection.query<any[]>(
+    // Obtener información del personal base
+    const [basePersonnelRows] = await connection.query<any[]>(
+      `
+      SELECT     
+        bp.FirstName,
+        bp.LastName,
+        bp.MiddleName,
+        bp.Position,
+        bc.StartDate AS ContractStartDate
+      FROM basepersonnel bp
+      INNER JOIN employees e ON e.EmployeeID = bp.EmployeeID
+      LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
+      WHERE bp.EmployeeID = ?
+      `,
+      [empleadoId]
+    );
+
+    if (!basePersonnelRows.length) {
+      return NextResponse.json(
+        { error: "Información de personal base no encontrada" },
+        { status: 404 }
+      );
+    }
+
+    const baseInfo = basePersonnelRows[0];
+    fullName = `${baseInfo.FirstName || ""} ${baseInfo.LastName || ""} ${baseInfo.MiddleName || ""}`.trim();
+    position = baseInfo.Position || "";
+    contractStartDate = baseInfo.ContractStartDate || "";
+    
+    // Calcular años de antigüedad
+    if (contractStartDate) {
+      yearsOfSeniority = calcularAniosAntiguedad(contractStartDate);
+    }
+    
+    // Calcular días de vacaciones según los años de antigüedad
+    daysOfVacations = calcularDiasVacaciones(yearsOfSeniority);
+    
+    // Obtener el período de vacaciones específico si se proporciona vacationId
+    if (vacationId) {
+      const [vacationRows] = await connection.query<any[]>(
         `
         SELECT 
-          bp.FirstName,
-          bp.LastName,
-          bp.MiddleName,
-          bp.Position,
-          DATE_FORMAT(bc.StartDate, '%Y/%m/%d') AS StartDate,
-          TIMESTAMPDIFF(YEAR, bc.StartDate, CURDATE()) AS years,
-          d.StartDate AS StartDays,
-          d.EndDate AS EndDays,
-          es.DaysOfVacations
-        FROM basepersonnel bp
-        INNER JOIN employees e ON e.EmployeeID = bp.EmployeeID
-        LEFT JOIN employeeseniority es ON es.EmployeeID = e.EmployeeID
-        LEFT JOIN daystaken d ON d.EmployeeSeniorityID = es.EmployeeSeniorityID
-        LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
-        WHERE bp.EmployeeID = ?
-      `,
+          StartDate,
+          EndDate,
+          Days
+        FROM employeevacations 
+        WHERE VacationID = ? AND EmployeeID = ?
+        `,
+        [vacationId, empleadoId]
+      );
+      
+      if (vacationRows.length) {
+        vacationStartDate = vacationRows[0].StartDate || "";
+        vacationEndDate = vacationRows[0].EndDate || "";
+        currentVacationDays = vacationRows[0].Days || 0;
+      }
+    } else {
+      // Si no se proporciona vacationId, obtener el período más reciente
+      const [vacationRows] = await connection.query<any[]>(
+        `
+        SELECT 
+          StartDate,
+          EndDate,
+          Days
+        FROM employeevacations 
+        WHERE EmployeeID = ?
+        ORDER BY StartDate DESC
+        LIMIT 1
+        `,
         [empleadoId]
       );
-
-      if (!rows.length) {
-        return NextResponse.json(
-          { error: "Información de personal base no encontrada" },
-          { status: 404 }
-        );
+      
+      if (vacationRows.length) {
+        vacationStartDate = vacationRows[0].StartDate || "";
+        vacationEndDate = vacationRows[0].EndDate || "";
+        currentVacationDays = vacationRows[0].Days || 0;
       }
-
-      const r = rows[0];
-      fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
-      position = r.Position || "";
-      startDate = r.StartDate || "";
-      years = r.years || "";
-      StartDays = r.StartDays || "";
-      EndDays = r.EndDays || "";
-      DaysOfVacations = r.DaysOfVacations || "";
+    }
+    
+    // Obtener días totales usados
+    totalUsedDays = await getTotalUsedVacationDays(connection, parseInt(empleadoId));
+    
+    // Calcular días restantes
+    remainingDays = daysOfVacations - totalUsedDays;
 
     // Validar que se obtuvieron los datos necesarios
     if (!fullName) {
@@ -161,15 +262,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const StartDatee = formatDateToSpanish(startDate);
-
-    const ApplicationDate = formatDateToSpanish(new Date());
-
-    const StartDaysDate = formatDateToSpanish(StartDays);
-
-    const EndDaysDate = formatDateToSpanish(EndDays)
-    ;
-    // Usar la plantilla FT-RH-29
+    // Formatear fechas
+    const formattedContractStartDate = formatDateToSpanish(contractStartDate);
+    const applicationDate = formatDateToSpanish(new Date());
+    const formattedVacationStartDate = formatDateToSpanish(vacationStartDate);
+    const formattedVacationEndDate = formatDateToSpanish(vacationEndDate);
+    
+    // Usar la plantilla FT-RH-08
     const templatePath = path.join(
       process.cwd(),
       "public",
@@ -192,14 +291,17 @@ export async function GET(request: NextRequest) {
     const report = await createReport({
       template,
       data: {
-        NOMBRE_COMPLETO: fullName,
-        FECHA_DE_INGRESO: StartDatee || "NO ESPECIFICADO",
-        PUESTO_DEL_EMPLEADO: position || "NO ESPECIFICADO",
-        FECHA_GENERACION: ApplicationDate || "NO ESPECIFICADO",
-        AÑOS: years || "NO ESPECIFICADO",
-        FECHA_INICIO: StartDaysDate || "NO ESPECIFICADO",
-        FECHA_TERMINO: EndDaysDate || "NO ESPECIFICADO",
-        DIAS_VACACIONES: dias (r.DaysOfVacations),
+        NOMBRE_COMPLETO: fullName.toUpperCase(),
+        FECHA_DE_INGRESO: formattedContractStartDate,
+        PUESTO_DEL_EMPLEADO: position.toUpperCase() || "NO ESPECIFICADO",
+        FECHA_GENERACION: applicationDate,
+        AÑOS: yearsOfSeniority.toString(),
+        DIAS_TOTALES: dias(daysOfVacations),
+        DIAS_USADOS: dias(totalUsedDays),
+        DIAS_RESTANTES: dias(remainingDays),
+        FECHA_INICIO: formattedVacationStartDate,
+        FECHA_TERMINO: formattedVacationEndDate,
+        DIAS_VACACIONES: currentVacationDays ? dias(currentVacationDays) : "NO ESPECIFICADO",
       },
       cmdDelimiter: ["[[", "]]"],
     });
@@ -207,7 +309,7 @@ export async function GET(request: NextRequest) {
     const fileBuffer = Buffer.from(report);
 
     // Nombre del archivo con tipo de empleado e ID
-    const fileName = `FT-RH-08-BASE-${empleadoId}.docx`;
+    const fileName = `FT-RH-08-BASE-${empleadoId}${vacationId ? `-${vacationId}` : ''}.docx`;
 
     return new NextResponse(fileBuffer, {
       headers: {
