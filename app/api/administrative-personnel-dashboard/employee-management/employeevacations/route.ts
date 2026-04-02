@@ -38,14 +38,68 @@ const calcularDiasVacaciones = (aniosAntiguedad: number): number => {
   } else if (aniosAntiguedad > 35) {
     return 32;
   } else {
-    return 12; // Para antigüedad menor a 1 año
+    return 12;
   }
 };
 
-// Función para normalizar texto a mayúsculas
-const normalizarMayusculas = (texto: string): string => {
-  if (!texto) return '';
-  return texto.toUpperCase();
+// Función para obtener los días totales usados en vacaciones
+const getTotalUsedVacationDays = async (connection: any, employeeId: number): Promise<number> => {
+  const [vacations] = await connection.execute(
+    `SELECT SUM(Days) as totalUsed
+     FROM employeevacations 
+     WHERE EmployeeID = ?`,
+    [employeeId]
+  );
+  
+  return (vacations as any[])[0]?.totalUsed || 0;
+};
+
+// Función para generar y guardar el PDF del período de vacaciones
+async function generateAndSaveVacationPDF(
+  employeeId: number,
+  vacationId: number,
+  baseUrl: string,
+  cookies?: string
+): Promise<string | null> {
+  try {
+    console.log(`Generando PDF para EmployeeID: ${employeeId}, VacationID: ${vacationId}`);
+    
+    const url = `${baseUrl}/api/download/pdf/FT-RH-08?empleadoId=${employeeId}&vacationId=${vacationId}&save=1`;
+    console.log('URL de generación:', url);
+    
+    const response = await fetch(url, {
+      headers: {
+        Cookie: cookies || ''
+      }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error al generar PDF:', response.status, errorText);
+      return null;
+    }
+    
+    const result = await response.json();
+    
+    if (result.success && result.fileUrl) {
+      console.log('PDF generado y URL obtenida:', result.fileUrl);
+      return result.fileUrl;
+    }
+    
+    console.log('No se pudo obtener la URL del PDF generado');
+    return null;
+  } catch (error) {
+    console.error('Error en generateAndSaveVacationPDF:', error);
+    return null;
+  }
+}
+
+// Función para calcular fecha de término
+const calculateEndDate = (startDate: string, days: number): string => {
+  const startDateObj = new Date(startDate);
+  const endDateObj = new Date(startDateObj);
+  endDateObj.setDate(endDateObj.getDate() + days);
+  return endDateObj.toISOString().split('T')[0];
 };
 
 // GET: Obtener todos los empleados con sus períodos de vacaciones
@@ -59,7 +113,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "NO AUTORIZADO" }, { status: 401 });
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user || user.UserTypeID !== 2) {
@@ -83,7 +136,6 @@ export async function GET(req: NextRequest) {
       ORDER BY bp.LastName, bp.FirstName
     `);
 
-    // Procesar empleados para calcular antigüedad y días de vacaciones
     const employeesWithVacations = (baseEmployees as any[]).map(employee => {
       const yearsOfSeniority = calcularAniosAntiguedad(employee.ContractStartDate);
       const daysOfVacations = calcularDiasVacaciones(yearsOfSeniority);
@@ -120,7 +172,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "NO AUTORIZADO" }, { status: 401 });
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user || user.UserTypeID !== 2) {
@@ -130,7 +181,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     let { EmployeeID, Days, StartDate, Observations } = body;
 
-    // Validaciones
     if (!EmployeeID || !Days || !StartDate) {
       return NextResponse.json(
         { message: 'ALGUNOS CAMPOS SON REQUERIDOS' },
@@ -140,11 +190,10 @@ export async function POST(req: NextRequest) {
 
     connection = await getConnection();
     
-    // Iniciar transacción
     await connection.beginTransaction();
     
     try {
-      // Obtener la fecha de inicio del contrato para calcular años de antigüedad
+      // Obtener fecha de inicio del contrato
       const [contractResult] = await connection.execute(
         `SELECT bc.StartDate 
          FROM basecontracts bc 
@@ -161,64 +210,104 @@ export async function POST(req: NextRequest) {
       const yearsOfSeniority = calcularAniosAntiguedad(contractStartDate);
       const daysOfVacations = calcularDiasVacaciones(yearsOfSeniority);
       
-      // Validar que los días solicitados sean válidos
       const daysToTake = parseFloat(Days);
       if (isNaN(daysToTake) || daysToTake <= 0) {
         throw new Error('LOS DÍAS DEBEN SER UN NÚMERO POSITIVO');
       }
       
-      // Validar que los días solicitados no excedan los días disponibles
-      if (daysToTake > daysOfVacations) {
-        throw new Error(`LOS DÍAS SOLICITADOS (${Days}) EXCEDEN LOS DÍAS DISPONIBLES (${daysOfVacations})`);
+      const totalUsedDays = await getTotalUsedVacationDays(connection, EmployeeID);
+      const remainingDays = daysOfVacations - totalUsedDays;
+      
+      if (daysToTake > remainingDays) {
+        throw new Error(`NO SE PUEDE AGREGAR EL PERÍODO. DÍAS DISPONIBLES: ${remainingDays}, DÍAS SOLICITADOS: ${daysToTake}`);
       }
 
-      // Validar que la fecha de inicio sea válida
       const startDateObj = new Date(StartDate);
       if (isNaN(startDateObj.getTime())) {
         throw new Error('LA FECHA DE INICIO NO ES VÁLIDA');
       }
       
-      // Calcular fecha de término sumando los días a la fecha de inicio
-      const endDateObj = new Date(startDateObj);
-      endDateObj.setDate(endDateObj.getDate() + daysToTake);
-      
-      // Formatear fechas para MySQL
+      // Calcular fecha de término correctamente
       const formattedStartDate = startDateObj.toISOString().split('T')[0];
-      const formattedEndDate = endDateObj.toISOString().split('T')[0];
+      const formattedEndDate = calculateEndDate(formattedStartDate, daysToTake);
       
-      // Insertar en employeevacations
+      console.log('Fechas calculadas en POST:', {
+        startDate: formattedStartDate,
+        endDate: formattedEndDate,
+        days: daysToTake
+      });
+      
+      // Insertar registro sin FileURL por ahora
       const [vacationResult] = await connection.execute(
         `INSERT INTO employeevacations 
-         (EmployeeID, Days, StampedDays, StartDate, EndDate, Observations) 
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         (EmployeeID, Days, StampedDays, StartDate, EndDate, Observations, FileURL) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           EmployeeID, 
           Days, 
-          Days, // StampedDays igual a Days
+          Days,
           formattedStartDate, 
           formattedEndDate, 
-          Observations || ''
+          Observations || '',
+          null
         ]
       );
       
-      // Confirmar transacción
+      const insertedId = (vacationResult as any).insertId;
+      
+      // Confirmar la transacción
       await connection.commit();
+      
+      console.log(`Período de vacaciones creado con ID: ${insertedId}`);
+      
+      // Generar PDF después de confirmar la transacción
+      let fileUrl = null;
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin;
+        const cookies = req.headers.get('cookie') || '';
+        
+        fileUrl = await generateAndSaveVacationPDF(EmployeeID, insertedId, baseUrl, cookies);
+        
+        if (fileUrl) {
+          console.log(`PDF generado exitosamente: ${fileUrl}`);
+          // Actualizar FileURL en la base de datos
+          const updateConnection = await getConnection();
+          try {
+            await updateConnection.execute(
+              `UPDATE employeevacations SET FileURL = ? WHERE VacationID = ?`,
+              [fileUrl, insertedId]
+            );
+            console.log(`URL actualizada en BD para VacationID: ${insertedId}`);
+          } finally {
+            await updateConnection.release();
+          }
+        } else {
+          console.log('No se pudo generar el PDF');
+        }
+      } catch (pdfError) {
+        console.error('Error al generar PDF:', pdfError);
+      }
+      
+      // Obtener los días totales usados actualizados
+      const updatedTotalUsedDays = await getTotalUsedVacationDays(connection, EmployeeID);
       
       return NextResponse.json(
         { 
           message: 'PERÍODO DE VACACIONES CREADO EXITOSAMENTE',
-          vacationId: (vacationResult as any).insertId,
+          vacationId: insertedId,
           startDate: formattedStartDate,
           endDate: formattedEndDate,
           yearsOfSeniority: yearsOfSeniority,
           daysOfVacations: daysOfVacations,
+          totalUsedDays: updatedTotalUsedDays,
+          remainingDays: daysOfVacations - updatedTotalUsedDays,
+          fileUrl: fileUrl,
           success: true 
         },
         { status: 201 }
       );
       
     } catch (error) {
-      // Revertir transacción en caso de error
       await connection.rollback();
       throw error;
     }
@@ -240,7 +329,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PUT: Actualizar observaciones de vacaciones u obtener períodos de vacaciones
+// PUT: Actualizar observaciones o edición completa de vacaciones
 export async function PUT(req: NextRequest) {
   let connection;
   
@@ -251,7 +340,6 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "NO AUTORIZADO" }, { status: 401 });
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user || user.UserTypeID !== 2) {
@@ -261,7 +349,7 @@ export async function PUT(req: NextRequest) {
     const url = new URL(req.url);
     const action = url.searchParams.get('action');
     
-    // Si action es 'get', obtener períodos de vacaciones
+    // Obtener períodos de vacaciones de un empleado
     if (action === 'get') {
       const employeeId = url.searchParams.get('employeeId');
       
@@ -282,7 +370,8 @@ export async function PUT(req: NextRequest) {
           ev.StampedDays,
           ev.StartDate,
           ev.EndDate,
-          ev.Observations
+          ev.Observations,
+          ev.FileURL
          FROM employeevacations ev
          WHERE ev.EmployeeID = ?
          ORDER BY ev.StartDate DESC`,
@@ -292,7 +381,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json(vacations, { status: 200 });
     }
     
-    // Si action es 'update', actualizar observaciones
+    // Actualizar solo observaciones
     if (action === 'update') {
       const body = await req.json();
       const { vacationId, observations } = body;
@@ -315,6 +404,160 @@ export async function PUT(req: NextRequest) {
         { 
           message: 'OBSERVACIONES ACTUALIZADAS EXITOSAMENTE',
           success: true 
+        },
+        { status: 200 }
+      );
+    }
+    
+    // Actualización completa del registro de vacaciones
+    if (action === 'updatefull') {
+      const body = await req.json();
+      const { vacationId, EmployeeID, Days, StartDate, Observations } = body;
+      
+      if (!vacationId || !EmployeeID || !Days || !StartDate) {
+        return NextResponse.json(
+          { error: 'CAMPOS REQUERIDOS FALTANTES' },
+          { status: 400 }
+        );
+      }
+      
+      connection = await getConnection();
+      
+      const startDateObj = new Date(StartDate);
+      if (isNaN(startDateObj.getTime())) {
+        return NextResponse.json(
+          { error: 'LA FECHA DE INICIO NO ES VÁLIDA' },
+          { status: 400 }
+        );
+      }
+      
+      const [originalRecord] = await connection.execute(
+        'SELECT Days, FileURL FROM employeevacations WHERE VacationID = ?',
+        [vacationId]
+      );
+      
+      if (!(originalRecord as any[]).length) {
+        return NextResponse.json(
+          { error: 'REGISTRO NO ENCONTRADO' },
+          { status: 404 }
+        );
+      }
+      
+      const originalDays = (originalRecord as any[])[0].Days;
+      const oldFileUrl = (originalRecord as any[])[0].FileURL;
+      
+      const daysToTake = parseFloat(Days);
+      if (isNaN(daysToTake) || daysToTake <= 0) {
+        return NextResponse.json(
+          { error: 'LOS DÍAS DEBEN SER UN NÚMERO POSITIVO' },
+          { status: 400 }
+        );
+      }
+      
+      const [contractResult] = await connection.execute(
+        `SELECT bc.StartDate 
+         FROM basecontracts bc 
+         INNER JOIN basepersonnel bp ON bc.BasePersonnelID = bp.BasePersonnelID
+         WHERE bp.EmployeeID = ?`,
+        [EmployeeID]
+      );
+      
+      if (!(contractResult as any[]).length) {
+        return NextResponse.json(
+          { error: 'NO SE ENCONTRÓ LA FECHA DE INICIO DEL CONTRATO' },
+          { status: 400 }
+        );
+      }
+      
+      const contractStartDate = (contractResult as any[])[0].StartDate;
+      const yearsOfSeniority = calcularAniosAntiguedad(contractStartDate);
+      const daysOfVacations = calcularDiasVacaciones(yearsOfSeniority);
+      
+      const totalUsedDays = await getTotalUsedVacationDays(connection, EmployeeID);
+      const totalWithoutCurrent = totalUsedDays - originalDays;
+      const remainingDays = daysOfVacations - totalWithoutCurrent;
+      
+      if (daysToTake > remainingDays) {
+        return NextResponse.json(
+          { 
+            error: `NO SE PUEDE ACTUALIZAR EL PERÍODO. DÍAS DISPONIBLES: ${remainingDays}, DÍAS SOLICITADOS: ${daysToTake}` 
+          },
+          { status: 400 }
+        );
+      }
+      
+      // Calcular fecha de término correctamente
+      const formattedStartDate = startDateObj.toISOString().split('T')[0];
+      const formattedEndDate = calculateEndDate(formattedStartDate, daysToTake);
+      
+      console.log('Fechas calculadas en UPDATE:', {
+        startDate: formattedStartDate,
+        endDate: formattedEndDate,
+        days: daysToTake
+      });
+      
+      // Actualizar el registro
+      await connection.execute(
+        `UPDATE employeevacations 
+         SET Days = ?, 
+             StampedDays = ?, 
+             StartDate = ?, 
+             EndDate = ?, 
+             Observations = ?,
+             FileURL = NULL
+         WHERE VacationID = ?`,
+        [Days, Days, formattedStartDate, formattedEndDate, Observations || '', vacationId]
+      );
+      
+      await connection.commit();
+      
+      // Generar nuevo PDF después de actualizar
+      let newFileUrl = null;
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin;
+        const cookies = req.headers.get('cookie') || '';
+        newFileUrl = await generateAndSaveVacationPDF(EmployeeID, parseInt(vacationId), baseUrl, cookies);
+        
+        if (newFileUrl) {
+          const updateConnection = await getConnection();
+          try {
+            await updateConnection.execute(
+              `UPDATE employeevacations SET FileURL = ? WHERE VacationID = ?`,
+              [newFileUrl, vacationId]
+            );
+            console.log(`URL actualizada para VacationID: ${vacationId}`);
+          } finally {
+            await updateConnection.release();
+          }
+        }
+        
+        // Eliminar archivo antiguo si existe y se generó uno nuevo
+        if (oldFileUrl && newFileUrl) {
+          try {
+            const { UTApi } = await import('uploadthing/server');
+            const utapi = new UTApi();
+            const fileKey = oldFileUrl.match(/\/f\/([a-zA-Z0-9-_]+)/)?.[1];
+            if (fileKey) {
+              await utapi.deleteFiles([fileKey]);
+              console.log(`Archivo antiguo eliminado: ${fileKey}`);
+            }
+          } catch (deleteError) {
+            console.error('Error al eliminar archivo antiguo:', deleteError);
+          }
+        }
+      } catch (pdfError) {
+        console.error('Error al generar nuevo PDF:', pdfError);
+      }
+      
+      return NextResponse.json(
+        { 
+          message: 'PERÍODO DE VACACIONES ACTUALIZADO EXITOSAMENTE',
+          success: true,
+          remainingDays: remainingDays - daysToTake,
+          vacationId: vacationId,
+          fileUrl: newFileUrl,
+          startDate: formattedStartDate,
+          endDate: formattedEndDate
         },
         { status: 200 }
       );
@@ -348,7 +591,6 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "NO AUTORIZADO" }, { status: 401 });
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user || user.UserTypeID !== 2) {
@@ -367,10 +609,33 @@ export async function DELETE(req: NextRequest) {
     
     connection = await getConnection();
     
+    // Obtener FileURL antes de eliminar
+    const [record] = await connection.execute(
+      'SELECT FileURL FROM employeevacations WHERE VacationID = ?',
+      [vacationId]
+    );
+    
+    const fileUrl = (record as any[])[0]?.FileURL;
+    
     await connection.execute(
       'DELETE FROM employeevacations WHERE VacationID = ?',
       [vacationId]
     );
+    
+    // Eliminar archivo de UploadThing si existe
+    if (fileUrl) {
+      try {
+        const { UTApi } = await import('uploadthing/server');
+        const utapi = new UTApi();
+        const fileKey = fileUrl.match(/\/f\/([a-zA-Z0-9-_]+)/)?.[1];
+        if (fileKey) {
+          await utapi.deleteFiles([fileKey]);
+          console.log(`Archivo eliminado de UploadThing: ${fileKey}`);
+        }
+      } catch (deleteError) {
+        console.error('Error al eliminar archivo:', deleteError);
+      }
+    }
     
     return NextResponse.json(
       { 
