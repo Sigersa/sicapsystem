@@ -1,10 +1,11 @@
+// app/administrative-personnel-dashboard/employee-management/vacations/page.tsx
 'use client';
 import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useState, useEffect, ChangeEvent, FormEvent, useRef, KeyboardEvent } from 'react';
-import { Edit, Trash2, Search, X, CheckCircle, AlertCircle, Eye, Calendar, Clock, Save } from 'lucide-react';
+import { Edit, Trash2, Search, X, CheckCircle, AlertCircle, Eye, Calendar, Save, ChevronLeft, ChevronRight, RefreshCw, Download, FileText } from 'lucide-react';
 
 // Interface de empleados
 type Employee = {
@@ -28,8 +29,7 @@ type VacationRecord = {
   StartDate: string;
   EndDate: string;
   Observations: string;
-  YearsOfSeniority: number;
-  DaysOfVacations: number;
+  FileURL?: string | null;
 };
 
 // Interface para búsqueda de empleados
@@ -43,6 +43,23 @@ interface EmployeeSearchResult {
   Area?: string;
   NameProject?: string;
 }
+
+// Interface para detalles del éxito
+interface SuccessDetails {
+  VacationID: number;
+  EmployeeID: number;
+  EmployeeName: string;
+  tipo: 'BASE' | 'PROJECT';
+  Days: number;
+  StartDate: string;
+  EndDate: string;
+  fileUrl: string | null;
+}
+
+// Función para normalizar texto a mayúsculas
+const normalizarMayusculas = (texto: string): string => {
+  return texto.toUpperCase();
+};
 
 // Función para formatear fecha
 const formatDate = (dateString: string): string => {
@@ -59,16 +76,83 @@ const formatDate = (dateString: string): string => {
 };
 
 // Función para formatear fecha para input date
-const formatDateForInput = (date: Date): string => {
-  return date.toISOString().split('T')[0];
+const formatDateForInput = (dateString: string): string => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    return date.toISOString().split('T')[0];
+  } catch {
+    return '';
+  }
+};
+
+// Función para descargar el documento PDF FT-RH-08
+const downloadVacationPDF = async (employeeId: number, vacationId?: number) => {
+  try {
+    let url = `/api/download/pdf/FT-RH-08?empleadoId=${employeeId}`;
+    if (vacationId) {
+      url += `&vacationId=${vacationId}`;
+    }
+    
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Error al descargar el PDF');
+    }
+    
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `FT-RH-08-${employeeId}${vacationId ? `-${vacationId}` : ''}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(downloadUrl);
+  } catch (error) {
+    console.error('Error downloading PDF:', error);
+    throw error;
+  }
+};
+
+// Función para descargar el documento Word FT-RH-08
+const downloadVacationWord = async (employeeId: number, vacationId?: number) => {
+  try {
+    let url = `/api/download/edit/FT-RH-08?empleadoId=${employeeId}`;
+    if (vacationId) {
+      url += `&vacationId=${vacationId}`;
+    }
+    
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Error al descargar el documento Word');
+    }
+    
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `FT-RH-08-${employeeId}${vacationId ? `-${vacationId}` : ''}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(downloadUrl);
+  } catch (error) {
+    console.error('Error downloading Word:', error);
+    throw error;
+  }
 };
 
 export default function SystemAdminDashboard() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
+  
   // Referencias
   const employeeIdInputRef = useRef<HTMLInputElement>(null);
-
   
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
@@ -79,11 +163,13 @@ export default function SystemAdminDashboard() {
     EmployeeID: '',
     Days: '',
     StartDate: '',
+    EndDate: '',
     Observations: ''
   });
 
   // Estados para fecha de término calculada
   const [calculatedEndDate, setCalculatedEndDate] = useState<string>('');
+  const [calculatedEndDateValue, setCalculatedEndDateValue] = useState<string>('');
   const [selectedEmployeeSeniority, setSelectedEmployeeSeniority] = useState<{
     years: number;
     days: number;
@@ -112,25 +198,57 @@ export default function SystemAdminDashboard() {
   const [editingObservation, setEditingObservation] = useState<number | null>(null);
   const [editObservationValue, setEditObservationValue] = useState('');
   const [updatingObservation, setUpdatingObservation] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+
+  // Estados para paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Estados
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  const [saving, setSaving] = useState(false);
+  const [currentEditRecord, setCurrentEditRecord] = useState<VacationRecord | null>(null);
+
+  // Estado para días totales usados
+  const [totalUsedDays, setTotalUsedDays] = useState<number>(0);
+  
+  // Estado para el modal de éxito con vista previa del PDF
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successDetails, setSuccessDetails] = useState<SuccessDetails | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  
+  // Estado para mostrar opciones de descarga
+  const [showDownloadOptions, setShowDownloadOptions] = useState<{ show: boolean; employeeId: number; vacationId: number }>({
+    show: false,
+    employeeId: 0,
+    vacationId: 0
+  });
 
   // Calcular fecha de término cuando cambian los días o la fecha de inicio
   useEffect(() => {
-    if (formData.Days && parseInt(formData.Days) > 0 && formData.StartDate) {
+    if (formData.Days && parseFloat(formData.Days) > 0 && formData.StartDate) {
       const startDate = new Date(formData.StartDate);
-      // Validar que la fecha de inicio sea válida
       if (!isNaN(startDate.getTime())) {
         const endDate = new Date(startDate);
-        endDate.setDate(endDate.getDate() + parseInt(formData.Days));
+        endDate.setDate(endDate.getDate() + parseFloat(formData.Days));
+        const formattedEndDate = endDate.toISOString().split('T')[0];
+        setCalculatedEndDateValue(formattedEndDate);
         setCalculatedEndDate(formatDate(endDate.toISOString()));
+        
+        setFormData(prev => ({
+          ...prev,
+          EndDate: formattedEndDate
+        }));
       } else {
+        setCalculatedEndDateValue('');
         setCalculatedEndDate('');
       }
     } else {
+      setCalculatedEndDateValue('');
       setCalculatedEndDate('');
     }
   }, [formData.Days, formData.StartDate]);
@@ -157,6 +275,18 @@ export default function SystemAdminDashboard() {
     }
   }, [searchTerm, employees]);
 
+  // Actualizar páginas cuando cambien los registros filtrados
+  useEffect(() => {
+    setTotalPages(Math.ceil(filteredEmployees.length / itemsPerPage));
+    setCurrentPage(1);
+  }, [filteredEmployees, itemsPerPage]);
+
+  // Obtener registros actuales de la página
+  const currentEmployees = filteredEmployees.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   // Mostrar loading mientras se verifica la sesión
   if (sessionLoading) {
     return (
@@ -169,15 +299,9 @@ export default function SystemAdminDashboard() {
     );
   }
 
-  // Si no hay usuario (sesión inválida), no renderizar nada
   if (!user) {
     return null;
   }
-
-  // Función para normalizar texto a mayúsculas
-  const normalizarMayusculas = (texto: string): string => {
-    return texto.toUpperCase();
-  };
 
   // Función para buscar empleado por ID al presionar Enter
   const handleEmployeeIdKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
@@ -218,8 +342,8 @@ export default function SystemAdminDashboard() {
           }));
           setEmployeeNotFound(false);
           
-          // Obtener la antigüedad del empleado seleccionado
           await fetchEmployeeSeniority(employee.EmployeeID);
+          await fetchTotalUsedDays(employee.EmployeeID);
         } else {
           setSelectedEmployee(null);
           setSelectedEmployeeData(null);
@@ -249,7 +373,6 @@ export default function SystemAdminDashboard() {
       });
       
       if (response.ok) {
-        // No es necesario hacer nada aquí, la antigüedad ya viene en la lista de empleados
         const employeeData = employees.find(emp => emp.EmployeeID === employeeId);
         if (employeeData) {
           setSelectedEmployeeSeniority({
@@ -263,12 +386,30 @@ export default function SystemAdminDashboard() {
     }
   };
 
+  // Función para obtener los días totales usados en vacaciones
+  const fetchTotalUsedDays = async (employeeId: number) => {
+    try {
+      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeevacations?action=get&employeeId=${employeeId}`, {
+        method: 'PUT'
+      });
+      
+      if (response.ok) {
+        const vacations = await response.json();
+        const totalUsed = vacations.reduce((sum: number, record: VacationRecord) => sum + record.Days, 0);
+        setTotalUsedDays(totalUsed);
+      }
+    } catch (error) {
+      console.error('Error fetching total used days:', error);
+    }
+  };
+
   // Función para limpiar la búsqueda de empleados
   const clearEmployeeSearch = () => {
     setEmployeeIdInput('');
     setSelectedEmployee(null);
     setSelectedEmployeeData(null);
     setSelectedEmployeeSeniority(null);
+    setTotalUsedDays(0);
     setFormData(prev => ({
       ...prev,
       EmployeeID: ''
@@ -311,6 +452,8 @@ export default function SystemAdminDashboard() {
       if (response.ok) {
         const data = await response.json();
         setVacationRecords(data);
+        const totalUsed = data.reduce((sum: number, record: VacationRecord) => sum + record.Days, 0);
+        setTotalUsedDays(totalUsed);
       } else {
         throw new Error('ERROR AL CARGAR PERÍODOS DE VACACIONES');
       }
@@ -322,70 +465,105 @@ export default function SystemAdminDashboard() {
     }
   };
 
-  // Función para actualizar observaciones
-  const handleUpdateObservation = async (vacationId: number) => {
-    if (!editObservationValue.trim()) {
-      setErrorMessage('LAS OBSERVACIONES NO PUEDEN ESTAR VACÍAS');
-      return;
-    }
-
-    setUpdatingObservation(true);
+  // Función para descargar documento PDF
+  const handleDownloadPDF = async (employeeId: number, vacationId: number) => {
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeevacations?action=update`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          vacationId,
-          observations: editObservationValue
-        })
-      });
-
-      if (response.ok) {
-        setSuccessMessage('OBSERVACIONES ACTUALIZADAS EXITOSAMENTE');
-        // Actualizar la lista local
-        setVacationRecords(prev =>
-          prev.map(record =>
-            record.VacationID === vacationId
-              ? { ...record, Observations: editObservationValue }
-              : record
-          )
-        );
-        setEditingObservation(null);
-        setEditObservationValue('');
-        setTimeout(() => setSuccessMessage(''), 3000);
-      } else {
-        throw new Error('ERROR AL ACTUALIZAR OBSERVACIONES');
-      }
+      await downloadVacationPDF(employeeId, vacationId);
+      setSuccessMessage('PDF DESCARGADO EXITOSAMENTE');
+      setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
-      console.error('Error updating observation:', error);
-      setErrorMessage('ERROR AL ACTUALIZAR LAS OBSERVACIONES');
+      console.error('Error downloading PDF:', error);
+      setErrorMessage('ERROR AL DESCARGAR EL PDF');
       setTimeout(() => setErrorMessage(''), 3000);
-    } finally {
-      setUpdatingObservation(false);
     }
   };
 
-  // Iniciar edición de observaciones
-  const startEditObservation = (record: VacationRecord) => {
-    setEditingObservation(record.VacationID);
-    setEditObservationValue(record.Observations || '');
+  // Función para descargar documento Word
+  const handleDownloadWord = async (employeeId: number, vacationId: number) => {
+    try {
+      await downloadVacationWord(employeeId, vacationId);
+      setSuccessMessage('DOCUMENTO WORD DESCARGADO EXITOSAMENTE');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      console.error('Error downloading Word:', error);
+      setErrorMessage('ERROR AL DESCARGAR EL DOCUMENTO WORD');
+      setTimeout(() => setErrorMessage(''), 3000);
+    }
   };
 
-  // Cancelar edición de observaciones
-  const cancelEditObservation = () => {
-    setEditingObservation(null);
-    setEditObservationValue('');
+  // Función para manejar el clic en eliminar
+  const handleDeleteClick = (vacationId: number) => {
+    setShowVacationsModal(false);
+    
+    setTimeout(() => {
+      setPendingDeleteId(vacationId);
+      setConfirmDelete({ show: true, id: vacationId });
+    }, 100);
+  };
+
+  // Función para editar registro completo
+  const handleEditVacationRecord = async (record: VacationRecord) => {
+    setShowVacationsModal(false);
+    
+    setTimeout(async () => {
+      setModalMode('edit');
+      setCurrentEditRecord(record);
+      
+      try {
+        const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeemovements/search?term=${record.EmployeeID}`);
+        if (response.ok) {
+          const data = await response.json();
+          const employee = data.employees?.find((emp: EmployeeSearchResult) => 
+            emp.EmployeeID === record.EmployeeID
+          );
+          
+          if (employee) {
+            setSelectedEmployee(employee);
+            setSelectedEmployeeData(employee);
+            setEmployeeIdInput(employee.EmployeeID.toString());
+            
+            await fetchEmployeeSeniority(employee.EmployeeID);
+            await fetchTotalUsedDays(employee.EmployeeID);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching employee data:', error);
+      }
+      
+      setFormData({
+        EmployeeID: record.EmployeeID.toString(),
+        Days: record.Days.toString(),
+        StartDate: formatDateForInput(record.StartDate),
+        EndDate: formatDateForInput(record.EndDate),
+        Observations: record.Observations || ''
+      });
+      
+      setShowModal(true);
+    }, 100);
   };
 
   // Manejar cambios en el formulario
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: normalizarMayusculas(value)
-    }));
+    
+    if (name === 'Days') {
+      if (value === '' || /^\d*\.?\d*$/.test(value)) {
+        setFormData(prev => ({
+          ...prev,
+          [name]: value
+        }));
+      }
+    } else if (name === 'Observations') {
+      setFormData(prev => ({
+        ...prev,
+        [name]: normalizarMayusculas(value)
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: normalizarMayusculas(value)
+      }));
+    }
   };
 
   // Manejar cambios en la fecha de inicio
@@ -397,70 +575,139 @@ export default function SystemAdminDashboard() {
     }));
   };
 
-  // Manejar envío del formulario (crear)
+  // Función para validar días disponibles
+  const validateAvailableDays = (daysToTake: number): boolean => {
+    if (modalMode === 'create') {
+      const totalAfterAddition = totalUsedDays + daysToTake;
+      if (totalAfterAddition > (selectedEmployeeSeniority?.days || 0)) {
+        setErrorMessage(`NO SE PUEDE AGREGAR EL PERÍODO. EL TOTAL DE DÍAS USADOS SERÍA ${totalAfterAddition} DE ${selectedEmployeeSeniority?.days} DÍAS DISPONIBLES. DÍAS RESTANTES: ${(selectedEmployeeSeniority?.days || 0) - totalUsedDays}`);
+        return false;
+      }
+    } else if (modalMode === 'edit' && currentEditRecord) {
+      const totalAfterUpdate = (totalUsedDays - currentEditRecord.Days) + daysToTake;
+      if (totalAfterUpdate > (selectedEmployeeSeniority?.days || 0)) {
+        setErrorMessage(`NO SE PUEDE ACTUALIZAR EL PERÍODO. EL TOTAL DE DÍAS USADOS SERÍA ${totalAfterUpdate} DE ${selectedEmployeeSeniority?.days} DÍAS DISPONIBLES. DÍAS RESTANTES: ${(selectedEmployeeSeniority?.days || 0) - (totalUsedDays - currentEditRecord.Days)}`);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // Manejar envío del formulario (crear o editar)
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSuccessMessage('');
     setErrorMessage('');
+    setSaving(true);
     
-    // Validar que haya un empleado seleccionado
     if (!selectedEmployeeData) {
       setErrorMessage('POR FAVOR, BUSQUE Y SELECCIONE UN EMPLEADO');
+      setSaving(false);
       return;
     }
 
-    // Validar campos requeridos
     if (!formData.Days || !formData.StartDate) {
       setErrorMessage('POR FAVOR, COMPLETE TODOS LOS CAMPOS REQUERIDOS');
+      setSaving(false);
       return;
     }
 
-    // Validar que los días sean positivos
     const daysToTake = parseFloat(formData.Days);
     if (daysToTake <= 0) {
       setErrorMessage('LOS DÍAS A TOMAR DEBEN SER MAYORES A CERO');
+      setSaving(false);
       return;
     }
 
-    // Validar que los días no excedan los disponibles
-    if (selectedEmployeeSeniority && daysToTake > selectedEmployeeSeniority.days) {
-      setErrorMessage(`LOS DÍAS SOLICITADOS (${formData.Days}) EXCEDEN LOS DÍAS DISPONIBLES (${selectedEmployeeSeniority.days})`);
+    if (!validateAvailableDays(daysToTake)) {
+      setSaving(false);
       return;
     }
 
-    setLoading(true);
     try {
-      const url = '/api/administrative-personnel-dashboard/employee-management/employeevacations';
-      const method = 'POST';
-
-      // Preparar datos en mayúsculas
-      const datosEnviar = {
+      let url = '/api/administrative-personnel-dashboard/employee-management/employeevacations';
+      let method = 'POST';
+      let body: any = {
         EmployeeID: selectedEmployeeData.EmployeeID,
         Days: formData.Days.trim(),
         StartDate: formData.StartDate,
         Observations: formData.Observations.trim()
       };
 
+      if (modalMode === 'edit' && currentEditRecord) {
+        method = 'PUT';
+        body = {
+          vacationId: currentEditRecord.VacationID,
+          EmployeeID: selectedEmployeeData.EmployeeID,
+          Days: formData.Days.trim(),
+          StartDate: formData.StartDate,
+          Observations: formData.Observations.trim()
+        };
+        url = `/api/administrative-personnel-dashboard/employee-management/employeevacations?action=updatefull`;
+      }
+
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(datosEnviar),
+        body: JSON.stringify(body),
       });
 
       if (response.ok) {
         const result = await response.json();
-        setSuccessMessage('¡PERÍODO DE VACACIONES CREADO EXITOSAMENTE!');
         
-        // Recargar empleados
+        if (modalMode === 'create') {
+          setSuccessMessage('¡PERÍODO DE VACACIONES CREADO EXITOSAMENTE!');
+          
+          // Mostrar modal de éxito con vista previa usando las fechas del backend
+          if (result.vacationId && selectedEmployeeData) {
+            const employeeName = `${selectedEmployeeData.FirstName} ${selectedEmployeeData.LastName} ${selectedEmployeeData.MiddleName || ''}`.trim();
+            setSuccessDetails({
+              VacationID: result.vacationId,
+              EmployeeID: selectedEmployeeData.EmployeeID,
+              EmployeeName: employeeName,
+              tipo: selectedEmployeeData.tipo,
+              Days: daysToTake,
+              StartDate: result.startDate,
+              EndDate: result.endDate,
+              fileUrl: result.fileUrl || null
+            });
+            setShowSuccessModal(true);
+          }
+        } else {
+          setSuccessMessage('¡PERÍODO DE VACACIONES ACTUALIZADO EXITOSAMENTE!');
+          
+          // Para edición, mostrar modal con las fechas del backend
+          if (selectedEmployeeData) {
+            const employeeName = `${selectedEmployeeData.FirstName} ${selectedEmployeeData.LastName} ${selectedEmployeeData.MiddleName || ''}`.trim();
+            setSuccessDetails({
+              VacationID: parseInt(currentEditRecord?.VacationID?.toString() || '0'),
+              EmployeeID: selectedEmployeeData.EmployeeID,
+              EmployeeName: employeeName,
+              tipo: selectedEmployeeData.tipo,
+              Days: daysToTake,
+              StartDate: result.startDate || formData.StartDate,
+              EndDate: result.endDate || (() => {
+                const startDateObj = new Date(formData.StartDate);
+                const endDateObj = new Date(startDateObj);
+                endDateObj.setDate(endDateObj.getDate() + daysToTake);
+                return endDateObj.toISOString().split('T')[0];
+              })(),
+              fileUrl: result.fileUrl || null
+            });
+            setShowSuccessModal(true);
+          }
+        }
+        
         fetchEmployees();
+        if (showVacationsModal && selectedVacationsEmployee) {
+          await fetchVacationRecords(selectedVacationsEmployee.EmployeeID);
+        }
         
-        // Limpiar formulario y cerrar modal
         resetForm();
         setShowModal(false);
         
-        // Limpiar mensaje después de 3 segundos
         setTimeout(() => setSuccessMessage(''), 3000);
       } else {
         const error = await response.json();
@@ -470,7 +717,7 @@ export default function SystemAdminDashboard() {
       console.error('Error:', error);
       setErrorMessage(error.message || 'ERROR AL PROCESAR LA SOLICITUD. POR FAVOR, INTENTE NUEVAMENTE.');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -491,9 +738,10 @@ export default function SystemAdminDashboard() {
 
       if (response.ok) {
         setSuccessMessage('PERÍODO DE VACACIONES ELIMINADO EXITOSAMENTE');
-        // Actualizar lista local
         setVacationRecords(prev => prev.filter(record => record.VacationID !== vacationId));
-        // Recargar empleados para actualizar la tabla principal
+        if (selectedVacationsEmployee) {
+          await fetchVacationRecords(selectedVacationsEmployee.EmployeeID);
+        }
         fetchEmployees();
         setTimeout(() => setSuccessMessage(''), 3000);
       } else {
@@ -506,6 +754,13 @@ export default function SystemAdminDashboard() {
     } finally {
       setLoading(false);
       setConfirmDelete({ show: false, id: null });
+      setPendingDeleteId(null);
+      
+      if (selectedVacationsEmployee) {
+        setTimeout(() => {
+          setShowVacationsModal(true);
+        }, 100);
+      }
     }
   };
 
@@ -515,22 +770,31 @@ export default function SystemAdminDashboard() {
       EmployeeID: '',
       Days: '',
       StartDate: '',
+      EndDate: '',
       Observations: ''
     });
     setCalculatedEndDate('');
+    setCalculatedEndDateValue('');
     setSelectedEmployeeSeniority(null);
+    setTotalUsedDays(0);
     setIsEditing(false);
     setEditingId(null);
     setEmployeeIdInput('');
     setSelectedEmployee(null);
     setSelectedEmployeeData(null);
     setEmployeeNotFound(false);
+    setCurrentEditRecord(null);
 
     setTimeout(() => {
       if (employeeIdInputRef.current) {
         employeeIdInputRef.current.focus();
       }
     }, 100);
+  };
+
+  // Limpiar filtros
+  const clearFilters = () => {
+    setSearchTerm('');
   };
 
   // Abrir modal para nuevo período
@@ -551,22 +815,271 @@ export default function SystemAdminDashboard() {
     setShowVacationsModal(false);
     setSelectedVacationsEmployee(null);
     setVacationRecords([]);
+    setTotalUsedDays(0);
     setEditingObservation(null);
     setEditObservationValue('');
+    setPendingDeleteId(null);
+  };
+
+  // Cerrar modal de confirmación
+  const closeConfirmDelete = () => {
+    setConfirmDelete({ show: false, id: null });
+    setPendingDeleteId(null);
+    
+    if (selectedVacationsEmployee) {
+      setTimeout(() => {
+        setShowVacationsModal(true);
+      }, 100);
+    }
+  };
+
+  // Cerrar modal de opciones de descarga
+  const closeDownloadOptions = () => {
+    setShowDownloadOptions({ show: false, employeeId: 0, vacationId: 0 });
+  };
+
+  // Cerrar modal de éxito
+  const closeSuccessModal = () => {
+    setShowSuccessModal(false);
+    setSuccessDetails(null);
+    setPdfLoading(false);
   };
 
   const getUniqueKey = (employee: Employee, index: number) => {
     return `${employee.EmployeeID}-${index}`;
   };
 
+  // Calcular días restantes
+  const remainingDays = selectedEmployeeSeniority 
+    ? selectedEmployeeSeniority.days - totalUsedDays 
+    : 0;
+
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* HEADER - Fixed */}
-      <AppHeader 
-        title="PANEL ADMINISTRATIVO"
-      />
+      <AppHeader title="PANEL ADMINISTRATIVO" />
 
-      {/* MODAL PARA CREAR NUEVO PERÍODO */}
+      {/* MODAL DE ÉXITO CON VISTA PREVIA DEL PDF */}
+      {showSuccessModal && successDetails && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-[10000] p-4 bg-black/70"
+          style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
+        >
+          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full h-[90vh] flex flex-col animate-fade-in relative z-[10001]">
+            <div className="p-6 pb-4 border-b flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                  ¡REGISTRO EXITOSO!
+                </h2>
+                <p className="text-gray-600 mt-1 text-sm">
+                  El período de vacaciones ha sido registrado correctamente en el sistema.
+                </p>
+              </div>
+              <button
+                onClick={closeSuccessModal}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                aria-label="Cerrar modal"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+            
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+              {/* Columna izquierda - Detalles del Período */}
+              <div className="w-full md:w-1/3 p-6 border-r border-gray-200 overflow-y-auto">
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DETALLES DEL REGISTRO</h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">ID PERÍODO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{successDetails.VacationID}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">ID EMPLEADO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{successDetails.EmployeeID}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">EMPLEADO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{successDetails.EmployeeName}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">TIPO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{successDetails.tipo}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">DÍAS:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{successDetails.Days}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">FECHA DE INICIO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">
+                          {successDetails.StartDate}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">FECHA DE TÉRMINO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">
+                          {successDetails.EndDate}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DOCUMENTO GENERADO</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                          <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-08 (PDF)</span>
+                        </div>
+                        <div className="flex gap-2">
+                          {successDetails.fileUrl && (
+                            <a
+                              href={successDetails.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                              title="Vista previa"
+                              onClick={() => setPdfLoading(true)}
+                            >
+                              <Eye className="h-4 w-4 text-gray-700" />
+                            </a>
+                          )}
+                          <button
+                            onClick={() => handleDownloadPDF(successDetails.EmployeeID, successDetails.VacationID)}
+                            disabled={downloading}
+                            className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Descargar PDF"
+                          >
+                            {downloading ? (
+                              <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                              <Download className="h-4 w-4 text-gray-700" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                          <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-08 (EDITABLE)</span>
+                        </div>
+                        <button
+                          onClick={() => handleDownloadWord(successDetails.EmployeeID, successDetails.VacationID)}
+                          disabled={downloading}
+                          className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Descargar Word editable"
+                        >
+                          {downloading ? (
+                            <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Download className="h-4 w-4 text-gray-700" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Columna derecha - Vista previa del PDF */}
+              <div className="flex-1 flex flex-col p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-gray-800 text-sm uppercase">
+                    VISTA PREVIA - FORMATO FT-RH-08
+                  </h3>
+                </div>
+                
+                <div className="flex-1 border border-gray-300 rounded-lg overflow-hidden relative bg-gray-50">
+                  {pdfLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                      <div className="flex flex-col items-center">
+                        <div className="w-12 h-12 border-4 border-gray-300 border-t-[#3a6ea5] animate-spin rounded-full mb-3"></div>
+                        <p className="text-sm text-gray-600">Cargando vista previa...</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {successDetails.fileUrl ? (
+                    <iframe
+                      src={successDetails.fileUrl}
+                      className="w-full h-full border-0"
+                      onLoad={() => setPdfLoading(false)}
+                      onError={() => {
+                        setPdfLoading(false);
+                        console.error('Error al cargar PDF:', successDetails.fileUrl);
+                      }}
+                      title="Vista previa del período de vacaciones"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                        <p className="text-gray-600">No se pudo cargar la vista previa del PDF</p>
+                        <p className="text-xs text-gray-500 mt-2">El PDF se generará automáticamente</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE OPCIONES DE DESCARGA */}
+      {showDownloadOptions.show && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-[10000] p-4 bg-black/70"
+          style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
+        >
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative z-[10001]">
+            <div className="p-6 pb-4 border-b border-gray-300">
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+                <FileText className="h-5 w-5 text-[#3a6ea5] mr-2" />
+                DESCARGA DE DOCUMENTO
+              </h2>
+              <p className="text-sm text-gray-600 mt-2 leading-5">
+                ¿En qué formato desea descargar el documento FT-RH-08?
+              </p>
+            </div>
+            
+            <div className="p-6 pt-4 flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  handleDownloadPDF(showDownloadOptions.employeeId, showDownloadOptions.vacationId);
+                  closeDownloadOptions();
+                }}
+                className="w-full px-6 py-3 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                DESCARGAR COMO PDF
+              </button>
+              <button
+                onClick={() => {
+                  handleDownloadWord(showDownloadOptions.employeeId, showDownloadOptions.vacationId);
+                  closeDownloadOptions();
+                }}
+                className="w-full px-6 py-3 bg-gray-600 text-white font-bold rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                DESCARGAR COMO WORD
+              </button>
+              <button
+                onClick={closeDownloadOptions}
+                className="w-full px-6 py-3 bg-gray-200 text-black font-bold rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center"
+              >
+                CANCELAR
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PARA CREAR/EDITAR PERÍODO DE VACACIONES */}
       {showModal && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
@@ -576,10 +1089,12 @@ export default function SystemAdminDashboard() {
             <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 tracking-tight">
-                  NUEVO PERÍODO DE VACACIONES
+                  {modalMode === 'create' ? 'NUEVO PERÍODO DE VACACIONES' : 'EDITAR PERÍODO DE VACACIONES'}
                 </h2>
                 <p className="text-gray-600 mt-1 text-sm">
-                  Complete el formulario para registrar un nuevo período de vacaciones del empleado.
+                  {modalMode === 'create' 
+                    ? 'Complete el formulario para registrar un nuevo período de vacaciones del empleado.'
+                    : 'Modifique la información del período de vacaciones seleccionado.'}
                 </p>
               </div>
               <button
@@ -593,7 +1108,6 @@ export default function SystemAdminDashboard() {
             <form onSubmit={handleSubmit}>
               <div className="p-6">
                 <div className="space-y-6">
-                  {/* Búsqueda por ID del empleado */}
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
                       ID DEL EMPLEADO 
@@ -614,7 +1128,7 @@ export default function SystemAdminDashboard() {
                           className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
                             employeeNotFound ? 'border-red-500' : 'border-gray-400'
                           }`}
-                          disabled={selectedEmployee !== null}
+                          disabled={modalMode === 'edit' || selectedEmployee !== null}
                         />
                         {!selectedEmployee && employeeIdInput && (
                           <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
@@ -645,7 +1159,6 @@ export default function SystemAdminDashboard() {
                       )}
                     </div>
 
-                    {/* Datos del empleado seleccionado */}
                     {selectedEmployeeData && (
                       <div className="space-y-6">
                         <div className="bg-gray-50 rounded-lg p-4">
@@ -676,42 +1189,32 @@ export default function SystemAdminDashboard() {
                               <span className="text-sm text-gray-900">{selectedEmployeeData.Position || 'N/A'}</span>
                             </div>
 
-                            {selectedEmployeeData.tipo === 'BASE' ? (
-                              <div>
-                                <span className="block text-xs font-bold text-gray-500 uppercase">Área</span>
-                                <span className="text-sm text-gray-900">{selectedEmployeeData.Area || 'N/A'}</span>
-                              </div>
-                            ) : (
-                              <div>
-                                <span className="block text-xs font-bold text-gray-500 uppercase">Proyecto</span>
-                                <span className="text-sm text-gray-900">{selectedEmployeeData.NameProject || 'N/A'}</span>
-                              </div>
-                            )}
-
-                             {selectedEmployeeSeniority && (
-                              <div>
+                            {selectedEmployeeSeniority && (
+                              <>
                                 <div>
                                   <span className="block text-xs font-bold text-gray-500 uppercase">Años de antigüedad</span>
                                   <span className="text-sm text-gray-900">{selectedEmployeeSeniority.years} años</span>
                                 </div>
-                                </div>
-                             )}
-
-                             {selectedEmployeeSeniority && (
-                              <div>
                                 <div>
                                   <span className="block text-xs font-bold text-gray-500 uppercase">Días de vacaciones disponibles</span>
                                   <span className="text-sm text-gray-900">{selectedEmployeeSeniority.days} días</span>
                                 </div>
+                                <div>
+                                  <span className="block text-xs font-bold text-gray-500 uppercase">Días ya utilizados</span>
+                                  <span className="text-sm text-gray-900">{totalUsedDays} días</span>
                                 </div>
-                             )}
+                                <div>
+                                  <span className="block text-xs font-bold text-gray-500 uppercase">Días restantes</span>
+                                  <span className={`text-sm font-bold ${remainingDays <= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                    {remainingDays} días
+                                  </span>
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
                     )}
-
-                    {/* Datos de antigüedad */}
-                   
                   </div>
 
                   <div className="bg-gray-50 rounded-lg p-4">
@@ -735,6 +1238,21 @@ export default function SystemAdminDashboard() {
 
                       <div>
                         <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                          FECHA DE TÉRMINO (CALCULADA)
+                        </label>
+                        <input
+                          type="date"
+                          value={calculatedEndDateValue || formData.EndDate}
+                          disabled
+                          className="w-full px-3 py-2.5 text-sm bg-gray-100 border border-gray-300 rounded font-medium text-gray-600 cursor-not-allowed"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                          Se calcula automáticamente sumando los días a la fecha de inicio
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                           DÍAS A TOMAR *
                         </label>
                         <input
@@ -747,28 +1265,22 @@ export default function SystemAdminDashboard() {
                           required
                           step="0.5"
                           min="0.5"
-                          max={selectedEmployeeSeniority?.days || 32}
+                          max={remainingDays > 0 ? remainingDays : undefined}
                         />
-                        {selectedEmployeeSeniority && parseFloat(formData.Days) > selectedEmployeeSeniority.days && (
+                        {selectedEmployeeSeniority && parseFloat(formData.Days) > remainingDays && remainingDays > 0 && (
                           <p className="mt-1 text-xs text-red-600">
-                            Los días solicitados exceden los días disponibles ({selectedEmployeeSeniority.days} días)
+                            Los días solicitados ({formData.Days}) exceden los días restantes ({remainingDays} días)
                           </p>
                         )}
-                      </div>
-
-                      {/* Fecha de término calculada */}
-                      {calculatedEndDate && (
-                        <div className="md:col-span-2 bg-blue-50 rounded-lg p-3 border border-blue-200">
-                          <label className="block text-xs font-bold text-blue-700 mb-2 uppercase flex items-center">
-                            <Clock className="h-3 w-3 mr-1" />
-                            FECHA DE TÉRMINO (CALCULADA AUTOMÁTICAMENTE)
-                          </label>
-                          <p className="text-sm font-semibold text-blue-900">{calculatedEndDate}</p>
-                          <p className="text-xs text-blue-600 mt-1">
-                            La fecha de término se calcula automáticamente sumando los días a la fecha de inicio seleccionada
+                        {remainingDays <= 0 && selectedEmployeeSeniority && (
+                          <p className="mt-1 text-xs text-red-600 font-bold">
+                            NO HAY DÍAS DISPONIBLES PARA ESTE EMPLEADO
                           </p>
-                        </div>
-                      )}
+                        )}
+                        <p className="mt-1 text-xs text-gray-500">
+                          Días restantes disponibles: {remainingDays}
+                        </p>
+                      </div>
 
                       <div className="md:col-span-2">
                         <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
@@ -798,15 +1310,15 @@ export default function SystemAdminDashboard() {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap disabled:opacity-50"
+                  className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? (
+                  {saving ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                       GUARDANDO...
                     </>
                   ) : (
-                    'CREAR PERÍODO'
+                    modalMode === 'create' ? 'CREAR' : 'ACTUALIZAR'
                   )}
                 </button>
               </div>
@@ -825,14 +1337,13 @@ export default function SystemAdminDashboard() {
             <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
-                  <Calendar className="h-5 w-5 text-[#3a6ea5] mr-2" />
                   PERÍODOS DE VACACIONES
                 </h2>
                 <p className="text-gray-600 mt-1 text-sm">
-                  {`${selectedVacationsEmployee.FirstName} ${selectedVacationsEmployee.LastName} ${selectedVacationsEmployee.MiddleName || ''}`.trim()} | ID: {selectedVacationsEmployee.EmployeeID} | Puesto: {selectedVacationsEmployee.Position}
+                  {selectedVacationsEmployee.FirstName} {selectedVacationsEmployee.LastName} {selectedVacationsEmployee.MiddleName || ''}
                 </p>
                 <p className="text-gray-600 mt-1 text-sm">
-                  Antigüedad: {selectedVacationsEmployee.YearsOfSeniority} años | Días disponibles: {selectedVacationsEmployee.DaysOfVacations}
+                  Antigüedad: {selectedVacationsEmployee.YearsOfSeniority} años | Días disponibles: {selectedVacationsEmployee.DaysOfVacations} | Días usados: {totalUsedDays} | Días restantes: {selectedVacationsEmployee.DaysOfVacations - totalUsedDays}
                 </p>
               </div>
               <button
@@ -876,57 +1387,26 @@ export default function SystemAdminDashboard() {
                           <td className="py-3 px-4 text-sm text-gray-600">{formatDate(record.EndDate)}</td>
                           <td className="py-3 px-4 text-sm text-gray-800 font-medium">{record.Days}</td>
                           <td className="py-3 px-4 text-sm text-gray-800">{record.StampedDays}</td>
-                          <td className="py-3 px-4 text-sm text-gray-600 max-w-xs">
-                            {editingObservation === record.VacationID ? (
-                              <div className="flex flex-col gap-2">
-                                <textarea
-                                  value={editObservationValue}
-                                  onChange={(e) => setEditObservationValue(e.target.value)}
-                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-[#3a6ea5]"
-                                  rows={2}
-                                  autoFocus
-                                />
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => handleUpdateObservation(record.VacationID)}
-                                    disabled={updatingObservation}
-                                    className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 flex items-center gap-1"
-                                  >
-                                    <Save className="h-3 w-3" />
-                                    GUARDAR
-                                  </button>
-                                  <button
-                                    onClick={cancelEditObservation}
-                                    className="px-2 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400"
-                                  >
-                                    CANCELAR
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex justify-between items-start gap-2">
-                                <span className="break-words flex-1">{record.Observations || '-'}</span>
-                                <button
-                                  onClick={() => startEditObservation(record)}
-                                  className="text-blue-600 hover:text-blue-800 flex-shrink-0"
-                                  title="Editar observaciones"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </button>
-                              </div>
-                            )}
-                           </td>
+                          <td className="py-3 px-4 text-sm text-gray-800">{record.Observations}</td>
                           <td className="py-3 px-4 text-center">
                             <div className="flex items-center justify-center gap-2">
                               <button
-                                onClick={() => setConfirmDelete({ show: true, id: record.VacationID })}
+                                onClick={() => handleEditVacationRecord(record)}
+                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                title="Editar período completo"
+                              >
+                                <Edit className="h-4 w-4" />
+
+                              </button>
+                              <button
+                                onClick={() => handleDeleteClick(record.VacationID)}
                                 className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
                                 title="Eliminar registro"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
-                           </td>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -938,7 +1418,7 @@ export default function SystemAdminDashboard() {
             <div className="p-6 pt-4 border-t border-gray-300 bg-gray-50 flex justify-end">
               <button
                 onClick={closeVacationsModal}
-                className="bg-[#3a6ea5] text-white font-bold py-2.5 px-6 rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center"
+                  className="bg-gray-200 text-black font-bold py-2.5 px-6 rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
               >
                 CERRAR
               </button>
@@ -950,10 +1430,10 @@ export default function SystemAdminDashboard() {
       {/* MODAL DE CONFIRMACIÓN PARA ELIMINAR */}
       {confirmDelete.show && (
         <div 
-          className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
+          className="fixed inset-0 flex items-center justify-center z-[10000] p-4 bg-black/70"
           style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
         >
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative z-[10000]">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative z-[10001]">
             <div className="p-6 pb-4 border-b border-gray-300">
               <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
                 <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
@@ -967,7 +1447,7 @@ export default function SystemAdminDashboard() {
             <div className="p-6 pt-4 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setConfirmDelete({ show: false, id: null })}
+                onClick={closeConfirmDelete}
                 className="bg-gray-200 text-black font-bold py-2.5 px-6 rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
               >
                 CANCELAR
@@ -995,143 +1475,171 @@ export default function SystemAdminDashboard() {
       {/* CONTENT */}
       <main className="pt-[72px] pb-[80px] min-h-screen bg-gray-100">
         <div className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 max-w-7xl mx-auto">
-          <div className="mb-6 sm:mb-8">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-              <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5] w-full">
-                <h1 className="text-xl font-bold text-white tracking-tight">VACACIONES</h1>
-                <p className="text-sm text-gray-200 mt-1">
-                  Gestione las vacaciones de los empleados.
+          <div className="mb-6">
+            <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5]">
+              <h1 className="text-xl font-bold text-white tracking-tight">VACACIONES</h1>
+              <p className="text-sm text-gray-200 mt-1">
+                Gestione las vacaciones de los empleados.
+              </p>
+            </div>
+          </div>
+
+          {successMessage && (
+            <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in">
+              <div className="flex items-center">
+                <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                <p className="text-sm font-medium text-gray-600 leading-5">
+                  {successMessage}
                 </p>
               </div>
             </div>
+          )}
 
-            {/* MENSAJES DE ÉXITO/ERROR */}
-            {successMessage && (
-              <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in">
-                <div className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-                  <p className="text-sm font-medium text-gray-600 leading-5">
-                    {successMessage}
-                  </p>
-                </div>
+          {errorMessage && (
+            <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
+              <div className="flex items-center">
+                <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
+                <p className="text-sm font-medium text-gray-600 leading-5">
+                  {errorMessage}
+                </p>
               </div>
-            )}
+            </div>
+          )}
 
-            {errorMessage && (
-              <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
-                <div className="flex items-center">
-                  <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
-                  <p className="text-sm font-medium text-gray-600 leading-5">
-                    {errorMessage}
-                  </p>
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="flex-1">
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                  <Search className="h-5 w-5 text-gray-400" />
                 </div>
+                <input
+                  type="text"
+                  placeholder="Buscar por nombre o puesto..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                )}
               </div>
-            )}
-
-            {/* BARRA DE ACCIONES Y BÚSQUEDA */}
-            <div className="flex flex-col md:flex-row gap-4 mb-6">
-              <div className="flex-1">
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                    <Search className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Buscar por nombre o puesto..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                  />
-                  {searchTerm && (
-                    <button
-                      onClick={() => setSearchTerm('')}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-              
-              <button
-                onClick={openCreateModal}
-                className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap"
-              >
-                NUEVO PERÍODO
-              </button>
             </div>
 
-            {/* TABLA DE EMPLEADOS */}
-            <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-100">
+            <button
+              onClick={clearFilters}
+              className="px-4 py-2.5 bg-gray-200 text-black font-bold rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              LIMPIAR
+            </button>
+            
+            <button
+              onClick={openCreateModal}
+              className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap"
+            >
+              NUEVO PERÍODO
+            </button>
+          </div>
+
+          <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ID</th>
+                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">NOMBRE DEL EMPLEADO</th>
+                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">PUESTO</th>
+                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FECHA DE INGRESO</th>
+                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">AÑOS DE ANTIGÜEDAD</th>
+                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">DÍAS DE VACACIONES</th>
+                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
                     <tr>
-                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ID</th>
-                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">NOMBRE DEL EMPLEADO</th>
-                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">PUESTO</th>
-                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FECHA DE INGRESO</th>
-                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">AÑOS DE ANTIGÜEDAD</th>
-                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">DÍAS DE VACACIONES</th>
-                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
+                      <td colSpan={7} className="py-12 text-center">
+                        <div className="flex flex-col items-center justify-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
+                          <p className="text-gray-600">Cargando períodos de vacaciones...</p>
+                        </div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      <tr>
-                        <td colSpan={7} className="py-12 text-center">
-                          <div className="flex flex-col items-center justify-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
-                            <p className="text-gray-600">Cargando períodos de vacaciones...</p>
+                  ) : currentEmployees.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center">
+                        <div className="flex flex-col items-center justify-center">
+                          <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
+                          <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
+                            {searchTerm ? 'No se encontraron empleados que coincidan con la búsqueda' : 'No hay empleados registrados'}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    currentEmployees.map((employee, index) => (
+                      <tr key={getUniqueKey(employee, index)} className="hover:bg-gray-50 transition-colors border-b border-gray-300">
+                        <td className="py-3 px-4 text-sm text-gray-800 font-medium">{employee.EmployeeID}</td>
+                        <td className="py-3 px-4 text-sm text-gray-800 uppercase">{`${employee.FirstName} ${employee.LastName} ${employee.MiddleName || ''}`.trim()}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600 uppercase max-w-xs truncate">{employee.Position}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(employee.ContractStartDate)}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{employee.YearsOfSeniority}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{employee.DaysOfVacations}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleViewVacations(employee)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                              title="Ver períodos de vacaciones"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
-                    ) : filteredEmployees.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="py-12 text-center">
-                          <div className="flex flex-col items-center justify-center">
-                            <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
-                            <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
-                              {searchTerm ? 'No se encontraron empleados que coincidan con la búsqueda' : 'No hay empleados registrados'}
-                            </p>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredEmployees.map((employee, index) => (
-                        <tr key={getUniqueKey(employee, index)} className="hover:bg-gray-50 transition-colors border-b border-gray-300">
-                          <td className="py-3 px-4 text-sm text-gray-800 font-medium">{employee.EmployeeID}</td>
-                          <td className="py-3 px-4 text-sm text-gray-800 uppercase">{`${employee.FirstName} ${employee.LastName} ${employee.MiddleName || ''}`.trim()}</td>
-                          <td className="py-3 px-4 text-sm text-gray-600 uppercase max-w-xs truncate">{employee.Position}</td>
-                          <td className="py-3 px-4 text-sm text-gray-600">{formatDate(employee.ContractStartDate)}</td>
-                          <td className="py-3 px-4 text-sm text-gray-600">{employee.YearsOfSeniority}</td>
-                          <td className="py-3 px-4 text-sm text-gray-600">{employee.DaysOfVacations}</td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => handleViewVacations(employee)}
-                                className="p-2 text-green-600 hover:bg-green-50 rounded-md transition-colors"
-                                title="Ver períodos de vacaciones"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
+
+            {filteredEmployees.length > 0 && totalPages > 1 && (
+              <div className="px-4 py-3 bg-gray-50 border-t border-gray-300 flex items-center justify-between">
+                <div className="text-sm text-gray-700">
+                  MOSTRANDO {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, filteredEmployees.length)} DE {filteredEmployees.length} REGISTROS
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="p-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span className="px-4 py-2 bg-[#3a6ea5] text-white rounded-md">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="p-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
 
-      {/* FOOTER - Fixed */}
       <Footer />
 
-      {/* Agregar estilos para animaciones y layout */}
       <style jsx global>{`
         @keyframes fade-in {
           from {
@@ -1145,7 +1653,7 @@ export default function SystemAdminDashboard() {
         }
         
         @keyframes spin {
-        from {
+          from {
             transform: rotate(0deg);
           }
           to {
@@ -1186,4 +1694,4 @@ export default function SystemAdminDashboard() {
       `}</style>
     </div>
   );
-}     
+}
