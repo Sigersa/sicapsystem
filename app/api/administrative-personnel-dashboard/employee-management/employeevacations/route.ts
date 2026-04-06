@@ -1,3 +1,4 @@
+// app/api/administrative-personnel-dashboard/employee-management/employeevacations/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -54,7 +55,7 @@ const getTotalUsedVacationDays = async (connection: any, employeeId: number): Pr
   return (vacations as any[])[0]?.totalUsed || 0;
 };
 
-// Función para generar y guardar el PDF del período de vacaciones
+// Función para generar y guardar el PDF del período de vacaciones (SOLO AL CREAR/ACTUALIZAR)
 async function generateAndSaveVacationPDF(
   employeeId: number,
   vacationId: number,
