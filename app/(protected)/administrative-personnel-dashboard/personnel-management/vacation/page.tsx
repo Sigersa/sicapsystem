@@ -5,7 +5,8 @@ import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useState, useEffect, ChangeEvent, FormEvent, useRef, KeyboardEvent } from 'react';
-import { Edit, Trash2, Search, X, CheckCircle, AlertCircle, Eye, Calendar, Save, ChevronLeft, ChevronRight, RefreshCw, Download, FileText } from 'lucide-react';
+import { Edit, Trash2, Search, X, CheckCircle, AlertCircle, Eye, ChevronLeft, ChevronRight, RefreshCw, Download, FileText, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 // Interface de empleados
 type Employee = {
@@ -87,26 +88,24 @@ const formatDateForInput = (dateString: string): string => {
   }
 };
 
-// Función para descargar el documento PDF FT-RH-08
-const downloadVacationPDF = async (employeeId: number, vacationId?: number) => {
+// Función para descargar el documento PDF desde la URL almacenada
+const downloadVacationPDF = async (fileUrl: string, fileName: string) => {
   try {
-    let url = `/api/download/pdf/FT-RH-08?empleadoId=${employeeId}`;
-    if (vacationId) {
-      url += `&vacationId=${vacationId}`;
+    if (!fileUrl) {
+      throw new Error('No hay URL de PDF disponible');
     }
     
-    const response = await fetch(url);
+    const response = await fetch(fileUrl);
     
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Error al descargar el PDF');
+      throw new Error('Error al descargar el PDF');
     }
     
     const blob = await response.blob();
     const downloadUrl = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = downloadUrl;
-    a.download = `FT-RH-08-${employeeId}${vacationId ? `-${vacationId}` : ''}.pdf`;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -197,7 +196,6 @@ export default function SystemAdminDashboard() {
   const [loadingVacations, setLoadingVacations] = useState(false);
   const [editingObservation, setEditingObservation] = useState<number | null>(null);
   const [editObservationValue, setEditObservationValue] = useState('');
-  const [updatingObservation, setUpdatingObservation] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
   // Estados para paginación
@@ -222,10 +220,11 @@ export default function SystemAdminDashboard() {
   const [downloading, setDownloading] = useState(false);
   
   // Estado para mostrar opciones de descarga
-  const [showDownloadOptions, setShowDownloadOptions] = useState<{ show: boolean; employeeId: number; vacationId: number }>({
+  const [showDownloadOptions, setShowDownloadOptions] = useState<{ show: boolean; fileUrl: string; vacationId: number; employeeId: number }>({
     show: false,
-    employeeId: 0,
-    vacationId: 0
+    fileUrl: '',
+    vacationId: 0,
+    employeeId: 0
   });
 
   // Calcular fecha de término cuando cambian los días o la fecha de inicio
@@ -302,6 +301,149 @@ export default function SystemAdminDashboard() {
   if (!user) {
     return null;
   }
+
+  // Función para exportar empleados y sus períodos de vacaciones a Excel
+  const exportEmployeesWithVacationsToExcel = async () => {
+    try {
+      setLoading(true);
+      const excelData = [];
+      
+      for (const employee of filteredEmployees) {
+        // Obtener períodos de vacaciones para este empleado
+        const vacationsResponse = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeevacations?action=get&employeeId=${employee.EmployeeID}`, {
+          method: 'PUT'
+        });
+        
+        let vacationPeriods: VacationRecord[] = [];
+        if (vacationsResponse.ok) {
+          vacationPeriods = await vacationsResponse.json();
+        }
+        
+        if (vacationPeriods.length === 0) {
+          // Si no tiene períodos, agregar una fila con los datos del empleado y campos de vacaciones vacíos
+          excelData.push({
+            'ID EMPLEADO': employee.EmployeeID,
+            'NOMBRE COMPLETO': `${employee.FirstName} ${employee.LastName} ${employee.MiddleName || ''}`.trim(),
+            'PUESTO': employee.Position,
+            'FECHA DE INGRESO': formatDate(employee.ContractStartDate),
+            'AÑOS DE ANTIGÜEDAD': employee.YearsOfSeniority,
+            'DÍAS DE VACACIONES DISPONIBLES': employee.DaysOfVacations,
+            'ID PERÍODO VACACIONES': '',
+            'FECHA INICIO VACACIONES': '',
+            'FECHA FIN VACACIONES': '',
+            'DÍAS TOMADOS': '',
+            'DÍAS COMPUTADOS': '',
+            'OBSERVACIONES VACACIONES': ''
+          });
+        } else {
+          // Agregar una fila por cada período de vacaciones
+          vacationPeriods.forEach(period => {
+            excelData.push({
+              'ID EMPLEADO': employee.EmployeeID,
+              'NOMBRE COMPLETO': `${employee.FirstName} ${employee.LastName} ${employee.MiddleName || ''}`.trim(),
+              'PUESTO': employee.Position,
+              'FECHA DE INGRESO': formatDate(employee.ContractStartDate),
+              'AÑOS DE ANTIGÜEDAD': employee.YearsOfSeniority,
+              'DÍAS DE VACACIONES DISPONIBLES': employee.DaysOfVacations,
+              'ID PERÍODO VACACIONES': period.VacationID,
+              'FECHA INICIO VACACIONES': formatDate(period.StartDate),
+              'FECHA FIN VACACIONES': formatDate(period.EndDate),
+              'DÍAS TOMADOS': period.Days,
+              'DÍAS COMPUTADOS': period.StampedDays,
+              'OBSERVACIONES VACACIONES': period.Observations || ''
+            });
+          });
+        }
+      }
+
+      // Crear hoja de trabajo
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      
+      // Ajustar anchos de columnas
+      const colWidths = [
+        { wch: 12 }, // ID EMPLEADO
+        { wch: 35 }, // NOMBRE COMPLETO
+        { wch: 30 }, // PUESTO
+        { wch: 15 }, // FECHA DE INGRESO
+        { wch: 18 }, // AÑOS DE ANTIGÜEDAD
+        { wch: 25 }, // DÍAS DE VACACIONES DISPONIBLES
+        { wch: 18 }, // ID PERÍODO VACACIONES
+        { wch: 18 }, // FECHA INICIO VACACIONES
+        { wch: 18 }, // FECHA FIN VACACIONES
+        { wch: 12 }, // DÍAS TOMADOS
+        { wch: 15 }, // DÍAS COMPUTADOS
+        { wch: 40 }  // OBSERVACIONES VACACIONES
+      ];
+      ws['!cols'] = colWidths;
+
+      // Crear libro de trabajo
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'EMPLEADOS_Y_VACACIONES');
+
+      // Generar y descargar archivo
+      const fileName = `EMPLEADOS_VACACIONES_COMPLETO_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+      setSuccessMessage('EXCEL EXPORTADO EXITOSAMENTE');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      console.error('Error exporting employees with vacations:', error);
+      setErrorMessage('ERROR AL EXPORTAR EMPLEADOS Y PERÍODOS DE VACACIONES A EXCEL');
+      setTimeout(() => setErrorMessage(''), 3000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Función para exportar períodos de vacaciones a Excel (mantener la original)
+  const exportVacationsToExcel = () => {
+    try {
+      if (!selectedVacationsEmployee) return;
+
+      // Preparar datos para Excel
+      const excelData = vacationRecords.map(record => ({
+        'ID PERÍODO': record.VacationID,
+        'ID EMPLEADO': record.EmployeeID,
+        'EMPLEADO': `${selectedVacationsEmployee.FirstName} ${selectedVacationsEmployee.LastName} ${selectedVacationsEmployee.MiddleName || ''}`.trim(),
+        'FECHA INICIO': formatDate(record.StartDate),
+        'FECHA FIN': formatDate(record.EndDate),
+        'DÍAS': record.Days,
+        'DÍAS COMPUTADOS': record.StampedDays,
+        'OBSERVACIONES': record.Observations || 'N/A'
+      }));
+
+      // Crear hoja de trabajo
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      
+      // Ajustar anchos de columnas
+      const colWidths = [
+        { wch: 12 }, // ID PERÍODO
+        { wch: 12 }, // ID EMPLEADO
+        { wch: 35 }, // EMPLEADO
+        { wch: 15 }, // FECHA INICIO
+        { wch: 15 }, // FECHA FIN
+        { wch: 10 }, // DÍAS
+        { wch: 15 }, // DÍAS COMPUTADOS
+        { wch: 40 }  // OBSERVACIONES
+      ];
+      ws['!cols'] = colWidths;
+
+      // Crear libro de trabajo
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `VACACIONES_${selectedVacationsEmployee.EmployeeID}`);
+
+      // Generar y descargar archivo
+      const fileName = `VACACIONES_EMP_${selectedVacationsEmployee.EmployeeID}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+      setSuccessMessage('EXCEL DE PERÍODOS EXPORTADO EXITOSAMENTE');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      console.error('Error exporting vacations:', error);
+      setErrorMessage('ERROR AL EXPORTAR PERÍODOS DE VACACIONES A EXCEL');
+      setTimeout(() => setErrorMessage(''), 3000);
+    }
+  };
 
   // Función para buscar empleado por ID al presionar Enter
   const handleEmployeeIdKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
@@ -465,21 +607,25 @@ export default function SystemAdminDashboard() {
     }
   };
 
-  // Función para descargar documento PDF
-  const handleDownloadPDF = async (employeeId: number, vacationId: number) => {
+  // Función para descargar documento PDF desde URL almacenada
+  const handleDownloadPDF = async (fileUrl: string, employeeId: number, vacationId: number) => {
+    setDownloading(true);
     try {
-      await downloadVacationPDF(employeeId, vacationId);
+      await downloadVacationPDF(fileUrl, `FT-RH-08-${employeeId}-${vacationId}.pdf`);
       setSuccessMessage('PDF DESCARGADO EXITOSAMENTE');
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
       console.error('Error downloading PDF:', error);
-      setErrorMessage('ERROR AL DESCARGAR EL PDF');
+      setErrorMessage('ERROR AL DESCARGAR EL PDF. ES POSIBLE QUE EL ARCHIVO NO EXISTA.');
       setTimeout(() => setErrorMessage(''), 3000);
+    } finally {
+      setDownloading(false);
     }
   };
 
   // Función para descargar documento Word
   const handleDownloadWord = async (employeeId: number, vacationId: number) => {
+    setDownloading(true);
     try {
       await downloadVacationWord(employeeId, vacationId);
       setSuccessMessage('DOCUMENTO WORD DESCARGADO EXITOSAMENTE');
@@ -488,6 +634,8 @@ export default function SystemAdminDashboard() {
       console.error('Error downloading Word:', error);
       setErrorMessage('ERROR AL DESCARGAR EL DOCUMENTO WORD');
       setTimeout(() => setErrorMessage(''), 3000);
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -835,7 +983,7 @@ export default function SystemAdminDashboard() {
 
   // Cerrar modal de opciones de descarga
   const closeDownloadOptions = () => {
-    setShowDownloadOptions({ show: false, employeeId: 0, vacationId: 0 });
+    setShowDownloadOptions({ show: false, fileUrl: '', vacationId: 0, employeeId: 0 });
   };
 
   // Cerrar modal de éxito
@@ -948,8 +1096,8 @@ export default function SystemAdminDashboard() {
                             </a>
                           )}
                           <button
-                            onClick={() => handleDownloadPDF(successDetails.EmployeeID, successDetails.VacationID)}
-                            disabled={downloading}
+                            onClick={() => successDetails.fileUrl && handleDownloadPDF(successDetails.fileUrl, successDetails.EmployeeID, successDetails.VacationID)}
+                            disabled={downloading || !successDetails.fileUrl}
                             className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Descargar PDF"
                           >
@@ -1050,10 +1198,13 @@ export default function SystemAdminDashboard() {
             <div className="p-6 pt-4 flex flex-col gap-3">
               <button
                 onClick={() => {
-                  handleDownloadPDF(showDownloadOptions.employeeId, showDownloadOptions.vacationId);
+                  if (showDownloadOptions.fileUrl) {
+                    handleDownloadPDF(showDownloadOptions.fileUrl, showDownloadOptions.employeeId, showDownloadOptions.vacationId);
+                  }
                   closeDownloadOptions();
                 }}
-                className="w-full px-6 py-3 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center gap-2"
+                disabled={!showDownloadOptions.fileUrl}
+                className="w-full px-6 py-3 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Download className="h-4 w-4" />
                 DESCARGAR COMO PDF
@@ -1346,12 +1497,21 @@ export default function SystemAdminDashboard() {
                   Antigüedad: {selectedVacationsEmployee.YearsOfSeniority} años | Días disponibles: {selectedVacationsEmployee.DaysOfVacations} | Días usados: {totalUsedDays} | Días restantes: {selectedVacationsEmployee.DaysOfVacations - totalUsedDays}
                 </p>
               </div>
-              <button
-                onClick={closeVacationsModal}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <X className="h-5 w-5 text-gray-500" />
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={exportVacationsToExcel}
+                  className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap disabled:opacity-50"
+                  title="Exportar a Excel"
+                >
+                 EXPORTAR EXCEL
+                </button>
+                <button
+                  onClick={closeVacationsModal}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X className="h-5 w-5 text-gray-500" />
+                </button>
+              </div>
             </div>
             
             <div className="p-6">
@@ -1396,7 +1556,6 @@ export default function SystemAdminDashboard() {
                                 title="Editar período completo"
                               >
                                 <Edit className="h-4 w-4" />
-
                               </button>
                               <button
                                 onClick={() => handleDeleteClick(record.VacationID)}
@@ -1418,7 +1577,7 @@ export default function SystemAdminDashboard() {
             <div className="p-6 pt-4 border-t border-gray-300 bg-gray-50 flex justify-end">
               <button
                 onClick={closeVacationsModal}
-                  className="bg-gray-200 text-black font-bold py-2.5 px-6 rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
+                className="bg-gray-200 text-black font-bold py-2.5 px-6 rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
               >
                 CERRAR
               </button>
@@ -1539,6 +1698,14 @@ export default function SystemAdminDashboard() {
             </button>
             
             <button
+              onClick={exportEmployeesWithVacationsToExcel}
+              disabled={loading}
+              className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap"
+            >
+              EXPORTAR EXCEL COMPLETO
+            </button>
+            
+            <button
               onClick={openCreateModal}
               className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap"
             >
@@ -1568,8 +1735,8 @@ export default function SystemAdminDashboard() {
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
                           <p className="text-gray-600">Cargando períodos de vacaciones...</p>
                         </div>
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
                   ) : currentEmployees.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-12 text-center">
