@@ -174,7 +174,7 @@ export default function Login() {
         {/* Footer */}
         <div className="mt-8 text-center">
           <p className="text-xs text-gray-500">
-            © 2025 Sigersa Innovaciones S.A. de C.V.
+            © 2026 Sigersa Innovaciones S.A. de C.V.
           </p>
           <p className="text-xs text-gray-400">
             Versión 1.0.0
