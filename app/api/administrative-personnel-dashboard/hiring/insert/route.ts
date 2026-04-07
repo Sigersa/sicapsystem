@@ -421,7 +421,7 @@ export async function POST(request: NextRequest) {
 
         // 2. Insertar en la tabla employees y obtener el EmployeeID generado
         const [employeeResult] = await connection.execute(
-          `INSERT INTO employees (EmployeeType) VALUES (?)`,
+          `INSERT INTO employees (EmployeeType, Status) VALUES (?, 1)`,
           ['BASE']
         );
 
@@ -573,7 +573,7 @@ export async function POST(request: NextRequest) {
 
         // 2. Insertar en la tabla employees y obtener el EmployeeID generado
         const [employeeResult] = await connection.execute(
-          `INSERT INTO employees (EmployeeType) VALUES (?)`,
+          `INSERT INTO employees (EmployeeType, Status) VALUES (?, 1)`,
           ['PROJECT']
         );
 
