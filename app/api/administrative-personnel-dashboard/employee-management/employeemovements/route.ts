@@ -323,7 +323,8 @@ export async function GET(request: NextRequest) {
         em.StartDate,
         em.EndDate,
         em.Observations,
-        em.FileURL, -- ¡IMPORTANTE: Este campo faltaba!
+        em.FileURL, 
+        e.Status,
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
         COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
@@ -333,9 +334,11 @@ export async function GET(request: NextRequest) {
           ELSE 'PROJECT'
         END as tipo
       FROM employeemovement em
+      INNER JOIN employees e ON e.EmployeeID = em.EmployeeID
       LEFT JOIN basepersonnel bp ON em.EmployeeID = bp.EmployeeID
       LEFT JOIN projectpersonnel pp ON em.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+      WHERE e.Status = 1
       ORDER BY em.ApplicationDate DESC, em.MovementID DESC
     `);
 
