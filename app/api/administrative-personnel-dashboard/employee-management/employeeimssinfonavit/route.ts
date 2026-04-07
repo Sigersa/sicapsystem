@@ -295,23 +295,25 @@ export async function GET(request: NextRequest) {
     // Obtener batches agrupados (uno por lote)
     const [rows] = await connection.execute(`
       SELECT 
-        emb.BatchID,
-        emb.MovementType,
-        emb.DateMovement,
-        emb.ReasonForWithdrawal,
-        emb.FileURL,
-        GROUP_CONCAT(DISTINCT 
-          COALESCE(
-            CONCAT(COALESCE(bp.FirstName, pp.FirstName), ' ', COALESCE(bp.LastName, pp.LastName)),
-            ''
-          ) SEPARATOR ', '
-        ) as EmployeeNames
+          emb.BatchID,
+          emb.MovementType,
+          emb.DateMovement,
+          emb.ReasonForWithdrawal,
+          emb.FileURL,
+          GROUP_CONCAT(DISTINCT 
+            COALESCE(
+              CONCAT(COALESCE(bp.FirstName, pp.FirstName), ' ', COALESCE(bp.LastName, pp.LastName)),
+              ''
+            ) SEPARATOR ', '
+          ) as EmployeeNames
       FROM employee_movement_batches emb
-      INNER JOIN employeeimssinfonavitmovements em ON em.BatchID = emb.BatchID 
+      INNER JOIN employeeimssinfonavitmovements em ON em.BatchID = emb.BatchID
+      LEFT JOIN employees e ON e.EmployeeID = em.EmployeeID
       LEFT JOIN basepersonnel bp ON em.EmployeeID = bp.EmployeeID
       LEFT JOIN projectpersonnel pp ON em.EmployeeID = pp.EmployeeID
       GROUP BY emb.BatchID, emb.MovementType, emb.DateMovement, emb.ReasonForWithdrawal, emb.FileURL
-      ORDER BY emb.BatchID DESC
+      HAVING COUNT(*) = SUM(CASE WHEN e.Status = 1 THEN 1 ELSE 0 END)
+      ORDER BY emb.BatchID DESC;
     `);
     
     const movementsRecords = rows as any[];
