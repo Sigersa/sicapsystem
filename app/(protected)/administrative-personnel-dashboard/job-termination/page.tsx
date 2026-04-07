@@ -27,6 +27,7 @@ interface BaseEmployee {
   Email: string;
   Phone: string;
   tipo: 'BASE';
+  Status?: number;
 }
 
 // Interface para empleado de proyecto
@@ -49,6 +50,7 @@ interface ProjectEmployee {
   Email: string;
   Phone: string;
   tipo: 'PROJECT';
+  Status?: number;
 }
 
 // Tipo unificado
@@ -78,6 +80,7 @@ export default function EmployeesListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
   
   // Estados para paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -157,6 +160,91 @@ export default function EmployeesListPage() {
       console.error('Error al cargar proyectos:', error);
     } finally {
       setLoadingProjects(false);
+    }
+  };
+
+  // Función para cambiar el estado del empleado (dar de baja/alta)
+  const toggleEmployeeStatus = async (employee: Employee) => {
+    const currentStatus = employee.Status ?? 1;
+    const newStatus = currentStatus === 1 ? 0 : 1;
+    const actionText = newStatus === 0 ? 'dar de baja' : 'reactivar';
+
+    if (!confirm(`¿Está seguro de que desea ${actionText} a ${employee.FirstName} ${employee.LastName}?`)) {
+      return;
+    }
+
+    try {
+      setActionLoading(employee.EmployeeID);
+      setError('');
+      setSuccessMessage('');
+
+      const response = await fetch('/api/administrative-personnel-dashboard/job-termination', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          EmployeeID: employee.EmployeeID,
+          Status: newStatus
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setSuccessMessage(data.message || `Empleado ${actionText} exitosamente`);
+        // Recargar la lista de empleados
+        await fetchEmployees();
+      } else {
+        setError(data.message || `Error al ${actionText} al empleado`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setError(`Error de conexión al ${actionText} al empleado`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Función para eliminar empleado (solo si está inactivo)
+  const deleteEmployee = async (employee: Employee) => {
+    if (employee.Status !== 0) {
+      setError('Solo se pueden eliminar empleados que están dados de baja');
+      return;
+    }
+
+    if (!confirm(`¿Está seguro de que desea ELIMINAR PERMANENTEMENTE a ${employee.FirstName} ${employee.LastName}? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    try {
+      setActionLoading(employee.EmployeeID);
+      setError('');
+      setSuccessMessage('');
+
+      const response = await fetch('/api/administrative-personnel-dashboard/job-termination', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          EmployeeID: employee.EmployeeID
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setSuccessMessage(data.message || 'Empleado eliminado permanentemente');
+        await fetchEmployees();
+      } else {
+        setError(data.message || 'Error al eliminar al empleado');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setError('Error de conexión al eliminar al empleado');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -331,13 +419,14 @@ export default function EmployeesListPage() {
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">TIPO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">PUESTO / PROYECTO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">CONTACTO</th>
+                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ESTADO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center">
+                      <td colSpan={7} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
                           <p className="text-gray-600">Cargando empleados...</p>
@@ -346,7 +435,7 @@ export default function EmployeesListPage() {
                     </tr>
                   ) : filteredEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center">
+                      <td colSpan={7} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
                           <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
@@ -392,23 +481,44 @@ export default function EmployeesListPage() {
                           <div className="text-xs text-gray-500">{employee.Phone}</div>
                         </td>
                         <td className="py-3 px-4">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            (employee.Status ?? 1) === 1 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {(employee.Status ?? 1) === 1 ? 'ACTIVO' : 'INACTIVO'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
                           <div className="flex items-center justify-center gap-2">
                             <button
-                                className={`p-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
-                                title={"Dar de baja usuario"}
-                              >
-                                { 0 ? (
-                                  <UserX className="h-4 w-4" />
-                                ) : (
-                                  <UserMinus className="h-4 w-4" />
-                                )}
-                              </button>
-                              <button
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Eliminar usuario"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                              onClick={() => toggleEmployeeStatus(employee)}
+                              disabled={actionLoading === employee.EmployeeID}
+                              className={`p-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                (employee.Status ?? 1) === 1
+                                  ? 'text-red-600 hover:bg-red-50'
+                                  : 'text-green-600 hover:bg-green-50'
+                              }`}
+                              title={(employee.Status ?? 1) === 1 ? "Dar de baja usuario" : "Reactivar usuario"}
+                            >
+                              {(employee.Status ?? 1) === 1 ? (
+                                <UserMinus className="h-4 w-4" />
+                              ) : (
+                                <UserX className="h-4 w-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => deleteEmployee(employee)}
+                              disabled={actionLoading === employee.EmployeeID || (employee.Status ?? 1) === 1}
+                              className={`p-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                (employee.Status ?? 1) === 0
+                                  ? 'text-red-600 hover:bg-red-50'
+                                  : 'text-gray-400 cursor-not-allowed'
+                              }`}
+                              title={(employee.Status ?? 1) === 0 ? "Eliminar usuario permanentemente" : "Solo disponible para usuarios inactivos"}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
