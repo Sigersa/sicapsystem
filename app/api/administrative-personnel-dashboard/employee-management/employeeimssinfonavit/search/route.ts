@@ -57,12 +57,15 @@ export async function GET(request: NextRequest) {
         bp.MiddleName,
         bp.Position,
         bp.Area,
+        e.Status,
         'BASE' as tipo
       FROM basepersonnel bp
+      INNER JOIN employees e ON e.EmployeeID = bp.EmployeeID
       WHERE bp.EmployeeID LIKE ? 
          OR bp.FirstName LIKE ? 
          OR bp.LastName LIKE ?
          OR CONCAT(bp.FirstName, ' ', bp.LastName, ' ', COALESCE(bp.MiddleName, '')) LIKE ?
+      AND e.Status = 1
       LIMIT 10`,
       [`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`]
     );
@@ -76,14 +79,17 @@ export async function GET(request: NextRequest) {
         pp.MiddleName,
         pc.Position,
         p.NameProject,
+        e.Status,
         'PROJECT' as tipo
       FROM projectpersonnel pp
+      INNER JOIN employee e ON e.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
       LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
       WHERE pp.EmployeeID LIKE ? 
          OR pp.FirstName LIKE ? 
          OR pp.LastName LIKE ?
          OR CONCAT(pp.FirstName, ' ', pp.LastName, ' ', COALESCE(pp.MiddleName, '')) LIKE ?
+         AND e.Status = 1 
       LIMIT 10`,
       [`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`]
     );
