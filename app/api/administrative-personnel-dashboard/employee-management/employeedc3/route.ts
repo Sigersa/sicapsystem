@@ -72,6 +72,7 @@ async function generateDC3PDF(
         dc.Area,
         dc.Duration,
         dc.TrainerID,
+        e.Status,
         -- Datos del empleado que recibe el curso
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
@@ -93,6 +94,7 @@ async function generateDC3PDF(
         COALESCE(trainer_bp.MiddleName, trainer_pp.MiddleName) as TrainerMiddleName
       FROM employeedc3 dc
       -- Datos del empleado que recibe el curso (BASE)
+      INNER JOIN employees e ON e.EmployeeID = dc.EmployeeID
       LEFT JOIN basepersonnel bp ON dc.EmployeeID = bp.EmployeeID
       LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
       -- Datos del empleado que recibe el curso (PROJECT)
@@ -103,7 +105,7 @@ async function generateDC3PDF(
       -- Datos del instructor (Trainer)
       LEFT JOIN basepersonnel trainer_bp ON dc.TrainerID = trainer_bp.EmployeeID
       LEFT JOIN projectpersonnel trainer_pp ON dc.TrainerID = trainer_pp.EmployeeID
-      WHERE dc.DC3ID = ?`,
+      WHERE dc.DC3ID = ? AND e.Status = 1`,
       [dc3Id]
     );
 
@@ -281,6 +283,7 @@ export async function GET(request: NextRequest) {
         dc.TrainerID,
         dc.Duration,
         dc.DocumentURL,
+        e.Status,
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
         COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
@@ -290,9 +293,11 @@ export async function GET(request: NextRequest) {
           ELSE 'PROJECT'
         END as tipo
       FROM employeedc3 dc
+      INNER JOIN employees e ON e.EmployeeID = dc.EmployeeID
       LEFT JOIN basepersonnel bp ON dc.EmployeeID = bp.EmployeeID
       LEFT JOIN projectpersonnel pp ON dc.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+      WHERE e.Status = 1
       ORDER BY dc.StartDate DESC, dc.DC3ID DESC
     `);
 
