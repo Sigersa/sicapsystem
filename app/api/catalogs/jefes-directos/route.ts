@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
         CONCAT(bp.FirstName, ' ', bp.LastName, IFNULL(CONCAT(' ', bp.MiddleName), '')) as nombreCompleto
       FROM basepersonnel bp
       INNER JOIN employees e ON e.EmployeeID = bp.EmployeeID
-      WHERE e.EmployeeType = 'BASE'
+      WHERE e.EmployeeType = 'BASE' AND Status = 1
       
       UNION ALL
       
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       FROM projectpersonnel pp
       INNER JOIN employees e ON e.EmployeeID = pp.EmployeeID
       INNER JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
-      WHERE e.EmployeeType = 'PROJECT'
+      WHERE e.EmployeeType = 'PROJECT' AND e.Status = 1
       
       ORDER BY nombreCompleto
     `;
