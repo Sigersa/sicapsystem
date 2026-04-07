@@ -386,7 +386,8 @@ export async function GET(request: NextRequest) {
         p.AutorizationType,
         p.Observations,
         p.TypeOfPermission,
-        p.DocumentURL, -- ¡IMPORTANTE: Este campo faltaba!
+        p.DocumentURL, 
+        e.Status,
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
         COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
@@ -396,9 +397,11 @@ export async function GET(request: NextRequest) {
           ELSE 'PROJECT'
         END as tipo
       FROM employeepermission p
+      INNER JOIN employees e ON e.EmployeeID = p.EmployeeID
       LEFT JOIN basepersonnel bp ON p.EmployeeID = bp.EmployeeID
       LEFT JOIN projectpersonnel pp ON p.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+      WHERE e.Status = 1
       ORDER BY p.ApplicationDate DESC, p.PermissionID DESC
     `);
 
