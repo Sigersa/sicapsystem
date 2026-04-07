@@ -130,10 +130,12 @@ export async function GET(req: NextRequest) {
         bp.LastName,
         bp.MiddleName,
         bp.Position,
-        bc.StartDate as ContractStartDate
+        bc.StartDate as ContractStartDate,
+        e.Status
       FROM basepersonnel bp
       INNER JOIN employees e ON bp.EmployeeID = e.EmployeeID
       LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
+      WHERE e.Status = 1
       ORDER BY bp.LastName, bp.FirstName
     `);
 
