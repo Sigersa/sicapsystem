@@ -219,6 +219,7 @@ export async function GET(request: NextRequest) {
         ei.Description,
         ei.Rule,
         ei.FileURL,
+        e.Status,
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
         COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
@@ -228,9 +229,11 @@ export async function GET(request: NextRequest) {
           ELSE 'PROJECT'
         END as tipo
       FROM employeeincidence ei
+      INNER JOIN employees e ON e.EmployeeID = ei.EmployeeID
       LEFT JOIN basepersonnel bp ON ei.EmployeeID = bp.EmployeeID
       LEFT JOIN projectpersonnel pp ON ei.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+      WHERE e.Status = 1
       ORDER BY ei.IncidenceID DESC
     `);
 
