@@ -2190,7 +2190,7 @@ export default function SystemAdminDashboard() {
                   </div>
                   
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">CONTROL DE FORMATOS</h3>
+                    <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DOCUMENTOS GENERADOS</h3>
                     <div className="flex items-center justify-between mb-4">
                       <button
                         onClick={anteriorFormato}
