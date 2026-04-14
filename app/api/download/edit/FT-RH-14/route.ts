@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
     let monthw = "";
     let startDate = "";
     let address = "";
+    let endDate = "";
 
     // Obtener nombre según el tipo de empleado
     if (employee.EmployeeType === 'PROJECT') {
@@ -72,6 +73,7 @@ export async function GET(request: NextRequest) {
           pc.Position,
           pc.StartDate,
           TIMESTAMPDIFF(MONTH, pc.StartDate, CURDATE()) AS meses_trabajados,
+          pc.EndDate
 	      pr.ProjectAddress
         FROM projectpersonnel pp
         INNER JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
@@ -89,6 +91,7 @@ export async function GET(request: NextRequest) {
       monthw = r.meses_trabajados;
       startDate = r.StartDate;
       address = r.ProjectAddress;
+      endDate = r.EndDate;
     } else {
       // Personal Base
       const [rows] = await connection.query<any[]>(`
@@ -98,10 +101,12 @@ export async function GET(request: NextRequest) {
           bp.MiddleName,
           bp.Position,
           bc.StartDate,
-          TIMESTAMPDIFF(MONTH, bc.StartDate, CURDATE()) AS meses_trabajados
+          TIMESTAMPDIFF(MONTH, bc.StartDate, CURDATE()) AS meses_trabajados,
+          jt.EndDate
         FROM basepersonnel bp
-        INNER JOIN basecontracts bc ON bc.BasePersonnelID = bc.BasePersonnelID
-        WHERE bp.EmployeeID = ?
+        INNER JOIN jobtermination jt ON jt.EmployeeID = bp.EmployeeID
+        LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
+        WHERE bp.EmployeeID = = ?
       `, [empleadoId]);
 
       if (!rows.length) {
@@ -114,6 +119,7 @@ export async function GET(request: NextRequest) {
       monthw = r.meses_trabajados;
       startDate = r.StartDate;
       address = "AV. EL SAUZ 7, EL DEPOSITO, 42795 TLAHUELILPAN, HGO";
+      endDate = r.EndDate;
     }
 
     // Si no se pudo obtener el nombre completo
@@ -123,6 +129,8 @@ export async function GET(request: NextRequest) {
     
     const applicationDate = formatDateToSpanish(new Date());
     const startDatee = formatDateToSpanish(startDate);
+    const endDatee = formatDateToSpanish(endDate);
+
     // Usar la misma plantilla para ambos tipos
     const templatePath = path.join(
       process.cwd(),
@@ -152,7 +160,7 @@ export async function GET(request: NextRequest) {
         MESES: monthw || "",
         FECHA_INICIO: startDatee,
         DIRECCION: address || "",
-        FECHA_TERMINO: startDatee,
+        FECHA_TERMINO: endDatee,
       },
       cmdDelimiter: ["[[", "]]"],
     });
