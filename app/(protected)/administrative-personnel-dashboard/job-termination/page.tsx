@@ -5,12 +5,11 @@ import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useState, useEffect } from 'react';
-import { Search, ChevronLeft, ChevronRight, UserX, UserMinus, X, RefreshCw, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, UserX, UserMinus, X, RefreshCw, Trash2, CheckCircle, AlertCircle, Eye, Download, FileText } from 'lucide-react';
+import JSZip from 'jszip';
 
-// Tipos de empleado
 type EmployeeType = 'BASE' | 'PROJECT';
 
-// Interface para empleado base
 interface BaseEmployee {
   EmployeeID: number;
   BasePersonnelID: number;
@@ -30,7 +29,6 @@ interface BaseEmployee {
   Status?: number;
 }
 
-// Interface para empleado de proyecto
 interface ProjectEmployee {
   EmployeeID: number;
   ProjectPersonnelID: number;
@@ -53,28 +51,47 @@ interface ProjectEmployee {
   Status?: number;
 }
 
-// Tipo unificado
 type Employee = BaseEmployee | ProjectEmployee;
 
-// Interface para filtros
 interface Filters {
   search: string;
   tipo: 'TODOS' | EmployeeType;
   projectId?: string;
 }
 
-// Interface para proyectos
 interface Proyecto {
   ProjectID: number;
   NameProject: string;
 }
 
+type FormatoActivo = 'FT-RH-12' | 'FT-RH-13' | 'FT-RH-14';
+
+interface TerminationDetails {
+  empleadoId: string;
+  nombre: string;
+  puesto: string;
+  tipoPersonal: string;
+  fechaTerminacion: string;
+  ftRh12PdfUrl?: string;
+  ftRh12PdfDownloadUrl?: string;
+  ftRh13PdfUrl?: string;
+  ftRh13PdfDownloadUrl?: string;
+  ftRh14PdfUrl?: string;
+  ftRh14PdfDownloadUrl?: string;
+  ftRh12WordUrl?: string;
+  ftRh13WordUrl?: string;
+  ftRh14WordUrl?: string;
+}
+
+interface ConfirmTermination {
+  show: boolean;
+  employee: Employee | null;
+}
 
 export default function EmployeesListPage() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
 
-  // Estados
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,45 +99,49 @@ export default function EmployeesListPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   
-  // Estados para paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
 
-  // Estados para filtros
   const [filters, setFilters] = useState<Filters>({
     search: '',
     tipo: 'TODOS'
   });
 
-  // Estado para proyectos (para filtro)
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
 
-  // Cargar empleados al montar
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [terminationDetails, setTerminationDetails] = useState<TerminationDetails | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadingZip, setDownloadingZip] = useState(false);
+  const [formatoActivo, setFormatoActivo] = useState<FormatoActivo>('FT-RH-12');
+
+  const [confirmTermination, setConfirmTermination] = useState<ConfirmTermination>({
+    show: false,
+    employee: null
+  });
+
   useEffect(() => {
     fetchEmployees();
     fetchProjects();
   }, []);
 
-  // Aplicar filtros cuando cambien
   useEffect(() => {
     applyFilters();
   }, [employees, filters]);
 
-  // Actualizar páginas cuando cambien los empleados filtrados
   useEffect(() => {
     setTotalPages(Math.ceil(filteredEmployees.length / itemsPerPage));
     setCurrentPage(1);
   }, [filteredEmployees, itemsPerPage]);
 
-  // Obtener empleados actuales de la página
   const currentEmployees = filteredEmployees.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
-  // Función para obtener empleados
   const fetchEmployees = async () => {
     try {
       setLoading(true);
@@ -147,7 +168,6 @@ export default function EmployeesListPage() {
     }
   };
 
-  // Función para obtener proyectos
   const fetchProjects = async () => {
     try {
       setLoadingProjects(true);
@@ -163,15 +183,102 @@ export default function EmployeesListPage() {
     }
   };
 
-  // Función para cambiar el estado del empleado (dar de baja/alta)
+  const getSavedDocumentUrl = async (empleadoId: string, formato: string): Promise<string | null> => {
+    try {
+      const response = await fetch(`/api/administrative-personnel-dashboard/job-termination/download/${formato}?empleadoId=${empleadoId}&preview=1`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.fileUrl) {
+          return data.fileUrl;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error(`Error al obtener URL guardada de ${formato}:`, error);
+      return null;
+    }
+  };
+
+  const generateDownloadUrls = async (empleadoId: string, tipoPersonal: string): Promise<TerminationDetails> => {
+    const [url12, url13, url14] = await Promise.all([
+      getSavedDocumentUrl(empleadoId, 'FT-RH-12'),
+      getSavedDocumentUrl(empleadoId, 'FT-RH-13'),
+      getSavedDocumentUrl(empleadoId, 'FT-RH-14')
+    ]);
+
+    return {
+      empleadoId,
+      nombre: '',
+      puesto: '',
+      tipoPersonal,
+      fechaTerminacion: new Date().toLocaleDateString('es-MX'),
+      ftRh12PdfUrl: url12 || `/api/download/pdf/FT-RH-12?empleadoId=${empleadoId}&preview=1`,
+      ftRh12PdfDownloadUrl: url12 || `/api/download/pdf/FT-RH-12?empleadoId=${empleadoId}`,
+      ftRh13PdfUrl: url13 || `/api/download/pdf/FT-RH-13?empleadoId=${empleadoId}&preview=1`,
+      ftRh13PdfDownloadUrl: url13 || `/api/download/pdf/FT-RH-13?empleadoId=${empleadoId}`,
+      ftRh14PdfUrl: url14 || `/api/download/pdf/FT-RH-14?empleadoId=${empleadoId}&preview=1`,
+      ftRh14PdfDownloadUrl: url14 || `/api/download/pdf/FT-RH-14?empleadoId=${empleadoId}`,
+      ftRh12WordUrl: `/api/download/edit/FT-RH-12?empleadoId=${empleadoId}`,
+      ftRh13WordUrl: `/api/download/edit/FT-RH-13?empleadoId=${empleadoId}`,
+      ftRh14WordUrl: `/api/download/edit/FT-RH-14?empleadoId=${empleadoId}`
+    };
+  };
+
+  const fetchEmployeeInfo = async (employeeId: number): Promise<any> => {
+    try {
+      const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?employeeId=${employeeId}`);
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        return {
+          nombre: data.nombre,
+          puesto: data.puesto,
+          tipoPersonal: data.tipoPersonal,
+          mesesTrabajados: data.mesesTrabajados,
+          fechaInicio: data.fechaInicio,
+          fechaTermino: data.fechaTermino,
+          direccion: data.direccion
+        };
+      }
+      return {
+        nombre: 'Empleado',
+        puesto: 'No especificado',
+        tipoPersonal: 'BASE',
+        mesesTrabajados: 0,
+        fechaInicio: '',
+        fechaTermino: '',
+        direccion: ''
+      };
+    } catch (error) {
+      console.error('Error al obtener información del empleado:', error);
+      return {
+        nombre: 'Empleado',
+        puesto: 'No especificado',
+        tipoPersonal: 'BASE',
+        mesesTrabajados: 0,
+        fechaInicio: '',
+        fechaTermino: '',
+        direccion: ''
+      };
+    }
+  };
+
+  const confirmToggleStatus = (employee: Employee) => {
+    const currentStatus = employee.Status ?? 1;
+    if (currentStatus === 1) {
+      setConfirmTermination({
+        show: true,
+        employee: employee
+      });
+    } else {
+      toggleEmployeeStatus(employee);
+    }
+  };
+
   const toggleEmployeeStatus = async (employee: Employee) => {
     const currentStatus = employee.Status ?? 1;
     const newStatus = currentStatus === 1 ? 0 : 1;
     const actionText = newStatus === 0 ? 'dar de baja' : 'reactivar';
-
-    if (!confirm(`¿Está seguro de que desea ${actionText} a ${employee.FirstName} ${employee.LastName}?`)) {
-      return;
-    }
 
     try {
       setActionLoading(employee.EmployeeID);
@@ -192,8 +299,18 @@ export default function EmployeesListPage() {
       const data = await response.json();
 
       if (response.ok && data.success) {
+        if (newStatus === 0) {
+          const employeeInfo = await fetchEmployeeInfo(employee.EmployeeID);
+          
+          const details = await generateDownloadUrls(employee.EmployeeID.toString(), employeeInfo.tipoPersonal);
+          details.nombre = employeeInfo.nombre;
+          details.puesto = employeeInfo.puesto;
+          
+          setTerminationDetails(details);
+          setShowSuccessModal(true);
+        }
+        
         setSuccessMessage(data.message || `Empleado ${actionText} exitosamente`);
-        // Recargar la lista de empleados
         await fetchEmployees();
       } else {
         setError(data.message || `Error al ${actionText} al empleado`);
@@ -203,10 +320,10 @@ export default function EmployeesListPage() {
       setError(`Error de conexión al ${actionText} al empleado`);
     } finally {
       setActionLoading(null);
+      setConfirmTermination({ show: false, employee: null });
     }
   };
 
-  // Función para eliminar empleado (solo si está inactivo)
   const deleteEmployee = async (employee: Employee) => {
     if (employee.Status !== 0) {
       setError('Solo se pueden eliminar empleados que están dados de baja');
@@ -248,7 +365,161 @@ export default function EmployeesListPage() {
     }
   };
 
-  // Función para aplicar filtros
+  const handleDownloadFile = async (url: string, filename: string) => {
+    try {
+      setDownloading(true);
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error('Error al descargar el archivo');
+      }
+      
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+      
+      setDownloading(false);
+    } catch (error) {
+      console.error('Error al descargar archivo:', error);
+      setError('Error al descargar el archivo. Intente nuevamente.');
+      setDownloading(false);
+    }
+  };
+
+  const handleDownloadAllPDFs = async () => {
+    if (!terminationDetails) return;
+    
+    try {
+      setDownloadingZip(true);
+      
+      const zip = new JSZip();
+      
+      if (terminationDetails.ftRh12PdfDownloadUrl) {
+        const response = await fetch(terminationDetails.ftRh12PdfDownloadUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-12_${terminationDetails.empleadoId}.pdf`, blob);
+        }
+      }
+      
+      if (terminationDetails.ftRh13PdfDownloadUrl) {
+        const response = await fetch(terminationDetails.ftRh13PdfDownloadUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-13_${terminationDetails.empleadoId}.pdf`, blob);
+        }
+      }
+      
+      if (terminationDetails.ftRh14PdfDownloadUrl) {
+        const response = await fetch(terminationDetails.ftRh14PdfDownloadUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-14_${terminationDetails.empleadoId}.pdf`, blob);
+        }
+      }
+      
+      const content = await zip.generateAsync({ type: "blob" });
+      const downloadUrl = window.URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `documentos_baja_${terminationDetails.empleadoId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+      
+      setDownloadingZip(false);
+    } catch (error) {
+      console.error('Error al crear ZIP:', error);
+      setError('Error al crear archivo ZIP. Intente nuevamente.');
+      setDownloadingZip(false);
+    }
+  };
+
+  const handleDownloadAllEditables = async () => {
+    if (!terminationDetails) return;
+    
+    try {
+      setDownloadingZip(true);
+      
+      const zip = new JSZip();
+      
+      if (terminationDetails.ftRh12WordUrl) {
+        const response = await fetch(terminationDetails.ftRh12WordUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-12_${terminationDetails.empleadoId}.docx`, blob);
+        }
+      }
+      
+      if (terminationDetails.ftRh13WordUrl) {
+        const response = await fetch(terminationDetails.ftRh13WordUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-13_${terminationDetails.empleadoId}.docx`, blob);
+        }
+      }
+      
+      if (terminationDetails.ftRh14WordUrl) {
+        const response = await fetch(terminationDetails.ftRh14WordUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          zip.file(`FT-RH-14_${terminationDetails.empleadoId}.docx`, blob);
+        }
+      }
+      
+      const content = await zip.generateAsync({ type: "blob" });
+      const downloadUrl = window.URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `editables_baja_${terminationDetails.empleadoId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+      
+      setDownloadingZip(false);
+    } catch (error) {
+      console.error('Error al crear ZIP de editables:', error);
+      setError('Error al crear archivo ZIP. Intente nuevamente.');
+      setDownloadingZip(false);
+    }
+  };
+
+  const closeModal = () => {
+    setShowSuccessModal(false);
+    setPdfLoading(false);
+    setTerminationDetails(null);
+    setFormatoActivo('FT-RH-12');
+  };
+
+  const closeConfirmModal = () => {
+    setConfirmTermination({ show: false, employee: null });
+  };
+
+  const siguienteFormato = () => {
+    if (formatoActivo === 'FT-RH-12') {
+      setFormatoActivo('FT-RH-13');
+    } else if (formatoActivo === 'FT-RH-13') {
+      setFormatoActivo('FT-RH-14');
+    }
+  };
+
+  const anteriorFormato = () => {
+    if (formatoActivo === 'FT-RH-14') {
+      setFormatoActivo('FT-RH-13');
+    } else if (formatoActivo === 'FT-RH-13') {
+      setFormatoActivo('FT-RH-12');
+    }
+  };
+
   const applyFilters = () => {
     let filtered = [...employees];
 
@@ -284,7 +555,6 @@ export default function EmployeesListPage() {
     setFilteredEmployees(filtered);
   };
 
-  // Función para limpiar filtros
   const clearFilters = () => {
     setFilters({
       search: '',
@@ -293,7 +563,6 @@ export default function EmployeesListPage() {
     });
   };
 
-  // Mostrar loading de sesión
   if (sessionLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
@@ -305,7 +574,6 @@ export default function EmployeesListPage() {
     );
   }
 
-  // Si no hay usuario
   if (!user) {
     return null;
   }
@@ -313,6 +581,357 @@ export default function EmployeesListPage() {
   return (
     <div className="min-h-screen bg-gray-100">
       <AppHeader title="PANEL ADMINISTRATIVO" />
+
+      {confirmTermination.show && confirmTermination.employee && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
+          style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
+        >
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative z-[10000]">
+            <div className="p-6 pb-4 border-b border-gray-300">
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+                <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
+                CONFIRMAR BAJA
+              </h2>
+              <p className="text-sm text-gray-600 mt-2 leading-5">
+                ¿Está seguro que desea dar de baja a <span className="font-bold text-gray-800">{confirmTermination.employee.FirstName} {confirmTermination.employee.LastName}</span>?
+                <br /><br />
+                Esta acción generará los documentos de terminación laboral y el empleado ya no podrá acceder al sistema.
+              </p>
+            </div>
+            
+            <div className="p-6 pt-4 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeConfirmModal}
+                className="bg-gray-200 text-black font-bold py-2.5 px-6 rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
+              >
+                CANCELAR
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleEmployeeStatus(confirmTermination.employee!)}
+                disabled={actionLoading === confirmTermination.employee.EmployeeID}
+                className="px-6 py-2.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {actionLoading === confirmTermination.employee.EmployeeID ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    PROCESANDO...
+                  </>
+                ) : (
+                  'DAR DE BAJA'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSuccessModal && terminationDetails && (
+        <div className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70" style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}>
+          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full h-[90vh] flex flex-col animate-fade-in relative z-[10000]">
+            <div className="p-6 pb-4 border-b flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                  ¡REGISTRO EXITOSO!
+                </h2>
+                <p className="text-gray-600 mt-1 text-sm">
+                  El movimiento ha sido registrado correctamente en el sistema.
+                </p>
+              </div>
+              <button
+                onClick={closeModal}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                aria-label="Cerrar modal"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+            
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+              <div className="w-full md:w-1/3 p-6 border-r border-gray-200 overflow-y-auto">
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DETALLES DEL REGISTRO</h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">ID EMPLEADO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{terminationDetails.empleadoId}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">NOMBRE:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{terminationDetails.nombre}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">PUESTO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{terminationDetails.puesto}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">TIPO:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{terminationDetails.tipoPersonal}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">FECHA DE BAJA:</span>
+                        <span className="text-gray-600 mt-1 text-sm">{terminationDetails.fechaTerminacion}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DOCUMENTOS GENERADOS</h3>
+                    <div className="flex items-center justify-between mb-4">
+                      <button
+                        onClick={anteriorFormato}
+                        disabled={formatoActivo === 'FT-RH-12'}
+                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Formato anterior"
+                      >
+                        <ChevronLeft className="h-4 w-4 text-gray-700" />
+                      </button>
+                      <span className="font-bold text-gray-800 text-sm">
+                        {formatoActivo === 'FT-RH-12' ? 'FORMATO FT-RH-12' : 
+                         formatoActivo === 'FT-RH-13' ? 'FORMATO FT-RH-13' : 
+                         'FORMATO FT-RH-14'}
+                      </span>
+                      <button
+                        onClick={siguienteFormato}
+                        disabled={formatoActivo === 'FT-RH-14'}
+                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Siguiente formato"
+                      >
+                        <ChevronRight className="h-4 w-4 text-gray-700" />
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      {formatoActivo === 'FT-RH-12' ? (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-12 (PDF)</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <a
+                                href={terminationDetails.ftRh12PdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                title="Vista previa"
+                              >
+                                <Eye className="h-4 w-4 text-gray-700" />
+                              </a>
+                              <button
+                                onClick={() => handleDownloadFile(terminationDetails.ftRh12PdfDownloadUrl || '', `FT-RH-12_${terminationDetails.empleadoId}.pdf`)}
+                                disabled={downloading}
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Descargar PDF"
+                              >
+                                {downloading ? (
+                                  <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                  <Download className="h-4 w-4 text-gray-700" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-12 (EDITABLE)</span>
+                            </div>
+                            <a
+                              href={terminationDetails.ftRh12WordUrl}
+                              download={`FT-RH-12_${terminationDetails.empleadoId}.docx`}
+                              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                            >
+                              <Download className="h-4 w-4 text-gray-700" />
+                            </a>
+                          </div>
+                        </>
+                      ) : formatoActivo === 'FT-RH-13' ? (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-13 (PDF)</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <a
+                                href={terminationDetails.ftRh13PdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                title="Vista previa"
+                              >
+                                <Eye className="h-4 w-4 text-gray-700" />
+                              </a>
+                              <button
+                                onClick={() => handleDownloadFile(terminationDetails.ftRh13PdfDownloadUrl || '', `FT-RH-13_${terminationDetails.empleadoId}.pdf`)}
+                                disabled={downloading}
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Descargar PDF"
+                              >
+                                {downloading ? (
+                                  <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                  <Download className="h-4 w-4 text-gray-700" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-13 (EDITABLE)</span>
+                            </div>
+                            <a
+                              href={terminationDetails.ftRh13WordUrl}
+                              download={`FT-RH-13_${terminationDetails.empleadoId}.docx`}
+                              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                            >
+                              <Download className="h-4 w-4 text-gray-700" />
+                            </a>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-14 (PDF)</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <a
+                                href={terminationDetails.ftRh14PdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                title="Vista previa"
+                              >
+                                <Eye className="h-4 w-4 text-gray-700" />
+                              </a>
+                              <button
+                                onClick={() => handleDownloadFile(terminationDetails.ftRh14PdfDownloadUrl || '', `FT-RH-14_${terminationDetails.empleadoId}.pdf`)}
+                                disabled={downloading}
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Descargar PDF"
+                              >
+                                {downloading ? (
+                                  <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                  <Download className="h-4 w-4 text-gray-700" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-14 (EDITABLE)</span>
+                            </div>
+                            <a
+                              href={terminationDetails.ftRh14WordUrl}
+                              download={`FT-RH-14_${terminationDetails.empleadoId}.docx`}
+                              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                            >
+                              <Download className="h-4 w-4 text-gray-700" />
+                            </a>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DESCARGAS MASIVAS</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">
+                          DESCARGAR TODOS LOS PDF
+                        </span>
+                        <button
+                          onClick={handleDownloadAllPDFs}
+                          disabled={downloadingZip}
+                          className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+                        >
+                          {downloadingZip ? (
+                            <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Download className="h-4 w-4 text-gray-700" />
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="block text-xs font-bold text-gray-700 uppercase">
+                          DESCARGAR TODOS LOS EDITABLES
+                        </span>
+                        <button
+                          onClick={handleDownloadAllEditables}
+                          disabled={downloadingZip}
+                          className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+                        >
+                          {downloadingZip ? (
+                            <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Download className="h-4 w-4 text-gray-700" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex-1 flex flex-col p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-gray-800 text-sm uppercase">
+                    VISTA PREVIA - {
+                      formatoActivo === 'FT-RH-12' ? 'FORMATO FT-RH-12' : 
+                      formatoActivo === 'FT-RH-13' ? 'FORMATO FT-RH-13' : 
+                      'FORMATO FT-RH-14'
+                    }
+                  </h3>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-500">
+                      {formatoActivo === 'FT-RH-12' ? '1 de 3' : 
+                       formatoActivo === 'FT-RH-13' ? '2 de 3' : 
+                       '3 de 3'}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="flex-1 border border-gray-300 rounded-lg overflow-hidden relative bg-gray-50">
+                  {pdfLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                      <div className="flex flex-col items-center">
+                        <div className="w-12 h-12 border-4 border-gray-300 border-t-[#3a6ea5] animate-spin rounded-full mb-3"></div>
+                        <p className="text-sm text-gray-600">Cargando vista previa...</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <iframe
+                    src={
+                      formatoActivo === 'FT-RH-12' ? terminationDetails.ftRh12PdfUrl :
+                      formatoActivo === 'FT-RH-13' ? terminationDetails.ftRh13PdfUrl : 
+                      terminationDetails.ftRh14PdfUrl
+                    }
+                    className="w-full h-full border-0"
+                    onLoad={() => setPdfLoading(false)}
+                    title={`Vista previa del ${formatoActivo}`}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="pt-[72px] pb-[80px] min-h-screen bg-gray-100">
         <div className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 max-w-7xl mx-auto">
@@ -328,7 +947,7 @@ export default function EmployeesListPage() {
             </div>
           </div>
 
-          {successMessage && (
+          {successMessage && !showSuccessModal && (
             <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in">
               <div className="flex items-center">
                 <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
@@ -492,7 +1111,7 @@ export default function EmployeesListPage() {
                         <td className="py-3 px-4">
                           <div className="flex items-center justify-center gap-2">
                             <button
-                              onClick={() => toggleEmployeeStatus(employee)}
+                              onClick={() => confirmToggleStatus(employee)}
                               disabled={actionLoading === employee.EmployeeID}
                               className={`p-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                                 (employee.Status ?? 1) === 1
@@ -560,7 +1179,6 @@ export default function EmployeesListPage() {
 
       <Footer />
 
-      {/* Estilos para animaciones */}
       <style jsx global>{`
         @keyframes fade-in {
           from {
@@ -603,10 +1221,6 @@ export default function EmployeesListPage() {
         
         header, footer {
           z-index: 50 !important;
-        }
-        
-        .fixed.inset-0.z-\\[9999\\] {
-          z-index: 9999 !important;
         }
         
         body.modal-open {
