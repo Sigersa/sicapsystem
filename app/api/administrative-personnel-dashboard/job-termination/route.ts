@@ -1,55 +1,172 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
+import { UTApi } from "uploadthing/server";
 
-// Interface para empleado base
-interface BaseEmployee {
-  EmployeeID: number;
-  BasePersonnelID: number;
-  FirstName: string;
-  LastName: string;
-  MiddleName: string | null;
-  Position: string;
-  Area: string;
-  Salary: number;
-  WorkSchedule: string;
-  RFC: string;
-  CURP: string;
-  NSS: string;
-  Email: string;
-  Phone: string;
-  tipo: 'BASE';
-  Status?: number;
+const utapi = new UTApi();
+
+async function uploadToUploadThing(fileBuffer: Buffer, fileName: string): Promise<string | null> {
+  try {
+    const uint8Array = new Uint8Array(fileBuffer);
+    const blob = new Blob([uint8Array], { type: 'application/pdf' });
+    const file = new File([blob], fileName, { type: 'application/pdf' });
+    
+    const uploadedFiles = await utapi.uploadFiles([file]);
+    
+    if (uploadedFiles[0] && uploadedFiles[0].data) {
+      const fileUrl = (uploadedFiles[0].data as any).ufsUrl || uploadedFiles[0].data.url;
+      return fileUrl;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error al subir a UploadThing:', error);
+    return null;
+  }
 }
 
-// Interface para empleado de proyecto
-interface ProjectEmployee {
-  EmployeeID: number;
-  ProjectPersonnelID: number;
-  FirstName: string;
-  LastName: string;
-  MiddleName: string | null;
-  ProjectName: string;
-  ProjectID: number;
-  Position: string;
-  Salary: number;
-  WorkSchedule: string;
-  StartDate: string;
-  EndDate: string | null;
-  RFC: string;
-  CURP: string;
-  NSS: string;
-  Email: string;
-  Phone: string;
-  tipo: 'PROJECT';
-  Status?: number;
+async function generateAndSavePDF(employeeId: number, formato: string, baseUrl: string, cookies?: string): Promise<string | null> {
+  try {
+    console.log(`Generando PDF para ${formato}, EmployeeID: ${employeeId}`);
+    
+    const url = `${baseUrl}/api/download/pdf/${formato}?empleadoId=${employeeId}`;
+    console.log('URL de generación PDF:', url);
+    
+    const response = await fetch(url, {
+      headers: {
+        Cookie: cookies || ''
+      }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Error al generar PDF ${formato}:`, response.status, errorText);
+      return null;
+    }
+    
+    const pdfBuffer = await response.arrayBuffer();
+    
+    const fileName = `${formato}_${employeeId}_${Date.now()}.pdf`;
+    const fileUrl = await uploadToUploadThing(Buffer.from(pdfBuffer), fileName);
+    
+    if (fileUrl) {
+      console.log(`${formato} subido a UploadThing: ${fileUrl}`);
+      return fileUrl;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Error en generateAndSavePDF para ${formato}:`, error);
+    return null;
+  }
+}
+
+async function updateDocumentUrl(connection: any, employeeId: number, formato: string, fileUrl: string) {
+  const fieldMap: Record<string, string> = {
+    'FT-RH-12': 'CDFileURL',
+    'FT-RH-13': 'CRFileURL',
+    'FT-RH-14': 'OFFileURL'
+  };
+  
+  const fieldName = fieldMap[formato];
+  if (!fieldName) return;
+  
+  await connection.execute(
+    `UPDATE jobtermination SET ${fieldName} = ? WHERE EmployeeID = ?`,
+    [fileUrl, employeeId]
+  );
+  
+  console.log(`URL de ${formato} actualizada para EmployeeID: ${employeeId}`);
+}
+
+async function getEmployeeInfo(connection: any, employeeId: number) {
+  const [employeeInfo] = await connection.query(
+    `SELECT EmployeeType 
+    FROM employees 
+    WHERE EmployeeID = ?`,
+    [employeeId]
+  );
+
+  if (!employeeInfo || (employeeInfo as any[]).length === 0) {
+    throw new Error('Empleado no encontrado');
+  }
+
+  const employee = (employeeInfo as any[])[0];
+  let nombre = "";
+  let puesto = "";
+  let tipoPersonal = employee.EmployeeType === 'PROJECT' ? 'PERSONAL DE PROYECTO' : 'PERSONAL BASE';
+  let mesesTrabajados = 0;
+  let fechaInicio = "";
+  let fechaTermino = "";
+  let direccion = "";
+
+  if (employee.EmployeeType === 'PROJECT') {
+    const [rows] = await connection.query(
+      `SELECT 
+        pp.FirstName,
+        pp.LastName,
+        pp.MiddleName,
+        pc.Position,
+        pc.StartDate,
+        pc.EndDate,
+        TIMESTAMPDIFF(MONTH, pc.StartDate, CURDATE()) AS meses_trabajados,
+        pr.ProjectAddress
+      FROM projectpersonnel pp
+      LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
+      LEFT JOIN projects pr ON pr.ProjectID = pc.ProjectID
+      WHERE pp.EmployeeID = ?`,
+      [employeeId]
+    );
+
+    if (rows && (rows as any[]).length > 0) {
+      const r = (rows as any[])[0];
+      nombre = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
+      puesto = r.Position || "No especificado";
+      mesesTrabajados = r.meses_trabajados || 0;
+      fechaInicio = r.StartDate || "";
+      fechaTermino = r.EndDate || "";
+      direccion = r.ProjectAddress || "";
+    }
+  } else {
+    const [rows] = await connection.query(
+      `SELECT 
+        bp.FirstName,
+        bp.LastName,
+        bp.MiddleName,
+        bp.Position,
+        bc.StartDate,
+        TIMESTAMPDIFF(MONTH, bc.StartDate, CURDATE()) AS meses_trabajados
+      FROM basepersonnel bp
+      LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
+      WHERE bp.EmployeeID = ?`,
+      [employeeId]
+    );
+
+    if (rows && (rows as any[]).length > 0) {
+      const r = (rows as any[])[0];
+      nombre = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
+      puesto = r.Position || "No especificado";
+      mesesTrabajados = r.meses_trabajados || 0;
+      fechaInicio = r.StartDate || "";
+      direccion = "AV. EL SAUZ 7, EL DEPOSITO, 42795 TLAHUELILPAN, HGO";
+    }
+  }
+
+  return {
+    nombre: nombre || "No especificado",
+    puesto: puesto,
+    tipoPersonal: tipoPersonal,
+    mesesTrabajados: mesesTrabajados,
+    fechaInicio: fechaInicio,
+    fechaTermino: fechaTermino,
+    direccion: direccion
+  };
 }
 
 export async function GET(request: NextRequest) {
   let connection;
   
   try {
-    // Validar sesión
     const sessionId = request.cookies.get("session")?.value;
 
     if (!sessionId) {
@@ -59,7 +176,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user) {
@@ -69,7 +185,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verificar permisos (solo administradores)
     if (user.UserTypeID !== 2) {
       return NextResponse.json(
         { success: false, message: 'ACCESO DENEGADO' },
@@ -77,18 +192,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Obtener conexión a la base de datos
     connection = await getConnection();
 
-    // Obtener parámetros de consulta (opcional)
     const url = new URL(request.url);
     const tipo = url.searchParams.get('tipo');
     const search = url.searchParams.get('search');
+    const employeeId = url.searchParams.get('employeeId');
+    
+    if (employeeId) {
+      try {
+        const employeeInfo = await getEmployeeInfo(connection, parseInt(employeeId));
+        return NextResponse.json({
+          success: true,
+          ...employeeInfo
+        });
+      } catch (error: any) {
+        return NextResponse.json(
+          { success: false, message: error.message || 'Error al obtener información del empleado' },
+          { status: 404 }
+        );
+      }
+    }
 
-    // Array para almacenar todos los empleados
-    let allEmployees: (BaseEmployee | ProjectEmployee)[] = [];
-
-    // 1. Obtener personal base incluyendo Status
     const [baseEmployees] = await connection.execute(`
       SELECT 
         e.EmployeeID,
@@ -112,7 +237,6 @@ export async function GET(request: NextRequest) {
       ORDER BY bp.LastName, bp.FirstName
     `);
 
-    // 2. Obtener personal de proyecto incluyendo Status
     const [projectEmployees] = await connection.execute(`
       SELECT 
         e.EmployeeID,
@@ -141,64 +265,40 @@ export async function GET(request: NextRequest) {
       ORDER BY pp.LastName, pp.FirstName
     `);
 
-    // Combinar resultados y agregar el tipo
-    allEmployees = [
+    const allEmployees = [
       ...(baseEmployees as any[]).map(emp => ({ ...emp, tipo: 'BASE' as const })),
       ...(projectEmployees as any[]).map(emp => ({ ...emp, tipo: 'PROJECT' as const }))
     ];
 
-    // Filtrar por tipo si se especifica
+    let filteredEmployees = allEmployees;
+
     if (tipo && tipo !== 'TODOS') {
-      allEmployees = allEmployees.filter(emp => emp.tipo === tipo);
+      filteredEmployees = filteredEmployees.filter(emp => emp.tipo === tipo);
     }
 
-    // Filtrar por búsqueda si se especifica
     if (search && search.trim()) {
       const searchLower = search.toLowerCase().trim();
-      allEmployees = allEmployees.filter(emp => 
+      filteredEmployees = filteredEmployees.filter(emp => 
         emp.FirstName.toLowerCase().includes(searchLower) ||
         emp.LastName.toLowerCase().includes(searchLower) ||
         (emp.MiddleName?.toLowerCase() || '').includes(searchLower) ||
-        `${emp.FirstName} ${emp.LastName}`.toLowerCase().includes(searchLower) ||
-        (emp.RFC?.toLowerCase() || '')?.includes(searchLower) ||
-        (emp.CURP?.toLowerCase() || '')?.includes(searchLower) ||
-        (emp.Email?.toLowerCase() || '')?.includes(searchLower) ||
-        (emp.NSS?.toLowerCase() || '')?.includes(searchLower)
+        `${emp.FirstName} ${emp.LastName}`.toLowerCase().includes(searchLower)
       );
     }
 
-    // Ordenar por apellido y nombre
-    allEmployees.sort((a, b) => {
-      const nameA = `${a.LastName} ${a.FirstName}`;
-      const nameB = `${b.LastName} ${b.FirstName}`;
-      return nameA.localeCompare(nameB);
-    });
-
     return NextResponse.json({
       success: true,
-      employees: allEmployees,
-      total: allEmployees.length
+      employees: filteredEmployees,
+      total: filteredEmployees.length
     });
 
   } catch (error) {
     console.error('Error al obtener empleados:', error);
-    
-    let errorMessage = 'ERROR AL OBTENER LA LISTA DE EMPLEADOS';
-    
-    if (error instanceof Error) {
-      console.error('Detalles del error:', error.message);
-    }
-    
     return NextResponse.json(
-      { 
-        success: false, 
-        message: errorMessage,
-        error: process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : undefined
-      },
+      { success: false, message: 'ERROR AL OBTENER LA LISTA DE EMPLEADOS' },
       { status: 500 }
     );
   } finally {
-    // Cerrar conexión
     if (connection) {
       try {
         await connection.release();
@@ -209,12 +309,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PUT - Actualizar status del empleado (dar de baja/alta)
 export async function PUT(request: NextRequest) {
   let connection;
   
   try {
-    // Validar sesión
     const sessionId = request.cookies.get("session")?.value;
 
     if (!sessionId) {
@@ -224,29 +322,18 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
-    if (!user) {
-      return NextResponse.json(
-        { success: false, message: 'SESIÓN INVÁLIDA O EXPIRADA' },
-        { status: 401 }
-      );
-    }
-
-    // Verificar permisos (solo administradores)
-    if (user.UserTypeID !== 2) {
+    if (!user || user.UserTypeID !== 2) {
       return NextResponse.json(
         { success: false, message: 'ACCESO DENEGADO' },
         { status: 403 }
       );
     }
 
-    // Obtener datos de la petición
     const body = await request.json();
     const { EmployeeID, Status } = body;
 
-    // Validar datos requeridos
     if (!EmployeeID || Status === undefined) {
       return NextResponse.json(
         { success: false, message: 'Faltan datos requeridos: EmployeeID y Status' },
@@ -254,7 +341,6 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Validar que Status sea 0 o 1
     if (Status !== 0 && Status !== 1) {
       return NextResponse.json(
         { success: false, message: 'El status debe ser 0 (inactivo) o 1 (activo)' },
@@ -262,10 +348,8 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Obtener conexión a la base de datos
     connection = await getConnection();
 
-    // Verificar si el empleado existe
     const [existingEmployee] = await connection.execute(
       'SELECT EmployeeID, Status FROM employees WHERE EmployeeID = ?',
       [EmployeeID]
@@ -278,39 +362,87 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Actualizar el status del empleado
-    await connection.execute(
-      'UPDATE employees SET Status = ? WHERE EmployeeID = ?',
-      [Status, EmployeeID]
-    );
+    await connection.beginTransaction();
 
-    const actionText = Status === 0 ? 'dado de baja' : 'reactivado';
+    try {
+      await connection.execute(
+        'UPDATE employees SET Status = ? WHERE EmployeeID = ?',
+        [Status, EmployeeID]
+      );
 
-    return NextResponse.json({
-      success: true,
-      message: `Empleado ${actionText} exitosamente`,
-      data: { EmployeeID, Status }
-    });
+      if (Status === 0) {
+        const [existingTermination] = await connection.execute(
+          'SELECT JobTerminationID FROM jobtermination WHERE EmployeeID = ?',
+          [EmployeeID]
+        );
+
+        if ((existingTermination as any[]).length === 0) {
+          await connection.execute(
+            `INSERT INTO jobtermination (EmployeeID, EndDate) 
+             VALUES (?, NOW())`,
+            [EmployeeID]
+          );
+        } else {
+          await connection.execute(
+            'UPDATE jobtermination SET EndDate = NOW() WHERE EmployeeID = ?',
+            [EmployeeID]
+          );
+        }
+        
+        await connection.commit();
+        
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+        const cookies = request.headers.get('cookie') || '';
+        
+        const formatos = ['FT-RH-12', 'FT-RH-13', 'FT-RH-14'];
+        
+        for (const formato of formatos) {
+          try {
+            const fileUrl = await generateAndSavePDF(EmployeeID, formato, baseUrl, cookies);
+            if (fileUrl) {
+              const updateConnection = await getConnection();
+              try {
+                await updateDocumentUrl(updateConnection, EmployeeID, formato, fileUrl);
+              } finally {
+                await updateConnection.release();
+              }
+            }
+            if (formato !== 'FT-RH-14') {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+          } catch (pdfError) {
+            console.error(`Error generando ${formato}:`, pdfError);
+          }
+        }
+        
+      } else if (Status === 1) {
+        await connection.execute(
+          'DELETE FROM jobtermination WHERE EmployeeID = ?',
+          [EmployeeID]
+        );
+        await connection.commit();
+      }
+
+      const actionText = Status === 0 ? 'dado de baja' : 'reactivado';
+
+      return NextResponse.json({
+        success: true,
+        message: `Empleado ${actionText} exitosamente`,
+        data: { EmployeeID, Status }
+      });
+
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    }
 
   } catch (error) {
     console.error('Error al actualizar status del empleado:', error);
-    
-    let errorMessage = 'ERROR AL ACTUALIZAR EL ESTADO DEL EMPLEADO';
-    
-    if (error instanceof Error) {
-      console.error('Detalles del error:', error.message);
-    }
-    
     return NextResponse.json(
-      { 
-        success: false, 
-        message: errorMessage,
-        error: process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : undefined
-      },
+      { success: false, message: 'ERROR AL ACTUALIZAR EL ESTADO DEL EMPLEADO' },
       { status: 500 }
     );
   } finally {
-    // Cerrar conexión
     if (connection) {
       try {
         await connection.release();
@@ -321,12 +453,10 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE - Eliminar empleado permanentemente (solo si está inactivo)
 export async function DELETE(request: NextRequest) {
   let connection;
   
   try {
-    // Validar sesión
     const sessionId = request.cookies.get("session")?.value;
 
     if (!sessionId) {
@@ -336,29 +466,18 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
-    if (!user) {
-      return NextResponse.json(
-        { success: false, message: 'SESIÓN INVÁLIDA O EXPIRADA' },
-        { status: 401 }
-      );
-    }
-
-    // Verificar permisos (solo administradores)
-    if (user.UserTypeID !== 2) {
+    if (!user || user.UserTypeID !== 2) {
       return NextResponse.json(
         { success: false, message: 'ACCESO DENEGADO' },
         { status: 403 }
       );
     }
 
-    // Obtener datos de la petición
     const body = await request.json();
     const { EmployeeID } = body;
 
-    // Validar datos requeridos
     if (!EmployeeID) {
       return NextResponse.json(
         { success: false, message: 'Falta el EmployeeID' },
@@ -366,10 +485,8 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Obtener conexión a la base de datos
     connection = await getConnection();
 
-    // Verificar si el empleado existe y su estado
     const [existingEmployee] = await connection.execute(
       'SELECT EmployeeID, Status FROM employees WHERE EmployeeID = ?',
       [EmployeeID]
@@ -384,7 +501,6 @@ export async function DELETE(request: NextRequest) {
 
     const employee = (existingEmployee as any[])[0];
     
-    // Verificar que el empleado esté inactivo para poder eliminarlo
     if (employee.Status !== 0) {
       return NextResponse.json(
         { success: false, message: 'Solo se pueden eliminar empleados que están dados de baja (Status = 0)' },
@@ -392,11 +508,21 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Iniciar transacción
     await connection.beginTransaction();
 
     try {
-      // Primero, obtener el tipo de empleado y sus IDs relacionados
+      const [termination] = await connection.execute(
+        'SELECT CDFileURL, CRFileURL, OFFileURL FROM jobtermination WHERE EmployeeID = ?',
+        [EmployeeID]
+      );
+      
+      const fileUrls = (termination as any[])[0] || {};
+      
+      await connection.execute(
+        'DELETE FROM jobtermination WHERE EmployeeID = ?',
+        [EmployeeID]
+      );
+
       const [employeeType] = await connection.execute(
         `SELECT 
           CASE 
@@ -410,7 +536,6 @@ export async function DELETE(request: NextRequest) {
       const type = (employeeType as any[])[0]?.EmployeeType;
 
       if (type === 'BASE') {
-        // Obtener BasePersonnelID
         const [basePersonnel] = await connection.execute(
           'SELECT BasePersonnelID FROM basepersonnel WHERE EmployeeID = ?',
           [EmployeeID]
@@ -419,20 +544,17 @@ export async function DELETE(request: NextRequest) {
         if ((basePersonnel as any[]).length > 0) {
           const basePersonnelID = (basePersonnel as any[])[0].BasePersonnelID;
           
-          // Eliminar información personal del personal base
           await connection.execute(
             'DELETE FROM basepersonnelpersonalinfo WHERE BasePersonnelID = ?',
             [basePersonnelID]
           );
           
-          // Eliminar el registro de personal base
           await connection.execute(
             'DELETE FROM basepersonnel WHERE EmployeeID = ?',
             [EmployeeID]
           );
         }
       } else if (type === 'PROJECT') {
-        // Obtener ProjectPersonnelID
         const [projectPersonnel] = await connection.execute(
           'SELECT ProjectPersonnelID FROM projectpersonnel WHERE EmployeeID = ?',
           [EmployeeID]
@@ -441,19 +563,16 @@ export async function DELETE(request: NextRequest) {
         if ((projectPersonnel as any[]).length > 0) {
           const projectPersonnelID = (projectPersonnel as any[])[0].ProjectPersonnelID;
           
-          // Eliminar información personal del personal de proyecto
           await connection.execute(
             'DELETE FROM projectpersonnelpersonalinfo WHERE ProjectPersonnelID = ?',
             [projectPersonnelID]
           );
           
-          // Eliminar contratos de proyecto
           await connection.execute(
             'DELETE FROM projectcontracts WHERE ProjectPersonnelID = ?',
             [projectPersonnelID]
           );
           
-          // Eliminar el registro de personal de proyecto
           await connection.execute(
             'DELETE FROM projectpersonnel WHERE EmployeeID = ?',
             [EmployeeID]
@@ -461,14 +580,26 @@ export async function DELETE(request: NextRequest) {
         }
       }
 
-      // Finalmente, eliminar el empleado
       await connection.execute(
         'DELETE FROM employees WHERE EmployeeID = ?',
         [EmployeeID]
       );
 
-      // Confirmar transacción
       await connection.commit();
+      
+      for (const [key, url] of Object.entries(fileUrls)) {
+        if (url && typeof url === 'string') {
+          try {
+            const fileKey = url.match(/\/f\/([a-zA-Z0-9-_]+)/)?.[1];
+            if (fileKey) {
+              await utapi.deleteFiles([fileKey]);
+              console.log(`Archivo eliminado de UploadThing: ${fileKey}`);
+            }
+          } catch (deleteError) {
+            console.error(`Error al eliminar archivo ${key}:`, deleteError);
+          }
+        }
+      }
 
       return NextResponse.json({
         success: true,
@@ -476,30 +607,17 @@ export async function DELETE(request: NextRequest) {
       });
 
     } catch (error) {
-      // Revertir transacción en caso de error
       await connection.rollback();
       throw error;
     }
 
   } catch (error) {
     console.error('Error al eliminar empleado:', error);
-    
-    let errorMessage = 'ERROR AL ELIMINAR EL EMPLEADO';
-    
-    if (error instanceof Error) {
-      console.error('Detalles del error:', error.message);
-    }
-    
     return NextResponse.json(
-      { 
-        success: false, 
-        message: errorMessage,
-        error: process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : undefined
-      },
+      { success: false, message: 'ERROR AL ELIMINAR EL EMPLEADO' },
       { status: 500 }
     );
   } finally {
-    // Cerrar conexión
     if (connection) {
       try {
         await connection.release();
