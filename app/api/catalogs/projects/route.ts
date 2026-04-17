@@ -2,46 +2,66 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
 
-// Función para normalizar texto a mayúsculas
-const normalizarMayusculas = (texto: string): string => {
-  if (!texto) return '';
-  return texto.toUpperCase();
-};
-
-// GET: Obtener todos los proyectos
-export async function GET(req: NextRequest) {
+export async function GET(request: NextRequest) {
   let connection;
   
   try {
-    const sessionId = req.cookies.get("session")?.value;
+    // Validar sesión
+    const sessionId = request.cookies.get("session")?.value;
 
     if (!sessionId) {
-      return NextResponse.json({ error: "NO AUTORIZADO" }, { status: 401 });
+      return NextResponse.json(
+        { success: false, message: 'NO AUTORIZADO' },
+        { status: 401 }
+      );
     }
 
     // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
-    if (!user || user.UserTypeID !== 2) {
-      return NextResponse.json({ error: "ACCESO DENEGADO" }, { status: 403 });
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: 'SESIÓN INVÁLIDA O EXPIRADA' },
+        { status: 401 }
+      );
     }
 
+    // Obtener conexión a la base de datos
     connection = await getConnection();
-    
+
+    // Consultar proyectos activos (Status = 1)
     const [projects] = await connection.execute(
-      'SELECT * FROM projects ORDER BY ProjectID DESC'
+      `SELECT 
+        ProjectID,
+        NameProject,
+        ProjectAddress,
+        AdminProjectID,
+        StartDate,
+        EndDate,
+        Status
+      FROM projects 
+      WHERE Status = 1
+      ORDER BY NameProject ASC`
     );
-    
-    return NextResponse.json(projects, { status: 200 });
-    
+
+    await connection.release();
+
+    return NextResponse.json(projects);
+
   } catch (error) {
-    console.error('Error fetching projects:', error);
+    console.error('Error al obtener proyectos:', error);
+    
+    if (connection) {
+      try {
+        await connection.release();
+      } catch (err) {
+        console.error('Error al cerrar la conexión:', err);
+      }
+    }
     
     return NextResponse.json(
       { error: 'ERROR AL OBTENER LOS PROYECTOS' },
       { status: 500 }
     );
-  } finally {
-        if (connection) connection.release();
   }
 }
