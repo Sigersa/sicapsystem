@@ -1,3 +1,4 @@
+// app/administrative-personnel-dashboard/job-termination/page.tsx
 'use client';
 
 import AppHeader from '@/components/header/2/2.1';
@@ -88,6 +89,11 @@ interface ConfirmTermination {
   employee: Employee | null;
 }
 
+interface ReactivationModal {
+  show: boolean;
+  employee: Employee | null;
+}
+
 export default function EmployeesListPage() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
@@ -119,6 +125,12 @@ export default function EmployeesListPage() {
   const [formatoActivo, setFormatoActivo] = useState<FormatoActivo>('FT-RH-12');
 
   const [confirmTermination, setConfirmTermination] = useState<ConfirmTermination>({
+    show: false,
+    employee: null
+  });
+
+  // Nuevo estado para el modal de reactivación
+  const [reactivationModal, setReactivationModal] = useState<ReactivationModal>({
     show: false,
     employee: null
   });
@@ -183,41 +195,36 @@ export default function EmployeesListPage() {
     }
   };
 
-  const getSavedDocumentUrl = async (empleadoId: string, formato: string): Promise<string | null> => {
+  const getSavedDocumentUrls = async (empleadoId: string): Promise<any> => {
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/job-termination/download/${formato}?empleadoId=${empleadoId}&preview=1`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.fileUrl) {
-          return data.fileUrl;
-        }
+      const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?action=getDocumentUrls&employeeId=${empleadoId}`);
+      const data = await response.json();
+      
+      if (data.success && data.urls) {
+        return data.urls;
       }
       return null;
     } catch (error) {
-      console.error(`Error al obtener URL guardada de ${formato}:`, error);
+      console.error('Error al obtener URLs guardadas:', error);
       return null;
     }
   };
 
-  const generateDownloadUrls = async (empleadoId: string, tipoPersonal: string): Promise<TerminationDetails> => {
-    const [url12, url13, url14] = await Promise.all([
-      getSavedDocumentUrl(empleadoId, 'FT-RH-12'),
-      getSavedDocumentUrl(empleadoId, 'FT-RH-13'),
-      getSavedDocumentUrl(empleadoId, 'FT-RH-14')
-    ]);
-
+  const generateDownloadUrls = async (empleadoId: string, tipoPersonal: string, nombre: string, puesto: string): Promise<TerminationDetails> => {
+    const savedUrls = await getSavedDocumentUrls(empleadoId);
+    
     return {
       empleadoId,
-      nombre: '',
-      puesto: '',
+      nombre,
+      puesto,
       tipoPersonal,
       fechaTerminacion: new Date().toLocaleDateString('es-MX'),
-      ftRh12PdfUrl: url12 || `/api/download/pdf/FT-RH-12?empleadoId=${empleadoId}&preview=1`,
-      ftRh12PdfDownloadUrl: url12 || `/api/download/pdf/FT-RH-12?empleadoId=${empleadoId}`,
-      ftRh13PdfUrl: url13 || `/api/download/pdf/FT-RH-13?empleadoId=${empleadoId}&preview=1`,
-      ftRh13PdfDownloadUrl: url13 || `/api/download/pdf/FT-RH-13?empleadoId=${empleadoId}`,
-      ftRh14PdfUrl: url14 || `/api/download/pdf/FT-RH-14?empleadoId=${empleadoId}&preview=1`,
-      ftRh14PdfDownloadUrl: url14 || `/api/download/pdf/FT-RH-14?empleadoId=${empleadoId}`,
+      ftRh12PdfUrl: savedUrls?.ftRh12PdfUrl || `/api/download/pdf/FT-RH-12?empleadoId=${empleadoId}&preview=1`,
+      ftRh12PdfDownloadUrl: savedUrls?.ftRh12PdfUrl || `/api/download/pdf/FT-RH-12?empleadoId=${empleadoId}`,
+      ftRh13PdfUrl: savedUrls?.ftRh13PdfUrl || `/api/download/pdf/FT-RH-13?empleadoId=${empleadoId}&preview=1`,
+      ftRh13PdfDownloadUrl: savedUrls?.ftRh13PdfUrl || `/api/download/pdf/FT-RH-13?empleadoId=${empleadoId}`,
+      ftRh14PdfUrl: savedUrls?.ftRh14PdfUrl || `/api/download/pdf/FT-RH-14?empleadoId=${empleadoId}&preview=1`,
+      ftRh14PdfDownloadUrl: savedUrls?.ftRh14PdfUrl || `/api/download/pdf/FT-RH-14?empleadoId=${empleadoId}`,
       ftRh12WordUrl: `/api/download/edit/FT-RH-12?empleadoId=${empleadoId}`,
       ftRh13WordUrl: `/api/download/edit/FT-RH-13?empleadoId=${empleadoId}`,
       ftRh14WordUrl: `/api/download/edit/FT-RH-14?empleadoId=${empleadoId}`
@@ -271,7 +278,16 @@ export default function EmployeesListPage() {
         employee: employee
       });
     } else {
-      toggleEmployeeStatus(employee);
+      // Para empleados inactivos, mostrar modal de reactivación
+      if (employee.tipo === 'PROJECT') {
+        setReactivationModal({
+          show: true,
+          employee: employee
+        });
+      } else {
+        // Para empleados BASE, se puede reactivar directamente
+        toggleEmployeeStatus(employee);
+      }
     }
   };
 
@@ -302,9 +318,12 @@ export default function EmployeesListPage() {
         if (newStatus === 0) {
           const employeeInfo = await fetchEmployeeInfo(employee.EmployeeID);
           
-          const details = await generateDownloadUrls(employee.EmployeeID.toString(), employeeInfo.tipoPersonal);
-          details.nombre = employeeInfo.nombre;
-          details.puesto = employeeInfo.puesto;
+          const details = await generateDownloadUrls(
+            employee.EmployeeID.toString(), 
+            employeeInfo.tipoPersonal,
+            employeeInfo.nombre,
+            employeeInfo.puesto
+          );
           
           setTerminationDetails(details);
           setShowSuccessModal(true);
@@ -363,6 +382,10 @@ export default function EmployeesListPage() {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const closeReactivationModal = () => {
+    setReactivationModal({ show: false, employee: null });
   };
 
   const handleDownloadFile = async (url: string, filename: string) => {
@@ -582,6 +605,7 @@ export default function EmployeesListPage() {
     <div className="min-h-screen bg-gray-100">
       <AppHeader title="PANEL ADMINISTRATIVO" />
 
+      {/* Modal de confirmación de baja */}
       {confirmTermination.show && confirmTermination.employee && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
@@ -628,6 +652,45 @@ export default function EmployeesListPage() {
         </div>
       )}
 
+      {/* Modal de reactivación para personal de proyecto */}
+      {reactivationModal.show && reactivationModal.employee && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
+          style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
+        >
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative z-[10000]">
+            <div className="p-6 pb-4 border-b border-gray-300">
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+                <AlertCircle className="h-5 w-5 text-yellow-600 mr-2" />
+                REACTIVACIÓN DE USUARIO
+              </h2>
+              <p className="text-sm text-gray-600 mt-2 leading-5">
+                Para reactivar al empleado <span className="font-bold text-gray-800">{reactivationModal.employee.FirstName} {reactivationModal.employee.LastName}</span> del tipo <span className="font-bold">PERSONAL DE PROYECTO</span>:
+              </p>
+              <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800 font-medium">
+                  ⚠️ Debe dirigirse al módulo de <span className="font-bold">EDICIÓN DE USUARIO</span> para reactivar su contrato y asignar un nuevo proyecto.
+                </p>
+              </div>
+              <p className="text-sm text-gray-600 mt-4">
+                La reactivación desde este módulo no está disponible para personal de proyecto debido a que requieren un nuevo contrato y asignación de proyecto.
+              </p>
+            </div>
+            
+            <div className="p-6 pt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={closeReactivationModal}
+                className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5582] transition-colors flex items-center justify-center whitespace-nowrap"
+              >
+                ENTENDIDO
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de éxito con documentos */}
       {showSuccessModal && terminationDetails && (
         <div className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70" style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}>
           <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full h-[90vh] flex flex-col animate-fade-in relative z-[10000]">
