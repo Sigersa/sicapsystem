@@ -213,6 +213,28 @@ async function generateFT_RH_29_PDF(empleadoId: string): Promise<ArrayBuffer> {
   }
 }
 
+// Función para obtener las fechas del proyecto
+async function getProjectDates(connection: any, projectId: number): Promise<{ startDate: string | null, endDate: string | null }> {
+  try {
+    const [projectRows] = await connection.execute(
+      `SELECT StartDate, EndDate FROM projects WHERE ProjectID = ? AND Status = 1`,
+      [projectId]
+    );
+    
+    if (Array.isArray(projectRows) && projectRows.length > 0) {
+      return {
+        startDate: projectRows[0].StartDate,
+        endDate: projectRows[0].EndDate
+      };
+    }
+    
+    return { startDate: null, endDate: null };
+  } catch (error) {
+    console.error('Error al obtener fechas del proyecto:', error);
+    return { startDate: null, endDate: null };
+  }
+}
+
 export async function POST(request: NextRequest) {
   let connection;
   
@@ -274,12 +296,6 @@ export async function POST(request: NextRequest) {
 
     // Validar campos específicos para personal de proyecto
     if (formData.tipoPersonal === 'proyecto') {
-      if (!formData.fechaFinContrato?.trim()) {
-        return NextResponse.json(
-          { success: false, message: 'LA FECHA DE FIN DE CONTRATO ES REQUERIDA PARA PERSONAL DE PROYECTO' },
-          { status: 400 }
-        );
-      }
       if (!formData.proyectoId?.trim()) {
         return NextResponse.json(
           { success: false, message: 'EL PROYECTO ES REQUERIDO PARA PERSONAL DE PROYECTO' },
@@ -463,7 +479,7 @@ export async function POST(request: NextRequest) {
           ]
         );
 
-        // 5. Insertar en basecontracts - CON EL NUEVO CAMPO jefeDirectoId
+        // 5. Insertar en basecontracts
         await connection.execute(
           `INSERT INTO basecontracts 
            (BasePersonnelID, StartDate, SalaryIMSS, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL, jefeDirectoId) 
@@ -556,6 +572,20 @@ export async function POST(request: NextRequest) {
         // PERSONAL DE PROYECTO
         employeeType = 'PROJECT';
         
+        // Validar que el proyecto exista y obtener sus fechas
+        const proyectoId = parseInt(formData.proyectoId);
+        
+        if (isNaN(proyectoId)) {
+          throw new Error('ID DE PROYECTO INVÁLIDO');
+        }
+        
+        // Obtener las fechas del proyecto
+        const projectDates = await getProjectDates(connection, proyectoId);
+        
+        if (!projectDates.startDate || !projectDates.endDate) {
+          throw new Error('EL PROYECTO SELECCIONADO NO TIENE FECHAS VÁLIDAS O NO ESTÁ ACTIVO');
+        }
+        
         // 1. Insertar en projectpersonnel
         const [projectPersonnelResult] = await connection.execute(
           `INSERT INTO projectpersonnel 
@@ -615,18 +645,14 @@ export async function POST(request: NextRequest) {
           ]
         );
 
-        // 5. Insertar en projectcontracts - CON EL NUEVO CAMPO jefeDirectoId
-        const proyectoId = parseInt(formData.proyectoId) || null;
-        
+        // 5. Insertar en projectcontracts SIN StartDate y EndDate
         await connection.execute(
           `INSERT INTO projectcontracts 
-           (ProjectPersonnelID, StartDate, EndDate, SalaryIMSS, Position, Salary, WorkSchedule, ProjectID, 
-            ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL, jefeDirectoId) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (ProjectPersonnelID, SalaryIMSS, Position, Salary, WorkSchedule, ProjectID, 
+            ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL, jefeDirectoId, Status) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
           [
             projectPersonnelId,
-            formData.fechaInicioContrato || null,
-            formData.fechaFinContrato || null,
             formData.salaryIMSS ? parseFloat(formData.salaryIMSS) : null,
             normalizarMayusculas(formData.puesto.trim()),
             parseFloat(formData.salario.replace(/[^0-9.-]+/g, "")) || 0,
@@ -749,9 +775,10 @@ export async function POST(request: NextRequest) {
             [contractFileURL, warningFileURL, letterFileURL, agreementFileURL, employeeIdNumber]
           );
         } else {
+          // Actualizar projectcontracts - SIN StartDate y EndDate, con Status
           await connection.execute(
             `UPDATE projectcontracts 
-             SET ContractFileURL = ?, WarningFileURL = ?, LetterFileURL = ?, AgreementFileURL = ?
+             SET ContractFileURL = ?, WarningFileURL = ?, LetterFileURL = ?, AgreementFileURL = ?, Status = 1
              WHERE ProjectPersonnelID = ?`,
             [contractFileURL, warningFileURL, letterFileURL, agreementFileURL, employeeIdNumber]
           );
@@ -851,6 +878,8 @@ export async function POST(request: NextRequest) {
         errorMessage = 'ERROR DE CONEXIÓN A LA BASE DE DATOS. VERIFIQUE EL SERVIDOR.';
       } else if (error.message.includes('foreign key constraint')) {
         errorMessage = 'ERROR: EL PROYECTO O JEFE DIRECTO SELECCIONADO NO EXISTE EN LA BASE DE DATOS.';
+      } else if (error.message.includes('NO TIENE FECHAS VÁLIDAS')) {
+        errorMessage = error.message;
       }
     }
     
