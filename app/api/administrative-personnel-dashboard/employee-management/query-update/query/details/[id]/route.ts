@@ -1,3 +1,5 @@
+// app/api/administrative-personnel-dashboard/employee-management/query-update/query/details/[id]/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -58,6 +60,7 @@ export async function GET(
     let contractInfo = null;
     let beneficiario = null;
     let documentacion = null;
+    let projectInfo = null; // Nueva variable para información del proyecto
 
     if (tipo === 'BASE') {
       // Obtener información personal BASE
@@ -184,10 +187,11 @@ export async function GET(
           pc.Position,
           pc.Salary,
           pc.WorkSchedule,
-          pc.StartDate,
-          pc.EndDate,
+          pc.ProjectID,
           p.NameProject as ProjectName,
-          p.ProjectID,
+          p.StartDate as ProjectStartDate,
+          p.EndDate as ProjectEndDate,
+          p.Status as ProjectStatus,
           ppi.Municipality,
           ppi.Nationality,
           ppi.Gender,
@@ -241,13 +245,27 @@ export async function GET(
           proyectoId: row.ProjectID,
           salario: row.Salary,
           horario: row.WorkSchedule,
-          fechaInicio: row.StartDate,
-          fechaFin: row.EndDate
+          // Fechas del proyecto (solo lectura)
+          fechaInicioProyecto: row.ProjectStartDate,
+          fechaFinProyecto: row.ProjectEndDate
         };
 
-        // Obtener información de contrato PROJECT
+        // Guardar información del proyecto para visualización
+        if (row.ProjectID) {
+          projectInfo = {
+            projectId: row.ProjectID,
+            projectName: row.ProjectName,
+            startDate: row.ProjectStartDate,
+            endDate: row.ProjectEndDate,
+            status: row.ProjectStatus
+          };
+        }
+
+        // Obtener información de contrato PROJECT (sin fechas)
         const [contractRows] = await connection.execute(`
-          SELECT StartDate, EndDate, SalaryIMSS, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL
+          SELECT SalaryIMSS, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL,
+                 Position, Salary, WorkSchedule, ProjectID,
+                 CDFileURL, CRFileURL, OFFileURL, Status
           FROM projectcontracts
           WHERE ProjectPersonnelID = ?
         `, [row.ProjectPersonnelID]);
@@ -255,13 +273,19 @@ export async function GET(
         if (Array.isArray(contractRows) && contractRows.length > 0) {
           const contractRow = (contractRows as any[])[0];
           contractInfo = {
-            fechaInicio: contractRow.StartDate,
-            fechaFin: contractRow.EndDate,
             salaryIMSS: contractRow.SalaryIMSS,
             contractFileURL: contractRow.ContractFileURL,
             warningFileURL: contractRow.WarningFileURL,
             letterFileURL: contractRow.LetterFileURL,
-            agreementFileURL: contractRow.AgreementFileURL
+            agreementFileURL: contractRow.AgreementFileURL,
+            position: contractRow.Position,
+            salary: contractRow.Salary,
+            workSchedule: contractRow.WorkSchedule,
+            projectId: contractRow.ProjectID,
+            cDFileURL: contractRow.CDFileURL,
+            cRFileURL: contractRow.CRFileURL,
+            oFFileURL: contractRow.OFFileURL,
+            status: contractRow.Status
           };
         }
 
@@ -302,7 +326,8 @@ export async function GET(
       personalInfo,
       contractInfo,
       beneficiario,
-      documentacion
+      documentacion,
+      projectInfo
     });
 
   } catch (error) {
