@@ -13,7 +13,7 @@ const normalizarMayusculas = (texto: string): string => {
 ========================= */
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   let connection;
 
@@ -27,7 +27,6 @@ export async function GET(
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user) {
@@ -37,14 +36,15 @@ export async function GET(
       );
     }
 
-     if (user.UserTypeID !== 2) {
-     return NextResponse.json(
-     { message: 'ACCESO DENEGADO - SE REQUIEREN PERMISOS DE ADMINISTRADOR' },
-         { status: 403 }
-       );
-     }
+    if (user.UserTypeID !== 2) {
+      return NextResponse.json(
+        { message: 'ACCESO DENEGADO - SE REQUIEREN PERMISOS DE ADMINISTRADOR' },
+        { status: 403 }
+      );
+    }
 
-    const { id } = await context.params;
+    const resolvedParams = await params;
+    const { id } = resolvedParams;
 
     if (!id || isNaN(Number(id))) {
       return NextResponse.json(
@@ -84,11 +84,11 @@ export async function GET(
 }
 
 /* =========================
-   PUT: actualizar proyecto
+   PUT: actualizar proyecto O marcar como concluido
 ========================= */
 export async function PUT(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   let connection;
 
@@ -102,7 +102,6 @@ export async function PUT(
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user) {
@@ -112,14 +111,15 @@ export async function PUT(
       );
     }
 
-     if (user.UserTypeID !== 2) {
-       return NextResponse.json(
-         { message: 'ACCESO DENEGADO - SE REQUIEREN PERMISOS DE ADMINISTRADOR' },
-         { status: 403 }
-       );
-     }
+    if (user.UserTypeID !== 2) {
+      return NextResponse.json(
+        { message: 'ACCESO DENEGADO - SE REQUIEREN PERMISOS DE ADMINISTRADOR' },
+        { status: 403 }
+      );
+    }
 
-    const { id } = await context.params;
+    const resolvedParams = await params;
+    const { id } = resolvedParams;
 
     if (!id || isNaN(Number(id))) {
       return NextResponse.json(
@@ -128,11 +128,61 @@ export async function PUT(
       );
     }
 
-    let { NameProject, ProjectAddress, AdminProjectID } = await request.json();
+    const body = await request.json();
+    
+    // Verificar si es una solicitud para concluir el proyecto
+    if (body.complete === true) {
+      // Marcar proyecto como concluido
+      connection = await getConnection();
 
-    if (!NameProject || !ProjectAddress) {
+      // Verificar si el proyecto existe
+      const [exists] = await connection.execute(
+        'SELECT ProjectID, Status FROM projects WHERE ProjectID = ?',
+        [id]
+      );
+
+      const projectData = exists as any[];
+      if (projectData.length === 0) {
+        return NextResponse.json(
+          { message: 'PROYECTO NO ENCONTRADO' },
+          { status: 404 }
+        );
+      }
+
+      // Verificar si ya está concluido
+      if (projectData[0].Status === 0) {
+        return NextResponse.json(
+          { message: 'EL PROYECTO YA ESTÁ MARCADO COMO CONCLUIDO' },
+          { status: 400 }
+        );
+      }
+
+      // Actualizar el status a 0 (concluido)
+      await connection.execute(
+        'UPDATE projects SET Status = 0 WHERE ProjectID = ?',
+        [id]
+      );
+
       return NextResponse.json(
-        { message: 'EL NOMBRE Y LA DIRECCIÓN DEL PROYECTO SON REQUERIDOS' },
+        { message: 'PROYECTO MARCADO COMO CONCLUIDO EXITOSAMENTE', success: true },
+        { status: 200 }
+      );
+    }
+
+    // Si no es para concluir, entonces es para actualizar datos del proyecto
+    let { NameProject, ProjectAddress, AdminProjectID, StartDate, EndDate } = body;
+
+    if (!NameProject || !ProjectAddress || !AdminProjectID || !StartDate || !EndDate) {
+      return NextResponse.json(
+        { message: 'TODOS LOS CAMPOS SON REQUERIDOS (NOMBRE, DIRECCIÓN, ADMINISTRADOR, FECHA INICIO, FECHA TÉRMINO)' },
+        { status: 400 }
+      );
+    }
+
+    // Validar fechas
+    if (new Date(EndDate) <= new Date(StartDate)) {
+      return NextResponse.json(
+        { message: 'LA FECHA DE TÉRMINO DEBE SER POSTERIOR A LA FECHA DE INICIO' },
         { status: 400 }
       );
     }
@@ -150,23 +200,33 @@ export async function PUT(
 
     connection = await getConnection();
 
+    // Verificar si el proyecto existe y está activo
     const [exists] = await connection.execute(
-      'SELECT ProjectID FROM projects WHERE ProjectID = ?',
+      'SELECT ProjectID, Status FROM projects WHERE ProjectID = ?',
       [id]
     );
 
-    if ((exists as any[]).length === 0) {
+    const projectData = exists as any[];
+    if (projectData.length === 0) {
       return NextResponse.json(
         { message: 'PROYECTO NO ENCONTRADO' },
         { status: 404 }
       );
     }
 
+    // No permitir editar proyectos concluidos
+    if (projectData[0].Status === 0) {
+      return NextResponse.json(
+        { message: 'NO SE PUEDE EDITAR UN PROYECTO CONCLUIDO' },
+        { status: 400 }
+      );
+    }
+
     await connection.execute(
       `UPDATE projects 
-       SET NameProject = ?, ProjectAddress = ?, AdminProjectID = ?
+       SET NameProject = ?, ProjectAddress = ?, AdminProjectID = ?, StartDate = ?, EndDate = ?
        WHERE ProjectID = ?`,
-      [NameProject, ProjectAddress, AdminProjectID, id]
+      [NameProject, ProjectAddress, AdminProjectID, StartDate, EndDate, id]
     );
 
     return NextResponse.json(
@@ -191,7 +251,7 @@ export async function PUT(
 ========================= */
 export async function DELETE(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   let connection;
 
@@ -205,7 +265,6 @@ export async function DELETE(
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user) {
@@ -215,14 +274,15 @@ export async function DELETE(
       );
     }
 
-     if (user.UserTypeID !== 2) {
-       return NextResponse.json(
-         { message: 'ACCESO DENEGADO - SE REQUIEREN PERMISOS DE ADMINISTRADOR' },
-         { status: 403 }
-       );
-     }
+    if (user.UserTypeID !== 2) {
+      return NextResponse.json(
+        { message: 'ACCESO DENEGADO - SE REQUIEREN PERMISOS DE ADMINISTRADOR' },
+        { status: 403 }
+      );
+    }
 
-    const { id } = await context.params;
+    const resolvedParams = await params;
+    const { id } = resolvedParams;
 
     if (!id || isNaN(Number(id))) {
       return NextResponse.json(
