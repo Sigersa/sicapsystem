@@ -39,7 +39,7 @@ type FormDataBase = {
   nci: string;
   umf: string;
   salaryIMSS: string;
-  jefeDirectoId: string; // NUEVO CAMPO
+  jefeDirectoId: string;
 };
 
 // Tipo para formulario de proyecto
@@ -82,13 +82,18 @@ type Documentos = {
   folleto: File[];
 };
 
-// Tipo para proyectos
+// Tipo para proyectos (actualizado con fechas)
 type Proyecto = {
   ProjectID: number;
   NameProject: string;
+  ProjectAddress: string;
+  AdminProjectID: number;
+  StartDate: string;
+  EndDate: string;
+  Status: number;
 };
 
-// NUEVO TIPO: Tipo para jefes directos
+// Tipo para jefes directos
 type JefeDirecto = {
   id: number;
   nombre: string;
@@ -141,7 +146,7 @@ const fieldNames: Record<string, string> = {
   municipio: 'Municipio',
   estado: 'Estado',
   codigoPostal: 'Código Postal',
-  jefeDirectoId: 'Jefe Directo' // NUEVO CAMPO
+  jefeDirectoId: 'Jefe Directo'
 };
 
 // Mapa de nombres de documentos
@@ -203,7 +208,7 @@ export default function SystemAdminDashboard() {
     umf: '',
     salaryIMSS: '',
     proyectoId: '',
-    jefeDirectoId: '' // NUEVO CAMPO
+    jefeDirectoId: ''
   });
 
   // Estados para el formulario de personal base
@@ -236,7 +241,7 @@ export default function SystemAdminDashboard() {
     nci: '',
     umf: '',
     salaryIMSS: '',
-    jefeDirectoId: '' // NUEVO CAMPO
+    jefeDirectoId: ''
   });
 
   // Estados para beneficiarios
@@ -287,7 +292,7 @@ export default function SystemAdminDashboard() {
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
 
-  // NUEVO ESTADO: Estado para jefes directos
+  // Estado para jefes directos
   const [jefesDirectos, setJefesDirectos] = useState<JefeDirecto[]>([]);
   const [loadingJefes, setLoadingJefes] = useState(false);
 
@@ -323,7 +328,7 @@ export default function SystemAdminDashboard() {
   // Cargar proyectos y jefes directos al montar el componente
   useEffect(() => {
     fetchProjects();
-    fetchJefesDirectos(); // NUEVA FUNCIÓN
+    fetchJefesDirectos();
   }, []);
 
   const fetchProjects = async () => {
@@ -341,7 +346,7 @@ export default function SystemAdminDashboard() {
     }
   };
 
-  // NUEVA FUNCIÓN: Obtener jefes directos
+  // Función para obtener jefes directos
   const fetchJefesDirectos = async () => {
     try {
       setLoadingJefes(true);
@@ -356,6 +361,34 @@ export default function SystemAdminDashboard() {
       console.error('Error al cargar jefes directos:', error);
     } finally {
       setLoadingJefes(false);
+    }
+  };
+
+  // Función para manejar cambio de proyecto - CARGA AUTOMÁTICA DE FECHAS
+  const handleProjectChange = (e: ChangeEvent<HTMLSelectElement>) => {
+    const projectId = e.target.value;
+    
+    if (projectId) {
+      const selectedProject = proyectos.find(p => p.ProjectID === parseInt(projectId));
+      if (selectedProject) {
+        // Convertir fechas al formato YYYY-MM-DD para el input date
+        const startDate = selectedProject.StartDate ? new Date(selectedProject.StartDate).toISOString().split('T')[0] : '';
+        const endDate = selectedProject.EndDate ? new Date(selectedProject.EndDate).toISOString().split('T')[0] : '';
+        
+        setFormDataProyecto(prev => ({ 
+          ...prev, 
+          proyectoId: projectId,
+          fechaInicioContrato: startDate,
+          fechaFinContrato: endDate
+        }));
+      }
+    } else {
+      setFormDataProyecto(prev => ({ 
+        ...prev, 
+        proyectoId: '',
+        fechaInicioContrato: '',
+        fechaFinContrato: ''
+      }));
     }
   };
 
@@ -639,7 +672,13 @@ export default function SystemAdminDashboard() {
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     
+    // Para las fechas del proyecto, no permitir cambios manuales
     if (activeTab === 'proyecto') {
+      // Si el campo es fechaInicioContrato o fechaFinContrato y hay un proyecto seleccionado, no permitir cambios
+      if ((name === 'fechaInicioContrato' || name === 'fechaFinContrato') && formDataProyecto.proyectoId) {
+        return; // No permitir cambios
+      }
+      
       setFormDataProyecto(prev => ({
         ...prev,
         [name]: name === 'email' ? value : value.toUpperCase()
@@ -813,17 +852,13 @@ export default function SystemAdminDashboard() {
       'nombre', 'apellidoPaterno', 'nss', 'curp', 'rfc',
       'fechaNacimiento', 'telefono', 'email', 'puesto',
       'salario', 'calle', 'numeroExterior',
-      'colonia', 'municipio', 'estado', 'codigoPostal', 'jefeDirectoId' // NUEVO CAMPO REQUERIDO
+      'colonia', 'municipio', 'estado', 'codigoPostal', 'jefeDirectoId'
     ];
 
     if (activeTab === 'proyecto') {
       const proyectoData = formData as FormDataProyecto;
       if (!proyectoData.proyectoId?.trim()) {
         setErrorMessage('El proyecto es requerido para personal de proyecto');
-        return false;
-      }
-      if (!proyectoData.fechaFinContrato?.trim()) {
-        setErrorMessage('La fecha de fin de contrato es requerida para personal de proyecto');
         return false;
       }
     }
@@ -910,7 +945,7 @@ export default function SystemAdminDashboard() {
       umf: '',
       salaryIMSS: '',
       proyectoId: '',
-      jefeDirectoId: '' // NUEVO CAMPO
+      jefeDirectoId: ''
     });
     setBeneficiarioProyecto({
       nombre: '',
@@ -949,7 +984,7 @@ export default function SystemAdminDashboard() {
       nci: '',
       umf: '',
       salaryIMSS: '',
-      jefeDirectoId: '' // NUEVO CAMPO
+      jefeDirectoId: ''
     });
     setBeneficiarioBase({
       nombre: '',
@@ -1062,7 +1097,7 @@ export default function SystemAdminDashboard() {
 
         documentos: documentosUrls,
         
-        jefeDirectoId: formData.jefeDirectoId // NUEVO CAMPO
+        jefeDirectoId: formData.jefeDirectoId
       };
 
       if (activeTab === 'proyecto') {
@@ -1857,33 +1892,12 @@ export default function SystemAdminDashboard() {
                   </select>
                 </div>
                 
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    FECHA DE INICIO CONTRATO *
-                  </label>
-                  <div className="relative">
-                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                      <Calendar className="h-4 w-4 text-gray-600" />
-                    </div>
-                    <input
-                      type="date"
-                      name="fechaInicioContrato"
-                      value={formData.fechaInicioContrato}
-                      onChange={handleInputChange}
-                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                      required
-                    />
-                  </div>
-                </div>
-                
-                {/* NUEVO CAMPO: JEFE DIRECTO */}
+                 {/* JEFE DIRECTO */}
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                     JEFE DIRECTO *
                   </label>
                   <div className="relative">
-                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                    </div>
                     <select
                       name="jefeDirectoId"
                       value={formData.jefeDirectoId}
@@ -1905,6 +1919,34 @@ export default function SystemAdminDashboard() {
                   )}
                 </div>
                 
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    FECHA DE INICIO CONTRATO *
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                      <Calendar className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input
+                      type="date"
+                      name="fechaInicioContrato"
+                      value={formData.fechaInicioContrato}
+                      onChange={handleInputChange}
+                      className={`w-full pl-10 pr-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
+                        activeTab === 'proyecto' && formDataProyecto.proyectoId 
+                          ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-300' 
+                          : 'border-gray-400'
+                      }`}
+                      required
+                      readOnly={activeTab === 'proyecto' && !!formDataProyecto.proyectoId}
+                      disabled={activeTab === 'proyecto' && !!formDataProyecto.proyectoId}
+                    />
+                  </div>
+                  {activeTab === 'proyecto' && !!formDataProyecto.proyectoId && (
+                    <p className="text-xs text-blue-600 mt-1">* Fecha cargada automáticamente del proyecto (no editable)</p>
+                  )}
+                </div>
+                
                 {/* Solo mostrar fecha de fin de contrato para personal de proyecto */}
                 {activeTab === 'proyecto' && (
                   <div>
@@ -1913,17 +1955,26 @@ export default function SystemAdminDashboard() {
                     </label>
                     <div className="relative">
                       <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                        <Calendar className="h-4 w-4 text-gray-600" />
+                        <Calendar className="h-4 w-4 text-gray-400" />
                       </div>
                       <input
                         type="date"
                         name="fechaFinContrato"
-                        value={(formData as FormDataProyecto).fechaFinContrato}
+                        value={formDataProyecto.fechaFinContrato}
                         onChange={handleInputChange}
-                        className="w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                        className={`w-full pl-10 pr-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
+                          formDataProyecto.proyectoId 
+                            ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-300' 
+                            : 'border-gray-400'
+                        }`}
                         required
+                        readOnly={!!formDataProyecto.proyectoId}
+                        disabled={!!formDataProyecto.proyectoId}
                       />
                     </div>
+                    {formDataProyecto.proyectoId && (
+                      <p className="text-xs text-blue-600 mt-1">* Fecha cargada automáticamente del proyecto (no editable)</p>
+                    )}
                   </div>
                 )}
                 
@@ -1935,8 +1986,8 @@ export default function SystemAdminDashboard() {
                     </label>
                     <select
                       name="proyectoId"
-                      value={(formData as FormDataProyecto).proyectoId}
-                      onChange={handleInputChange}
+                      value={formDataProyecto.proyectoId}
+                      onChange={handleProjectChange}
                       className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                       required
                       disabled={loadingProjects}
