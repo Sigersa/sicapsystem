@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
         FROM basepersonnel bp
         INNER JOIN jobtermination jt ON jt.EmployeeID = bp.EmployeeID
         LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
-        WHERE bp.EmployeeID = = ?
+        WHERE bp.EmployeeID = ?
       `, [empleadoId]);
 
       if (!rows.length) {
