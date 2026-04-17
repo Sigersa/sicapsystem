@@ -1,3 +1,5 @@
+// app/api/administrative-personnel-dashboard/employee-management/query-update/update/[id]/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -14,37 +16,14 @@ const formatearFechaMySQL = (fecha: string): string | null => {
   if (!fecha) return null;
   
   try {
-    // Si es una fecha ISO con formato YYYY-MM-DDTHH:MM:SS.sssZ
     if (fecha.includes('T')) {
       return fecha.split('T')[0];
     }
-    // Si ya está en formato YYYY-MM-DD
     return fecha;
   } catch {
     return null;
   }
 };
-
-// Función para eliminar archivo de UploadThing
-async function deleteFileFromUploadThing(fileUrl: string): Promise<void> {
-  try {
-    if (!fileUrl) return;
-    
-    // Extraer el fileKey de la URL
-    const urlParts = fileUrl.split('/');
-    const fileKey = urlParts[urlParts.length - 1];
-    
-    if (!fileKey) return;
-    
-    const utapi = new UTApi();
-    await utapi.deleteFiles([fileKey]);
-    
-    console.log('Archivo eliminado de UploadThing:', fileKey);
-  } catch (error) {
-    console.error('Error al eliminar archivo de UploadThing:', error);
-    // No lanzamos error para no interrumpir el flujo principal
-  }
-}
 
 export async function PUT(
   request: NextRequest,
@@ -53,10 +32,8 @@ export async function PUT(
   let connection;
   
   try {
-    // Desenvolver params con await
     const { id } = await params;
     
-    // Validar sesión
     const sessionId = request.cookies.get("session")?.value;
 
     if (!sessionId) {
@@ -66,7 +43,6 @@ export async function PUT(
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user) {
@@ -76,7 +52,6 @@ export async function PUT(
       );
     }
 
-    // Verificar permisos (solo administradores)
     if (user.UserTypeID !== 2) {
       return NextResponse.json(
         { success: false, message: 'ACCESO DENEGADO' },
@@ -95,15 +70,11 @@ export async function PUT(
       );
     }
 
-    // Obtener conexión a la base de datos
     connection = await getConnection();
-    
-    // Iniciar transacción
     await connection.beginTransaction();
 
     try {
       if (tipo === 'BASE') {
-        // Obtener BasePersonnelID desde EmployeeID
         const [baseRows] = await connection.execute(
           'SELECT BasePersonnelID FROM basepersonnel WHERE EmployeeID = ?',
           [employeeId]
@@ -115,11 +86,8 @@ export async function PUT(
 
         const basePersonnelId = (baseRows as any[])[0].BasePersonnelID;
 
-        // Actualizar información personal base
         if (personalInfo) {
-          const { 
-            firstName, lastName, middleName, position, area, salary, workSchedule 
-          } = personalInfo;
+          const { firstName, lastName, middleName, position, area, salary, workSchedule } = personalInfo;
 
           await connection.execute(
             `UPDATE basepersonnel 
@@ -139,13 +107,10 @@ export async function PUT(
           );
         }
 
-        // Actualizar información personal adicional - NUEVA ESTRUCTURA
         if (personalInfoExtra) {
           const {
-            // Campos de dirección separados
             calle, numeroExterior, numeroInterior, colonia,
             municipio, estado, codigoPostal,
-            // Campos existentes
             municipality, nationality, gender, birthdate,
             maritalStatus, rfc, curp, nss, nci, umf, phone, email
           } = personalInfoExtra;
@@ -220,37 +185,10 @@ export async function PUT(
           }
         }
 
-        // Actualizar información de contrato
+        // Actualizar información de contrato BASE (SOLO datos, NO archivos)
         if (contractInfo) {
-          const { 
-            startDate, salaryIMSS, 
-            contractFileURL, warningFileURL, letterFileURL, agreementFileURL 
-          } = contractInfo;
-          
+          const { startDate, salaryIMSS } = contractInfo;
           const fechaInicioFormateada = formatearFechaMySQL(startDate);
-
-          // Obtener URLs actuales para eliminar archivos viejos si se reemplazan
-          const [currentContractRows] = await connection.execute(
-            'SELECT ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL FROM basecontracts WHERE BasePersonnelID = ?',
-            [basePersonnelId]
-          );
-
-          if (Array.isArray(currentContractRows) && currentContractRows.length > 0) {
-            const current = currentContractRows[0] as any;
-            
-            if (contractFileURL && current.ContractFileURL && contractFileURL !== current.ContractFileURL) {
-              await deleteFileFromUploadThing(current.ContractFileURL);
-            }
-            if (warningFileURL && current.WarningFileURL && warningFileURL !== current.WarningFileURL) {
-              await deleteFileFromUploadThing(current.WarningFileURL);
-            }
-            if (letterFileURL && current.LetterFileURL && letterFileURL !== current.LetterFileURL) {
-              await deleteFileFromUploadThing(current.LetterFileURL);
-            }
-            if (agreementFileURL && current.AgreementFileURL && agreementFileURL !== current.AgreementFileURL) {
-              await deleteFileFromUploadThing(current.AgreementFileURL);
-            }
-          }
 
           const [contractRows] = await connection.execute(
             'SELECT * FROM basecontracts WHERE BasePersonnelID = ?',
@@ -260,80 +198,30 @@ export async function PUT(
           if (Array.isArray(contractRows) && contractRows.length > 0) {
             await connection.execute(
               `UPDATE basecontracts 
-               SET StartDate = ?, SalaryIMSS = ?, 
-                   ContractFileURL = ?, WarningFileURL = ?, 
-                   LetterFileURL = ?, AgreementFileURL = ?
+               SET StartDate = ?, SalaryIMSS = ?
                WHERE BasePersonnelID = ?`,
               [
                 fechaInicioFormateada,
                 salaryIMSS || null,
-                contractFileURL || null,
-                warningFileURL || null,
-                letterFileURL || null,
-                agreementFileURL || null,
                 basePersonnelId
               ]
             );
           } else {
             await connection.execute(
               `INSERT INTO basecontracts 
-               (BasePersonnelID, StartDate, SalaryIMSS, 
-                ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL) 
-               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+               (BasePersonnelID, StartDate, SalaryIMSS) 
+               VALUES (?, ?, ?)`,
               [
                 basePersonnelId,
                 fechaInicioFormateada,
-                salaryIMSS || null,
-                contractFileURL || null,
-                warningFileURL || null,
-                letterFileURL || null,
-                agreementFileURL || null
+                salaryIMSS || null
               ]
             );
           }
         }
 
-        // Actualizar documentación del empleado
+        // Actualizar documentación del empleado (solo documentación personal, NO formatos)
         if (documentacion) {
-          // Obtener URLs actuales para eliminar archivos viejos
-          const [currentDocRows] = await connection.execute(
-            `SELECT CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, IMSSFileURL, INEFileURL,
-                    CDFileURL, CEFileURL, CPFileURL, LMFileURL, ANPFileURL, CRFileURL,
-                    RIFileURL, EMFileURL, FotoFileURL, FolletoFileURL
-             FROM basepersonneldocumentation WHERE BasePersonnelID = ?`,
-            [basePersonnelId]
-          );
-
-          if (Array.isArray(currentDocRows) && currentDocRows.length > 0) {
-            const current = currentDocRows[0] as any;
-            
-            // Eliminar archivos viejos si se reemplazan
-            const docFields = [
-              { new: documentacion.CVFileURL, old: current.CVFileURL },
-              { new: documentacion.ANFileURL, old: current.ANFileURL },
-              { new: documentacion.CURPFileURL, old: current.CURPFileURL },
-              { new: documentacion.RFCFileURL, old: current.RFCFileURL },
-              { new: documentacion.IMSSFileURL, old: current.IMSSFileURL },
-              { new: documentacion.INEFileURL, old: current.INEFileURL },
-              { new: documentacion.CDFileURL, old: current.CDFileURL },
-              { new: documentacion.CEFileURL, old: current.CEFileURL },
-              { new: documentacion.CPFileURL, old: current.CPFileURL },
-              { new: documentacion.LMFileURL, old: current.LMFileURL },
-              { new: documentacion.ANPFileURL, old: current.ANPFileURL },
-              { new: documentacion.CRFileURL, old: current.CRFileURL },
-              { new: documentacion.RIFileURL, old: current.RIFileURL },
-              { new: documentacion.EMFileURL, old: current.EMFileURL },
-              { new: documentacion.FotoFileURL, old: current.FotoFileURL },
-              { new: documentacion.FolletoFileURL, old: current.FolletoFileURL }
-            ];
-
-            for (const field of docFields) {
-              if (field.new && field.old && field.new !== field.old) {
-                await deleteFileFromUploadThing(field.old);
-              }
-            }
-          }
-
           const [docRows] = await connection.execute(
             'SELECT * FROM basepersonneldocumentation WHERE BasePersonnelID = ?',
             [basePersonnelId]
@@ -447,7 +335,6 @@ export async function PUT(
 
       } else {
         // PERSONAL DE PROYECTO
-        // Obtener ProjectPersonnelID desde EmployeeID
         const [projectRows] = await connection.execute(
           'SELECT ProjectPersonnelID FROM projectpersonnel WHERE EmployeeID = ?',
           [employeeId]
@@ -459,7 +346,6 @@ export async function PUT(
 
         const projectPersonnelId = (projectRows as any[])[0].ProjectPersonnelID;
 
-        // Actualizar información personal base
         if (personalInfo) {
           const { firstName, lastName, middleName } = personalInfo;
 
@@ -476,13 +362,10 @@ export async function PUT(
           );
         }
 
-        // Actualizar información personal adicional - NUEVA ESTRUCTURA
         if (personalInfoExtra) {
           const {
-            // Campos de dirección separados
             calle, numeroExterior, numeroInterior, colonia,
             municipio, estado, codigoPostal,
-            // Campos existentes
             municipality, nationality, gender, birthdate,
             maritalStatus, rfc, curp, nss, nci, umf, phone, email
           } = personalInfoExtra;
@@ -557,37 +440,9 @@ export async function PUT(
           }
         }
 
-        // Actualizar información de contrato
+        // Actualizar información de contrato PROJECT (SOLO datos, NO archivos)
         if (contractInfo) {
-          const { 
-            startDate, endDate, salaryIMSS, position, salary, workSchedule, projectId,
-            contractFileURL, warningFileURL, letterFileURL, agreementFileURL 
-          } = contractInfo;
-
-          const fechaInicioFormateada = formatearFechaMySQL(startDate);
-          const fechaFinFormateada = formatearFechaMySQL(endDate);
-
-          const [currentContractRows] = await connection.execute(
-            'SELECT ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL FROM projectcontracts WHERE ProjectPersonnelID = ?',
-            [projectPersonnelId]
-          );
-
-          if (Array.isArray(currentContractRows) && currentContractRows.length > 0) {
-            const current = currentContractRows[0] as any;
-            
-            if (contractFileURL && current.ContractFileURL && contractFileURL !== current.ContractFileURL) {
-              await deleteFileFromUploadThing(current.ContractFileURL);
-            }
-            if (warningFileURL && current.WarningFileURL && warningFileURL !== current.WarningFileURL) {
-              await deleteFileFromUploadThing(current.WarningFileURL);
-            }
-            if (letterFileURL && current.LetterFileURL && letterFileURL !== current.LetterFileURL) {
-              await deleteFileFromUploadThing(current.LetterFileURL);
-            }
-            if (agreementFileURL && current.AgreementFileURL && agreementFileURL !== current.AgreementFileURL) {
-              await deleteFileFromUploadThing(current.AgreementFileURL);
-            }
-          }
+          const { salaryIMSS, position, salary, workSchedule, projectId, status } = contractInfo;
 
           const [contractRows] = await connection.execute(
             'SELECT * FROM projectcontracts WHERE ProjectPersonnelID = ?',
@@ -597,45 +452,32 @@ export async function PUT(
           if (Array.isArray(contractRows) && contractRows.length > 0) {
             await connection.execute(
               `UPDATE projectcontracts 
-               SET StartDate = ?, EndDate = ?, SalaryIMSS = ?, 
-                   Position = ?, Salary = ?, WorkSchedule = ?, ProjectID = ?,
-                   ContractFileURL = ?, WarningFileURL = ?, 
-                   LetterFileURL = ?, AgreementFileURL = ?
+               SET SalaryIMSS = ?, Position = ?, Salary = ?, WorkSchedule = ?, ProjectID = ?,
+                   Status = ?
                WHERE ProjectPersonnelID = ?`,
               [
-                fechaInicioFormateada,
-                fechaFinFormateada,
                 salaryIMSS || null,
                 normalizarMayusculas(position || ''),
                 salary || 0,
                 normalizarMayusculas(workSchedule || ''),
                 projectId || null,
-                contractFileURL || null,
-                warningFileURL || null,
-                letterFileURL || null,
-                agreementFileURL || null,
+                status !== undefined ? status : 1,
                 projectPersonnelId
               ]
             );
           } else {
             await connection.execute(
               `INSERT INTO projectcontracts 
-               (ProjectPersonnelID, StartDate, EndDate, SalaryIMSS, Position, Salary, WorkSchedule, ProjectID,
-                ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               (ProjectPersonnelID, SalaryIMSS, Position, Salary, WorkSchedule, ProjectID, Status) 
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
               [
                 projectPersonnelId,
-                fechaInicioFormateada,
-                fechaFinFormateada,
                 salaryIMSS || null,
                 normalizarMayusculas(position || ''),
                 salary || 0,
                 normalizarMayusculas(workSchedule || ''),
                 projectId || null,
-                contractFileURL || null,
-                warningFileURL || null,
-                letterFileURL || null,
-                agreementFileURL || null
+                status !== undefined ? status : 1
               ]
             );
           }
@@ -643,43 +485,6 @@ export async function PUT(
 
         // Actualizar documentación del empleado
         if (documentacion) {
-          const [currentDocRows] = await connection.execute(
-            `SELECT CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, IMSSFileURL, INEFileURL,
-                    CDFileURL, CEFileURL, CPFileURL, LMFileURL, ANPFileURL, CRFileURL,
-                    RIFileURL, EMFileURL, FotoFileURL, FolletoFileURL
-             FROM projectpersonneldocumentation WHERE ProjectPersonnelID = ?`,
-            [projectPersonnelId]
-          );
-
-          if (Array.isArray(currentDocRows) && currentDocRows.length > 0) {
-            const current = currentDocRows[0] as any;
-            
-            const docFields = [
-              { new: documentacion.CVFileURL, old: current.CVFileURL },
-              { new: documentacion.ANFileURL, old: current.ANFileURL },
-              { new: documentacion.CURPFileURL, old: current.CURPFileURL },
-              { new: documentacion.RFCFileURL, old: current.RFCFileURL },
-              { new: documentacion.IMSSFileURL, old: current.IMSSFileURL },
-              { new: documentacion.INEFileURL, old: current.INEFileURL },
-              { new: documentacion.CDFileURL, old: current.CDFileURL },
-              { new: documentacion.CEFileURL, old: current.CEFileURL },
-              { new: documentacion.CPFileURL, old: current.CPFileURL },
-              { new: documentacion.LMFileURL, old: current.LMFileURL },
-              { new: documentacion.ANPFileURL, old: current.ANPFileURL },
-              { new: documentacion.CRFileURL, old: current.CRFileURL },
-              { new: documentacion.RIFileURL, old: current.RIFileURL },
-              { new: documentacion.EMFileURL, old: current.EMFileURL },
-              { new: documentacion.FotoFileURL, old: current.FotoFileURL },
-              { new: documentacion.FolletoFileURL, old: current.FolletoFileURL }
-            ];
-
-            for (const field of docFields) {
-              if (field.new && field.old && field.new !== field.old) {
-                await deleteFileFromUploadThing(field.old);
-              }
-            }
-          }
-
           const [docRows] = await connection.execute(
             'SELECT * FROM projectpersonneldocumentation WHERE ProjectPersonnelID = ?',
             [projectPersonnelId]
@@ -792,7 +597,6 @@ export async function PUT(
         }
       }
 
-      // Confirmar transacción
       await connection.commit();
 
       return NextResponse.json({
@@ -801,7 +605,6 @@ export async function PUT(
       });
 
     } catch (error) {
-      // Rollback en caso de error
       if (connection) {
         await connection.rollback();
       }
