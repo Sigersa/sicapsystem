@@ -4,25 +4,23 @@ import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useState, useEffect, ChangeEvent, FormEvent } from 'react';
-import { Edit, Trash2, Search, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { Edit, Trash2, Search, X, CheckCircle, AlertCircle, CheckSquare } from 'lucide-react';
 
 // Definir el tipo para un proyecto
 type Project = {
   ProjectID: number;
   NameProject: string;
   ProjectAddress: string;
-  AdminProjectID: string;
+  AdminProjectID: string | number;
+  StartDate: string;
+  EndDate: string;
+  Status: number;
   FirstName?: string;
   LastName?: string;
   MiddleName?: string;
 };
 
-type UserType = {
-  UserTypeID: number;
-  Type: string;
-};
-
-// NUEVO TIPO: Tipo para jefes directos
+// Tipo para jefes directos
 type JefeDirecto = {
   id: number;
   nombre: string;
@@ -37,7 +35,7 @@ export default function SystemAdminDashboard() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
 
-  // Estados para proyectos - TODOS LOS HOOKS VAN AQUÍ ARRIBA
+  // Estados para proyectos
   const [projects, setProjects] = useState<Project[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,7 +45,9 @@ export default function SystemAdminDashboard() {
   const [formData, setFormData] = useState({
     NameProject: '',
     ProjectAddress: '',
-    AdminProjectID: ''
+    AdminProjectID: '',
+    StartDate: '',
+    EndDate: ''
   });
 
   // Estados para operaciones
@@ -57,17 +57,18 @@ export default function SystemAdminDashboard() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<{ show: boolean; id: number | null }>({ show: false, id: null });
+  const [confirmComplete, setConfirmComplete] = useState<{ show: boolean; id: number | null; name: string }>({ show: false, id: null, name: '' });
   
-  // NUEVO ESTADO: Estado para jefes directos
+  // Estado para jefes directos
   const [jefesDirectos, setJefesDirectos] = useState<JefeDirecto[]>([]);
   const [loadingJefes, setLoadingJefes] = useState(false);
   
   // Cargar proyectos al montar el componente
   useEffect(() => {
-    if (user) { // Solo cargar proyectos si hay usuario
+    if (user) {
       fetchProjects();
     }
-  }, [user]); // Agregar user como dependencia
+  }, [user]);
 
   // Filtrar proyectos cuando cambia el término de búsqueda
   useEffect(() => {
@@ -82,12 +83,12 @@ export default function SystemAdminDashboard() {
     }
   }, [searchTerm, projects]);
 
-    // Cargar proyectos y jefes directos al montar el componente
+  // Cargar jefes directos al montar el componente
   useEffect(() => {
-    fetchJefesDirectos(); // NUEVA FUNCIÓN
+    fetchJefesDirectos();
   }, []);
 
-    // NUEVA FUNCIÓN: Obtener jefes directos
+  // Función para obtener jefes directos
   const fetchJefesDirectos = async () => {
     try {
       setLoadingJefes(true);
@@ -150,10 +151,18 @@ export default function SystemAdminDashboard() {
   // Manejar cambios en el formulario
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: normalizarMayusculas(value)
-    }));
+    
+    if (name === 'StartDate' || name === 'EndDate') {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: normalizarMayusculas(value)
+      }));
+    }
   };
 
   // Validar formulario
@@ -166,10 +175,25 @@ export default function SystemAdminDashboard() {
       setErrorMessage('LA DIRECCIÓN DEL PROYECTO ES REQUERIDA');
       return false;
     }
-    if (!formData.AdminProjectID.trim()) {
-      setErrorMessage('LA DIRECCIÓN DEL PROYECTO ES REQUERIDA');
+    const adminProjectId = String(formData.AdminProjectID).trim();
+    if (!adminProjectId) {
+      setErrorMessage('EL ADMINISTRADOR DE PROYECTO ES REQUERIDO');
       return false;
     }
+    if (!formData.StartDate) {
+      setErrorMessage('LA FECHA DE INICIO ES REQUERIDA');
+      return false;
+    }
+    if (!formData.EndDate) {
+      setErrorMessage('LA FECHA DE TÉRMINO ES REQUERIDA');
+      return false;
+    }
+    
+    if (new Date(formData.EndDate) <= new Date(formData.StartDate)) {
+      setErrorMessage('LA FECHA DE TÉRMINO DEBE SER POSTERIOR A LA FECHA DE INICIO');
+      return false;
+    }
+    
     return true;
   };
 
@@ -188,11 +212,12 @@ export default function SystemAdminDashboard() {
       const url = isEditing ? `/api/administrative-personnel-dashboard/projects/${editingId}` : '/api/administrative-personnel-dashboard/projects';
       const method = isEditing ? 'PUT' : 'POST';
 
-      // Preparar datos en mayúsculas
       const datosEnviar = {
         NameProject: normalizarMayusculas(formData.NameProject.trim()),
         ProjectAddress: normalizarMayusculas(formData.ProjectAddress.trim()),
-        AdminProjectID: formData.AdminProjectID
+        AdminProjectID: String(formData.AdminProjectID),
+        StartDate: formData.StartDate,
+        EndDate: formData.EndDate
       };
 
       const response = await fetch(url, {
@@ -204,20 +229,15 @@ export default function SystemAdminDashboard() {
       });
 
       if (response.ok) {
-        const result = await response.json();
         setSuccessMessage(isEditing 
           ? '¡PROYECTO ACTUALIZADO EXITOSAMENTE!' 
           : '¡PROYECTO CREADO EXITOSAMENTE!'
         );
         
-        // Recargar proyectos
         fetchProjects();
-        
-        // Limpiar formulario y cerrar modal
         resetForm();
         setShowModal(false);
         
-        // Limpiar mensaje después de 3 segundos
         setTimeout(() => setSuccessMessage(''), 3000);
       } else {
         const error = await response.json();
@@ -231,12 +251,46 @@ export default function SystemAdminDashboard() {
     }
   };
 
+  // Marcar proyecto como concluido (usando PUT en la misma API)
+  const handleComplete = async (id: number) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/administrative-personnel-dashboard/projects/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ complete: true }), // Enviar flag para concluir
+      });
+
+      if (response.ok) {
+        setSuccessMessage('¡PROYECTO MARCADO COMO CONCLUIDO EXITOSAMENTE!');
+        fetchProjects();
+        setTimeout(() => setSuccessMessage(''), 3000);
+      } else {
+        const error = await response.json();
+        throw new Error(error.message || 'ERROR AL MARCAR EL PROYECTO COMO CONCLUIDO');
+      }
+    } catch (error) {
+      console.error('Error completing project:', error);
+      setErrorMessage('ERROR AL MARCAR EL PROYECTO COMO CONCLUIDO. POR FAVOR, INTENTE NUEVAMENTE.');
+    } finally {
+      setLoading(false);
+      setConfirmComplete({ show: false, id: null, name: '' });
+    }
+  };
+
   // Editar proyecto
   const handleEdit = (project: Project) => {
+    const startDate = project.StartDate ? new Date(project.StartDate).toISOString().split('T')[0] : '';
+    const endDate = project.EndDate ? new Date(project.EndDate).toISOString().split('T')[0] : '';
+    
     setFormData({
       NameProject: project.NameProject,
       ProjectAddress: project.ProjectAddress,
-      AdminProjectID: project.AdminProjectID,
+      AdminProjectID: String(project.AdminProjectID),
+      StartDate: startDate,
+      EndDate: endDate
     });
     setEditingId(project.ProjectID);
     setIsEditing(true);
@@ -254,8 +308,6 @@ export default function SystemAdminDashboard() {
       if (response.ok) {
         setSuccessMessage('¡PROYECTO ELIMINADO EXITOSAMENTE!');
         fetchProjects();
-        
-        // Limpiar mensaje después de 3 segundos
         setTimeout(() => setSuccessMessage(''), 3000);
       } else {
         throw new Error('ERROR AL ELIMINAR EL PROYECTO');
@@ -274,7 +326,9 @@ export default function SystemAdminDashboard() {
     setFormData({
       NameProject: '',
       ProjectAddress: '',
-      AdminProjectID: ''
+      AdminProjectID: '',
+      StartDate: '',
+      EndDate: ''
     });
     setIsEditing(false);
     setEditingId(null);
@@ -292,21 +346,31 @@ export default function SystemAdminDashboard() {
     resetForm();
   };
 
+  // Renderizar badge de estado con el nuevo diseño
+  const renderStatusBadge = (status: number) => {
+    return (
+      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+        status === 1 
+          ? 'bg-green-100 text-green-800' 
+          : 'bg-red-100 text-red-800'
+      }`}>
+        {status === 1 ? 'ACTIVO' : 'CONCLUIDO'}
+      </span>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* HEADER - Fixed */}
-      <AppHeader 
-        title="PANEL ADMINISTRATIVO"
-      />
+      <AppHeader title="PANEL ADMINISTRATIVO" />
 
-      {/* MODAL PARA CREAR/EDITAR PROYECTO - Corregido para que se muestre sobre todo */}
+      {/* MODAL PARA CREAR/EDITAR PROYECTO */}
       {showModal && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70" 
           style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
         >
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative z-[10000]">
-            <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full animate-fade-in relative z-[10000] max-h-[90vh] overflow-y-auto">
+            <div className="p-6 pb-4 border-b border-gray-300 sticky top-0 bg-white z-10 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
                   {isEditing ? 'EDITAR PROYECTO' : 'NUEVO PROYECTO'}
@@ -345,14 +409,11 @@ export default function SystemAdminDashboard() {
                   />
                 </div>
 
-                {/* ADMINISTRADOR DE PROYECTO */}
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                     ADMINISTRADOR DE PROYECTO *
                   </label>
                   <div className="relative">
-                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                    </div>
                     <select
                       name="AdminProjectID"
                       value={formData.AdminProjectID}
@@ -363,11 +424,41 @@ export default function SystemAdminDashboard() {
                     >
                       <option value="">Seleccione un administrador de proyecto</option>
                       {jefesDirectos.map((jefe) => (
-                        <option key={jefe.id} value={jefe.id}>
+                        <option key={jefe.id} value={String(jefe.id)}>
                           {jefe.nombreCompleto} - {jefe.puesto} ({jefe.tipoPersonal})
                         </option>
                       ))}
                     </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      FECHA DE INICIO *
+                    </label>
+                    <input
+                      type="date"
+                      name="StartDate"
+                      value={formData.StartDate}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      FECHA DE TÉRMINO *
+                    </label>
+                    <input
+                      type="date"
+                      name="EndDate"
+                      value={formData.EndDate}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                    />
                   </div>
                 </div>
 
@@ -387,7 +478,7 @@ export default function SystemAdminDashboard() {
                 </div>
               </div>
 
-              <div className="p-6 pt-4 border-t border-gray-300 flex justify-end gap-3">
+              <div className="p-6 pt-4 border-t border-gray-300 flex justify-end gap-3 sticky bottom-0 bg-white">
                 <button
                   type="button"
                   onClick={closeModal}
@@ -415,7 +506,7 @@ export default function SystemAdminDashboard() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMACIÓN PARA ELIMINAR - Corregido para que se muestre sobre todo */}
+      {/* MODAL DE CONFIRMACIÓN PARA ELIMINAR */}
       {confirmDelete.show && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
@@ -460,7 +551,53 @@ export default function SystemAdminDashboard() {
         </div>
       )}
 
-      {/* CONTENT - Ajustado para header y footer fijos */}
+      {/* MODAL DE CONFIRMACIÓN PARA CONCLUIR */}
+      {confirmComplete.show && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
+          style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
+        >
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative z-[10000]">
+            <div className="p-6 pb-4 border-b border-gray-300">
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+                <CheckSquare className="h-5 w-5 text-blue-600 mr-2" />
+                CONFIRMAR CONCLUSIÓN
+              </h2>
+              <p className="text-sm text-gray-600 mt-2 leading-5">
+                ¿Está seguro que desea marcar el proyecto <span className="font-bold">{confirmComplete.name}</span> como CONCLUIDO?
+                Esta acción cambiará el estado del proyecto y no podrá ser editado posteriormente.
+              </p>
+            </div>
+            
+            <div className="p-6 pt-4 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmComplete({ show: false, id: null, name: '' })}
+                className="bg-gray-200 text-black font-bold py-2.5 px-6 rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
+              >
+                CANCELAR
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmComplete.id && handleComplete(confirmComplete.id)}
+                disabled={loading}
+                className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center whitespace-nowrap"                
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    PROCESANDO...
+                  </>
+                ) : (
+                  'CONCLUIR PROYECTO'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONTENT */}
       <main className="pt-[72px] pb-[80px] min-h-screen bg-gray-100">
         <div className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 max-w-7xl mx-auto">
           <div className="mb-6 sm:mb-8">
@@ -538,14 +675,17 @@ export default function SystemAdminDashboard() {
                       <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ID</th>
                       <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">NOMBRE DEL PROYECTO</th>
                       <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">DIRECCIÓN</th>
-                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ADMINISTRADOR DE PROYECTO</th>
+                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ADMINISTRADOR</th>
+                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FECHA INICIO</th>
+                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FECHA TÉRMINO</th>
+                      <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ESTADO</th>
                       <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={4} className="py-12 text-center">
+                        <td colSpan={8} className="py-12 text-center">
                           <div className="flex flex-col items-center justify-center">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
                             <p className="text-gray-600">Cargando proyectos...</p>
@@ -554,7 +694,7 @@ export default function SystemAdminDashboard() {
                       </tr>
                     ) : filteredProjects.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="py-12 text-center">
+                        <td colSpan={8} className="py-12 text-center">
                           <div className="flex flex-col items-center justify-center">
                             <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
                             <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
@@ -572,22 +712,50 @@ export default function SystemAdminDashboard() {
                           <td className="py-3 px-4 text-sm text-gray-800 uppercase">
                             {project.FirstName} {project.LastName} {project.MiddleName}
                           </td>
+                          <td className="py-3 px-4 text-sm text-gray-800">
+                            {project.StartDate ? new Date(project.StartDate).toLocaleDateString('es-MX') : 'N/A'}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-gray-800">
+                            {project.EndDate ? new Date(project.EndDate).toLocaleDateString('es-MX') : 'N/A'}
+                          </td>
+                          <td className="py-3 px-4">
+                            {renderStatusBadge(project.Status)}
+                          </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => handleEdit(project)}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                                title="Editar proyecto"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => setConfirmDelete({ show: true, id: project.ProjectID })}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                                title="Eliminar proyecto"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                              {project.Status === 1 ? (
+                                <>
+                                  <button
+                                    onClick={() => handleEdit(project)}
+                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                    title="Editar proyecto"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmComplete({ show: true, id: project.ProjectID, name: project.NameProject })}
+                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                    title="Concluir proyecto"
+                                  >
+                                    <CheckSquare className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmDelete({ show: true, id: project.ProjectID })}
+                                    className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                    title="Eliminar proyecto"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmDelete({ show: true, id: project.ProjectID })}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                  title="Eliminar proyecto"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -601,10 +769,8 @@ export default function SystemAdminDashboard() {
         </div>
       </main>
 
-      {/* FOOTER - Fixed */}
       <Footer />
 
-      {/* Agregar estilos para animaciones y layout */}
       <style jsx global>{`
         @keyframes fade-in {
           from {
@@ -634,7 +800,6 @@ export default function SystemAdminDashboard() {
           animation: spin 1s linear infinite;
         }
         
-        /* Ajustes de layout para header y footer fijos */
         body {
           padding-top: 0;
           padding-bottom: 0;
@@ -642,27 +807,22 @@ export default function SystemAdminDashboard() {
           overflow-x: hidden;
         }
         
-        /* Asegurar que los modales estén por encima de todo */
         .fixed.inset-0.z-\\[9999\\] {
           z-index: 9999 !important;
         }
         
-        /* Asegurar que el header y footer tengan z-index adecuado */
         header, footer {
           z-index: 50 !important;
         }
         
-        /* El modal debe estar por encima del header y footer */
         .fixed.inset-0.z-\\[9999\\] {
           z-index: 9999 !important;
         }
         
-        /* Prevenir scroll cuando el modal está abierto */
         body.modal-open {
           overflow: hidden;
         }
         
-        /* Estilos para textarea */
         textarea {
           resize: none;
         }
