@@ -29,18 +29,22 @@ export async function GET(req: NextRequest) {
     connection = await getConnection();
     
     const [projects] = await connection.execute(
-          `SELECT 
-              p.ProjectID,
-              p.NameProject,
-              p.ProjectAddress,
-              p.AdminProjectID,
-              bp.FirstName,
-              bp.LastName,
-              bp.MiddleName
-          FROM projects p
-          INNER JOIN employees e ON e.EmployeeID = p.AdminProjectID
-          LEFT JOIN basepersonnel bp ON bp.EmployeeID = e.EmployeeID 
-          ORDER BY ProjectID DESC`     );
+      `SELECT 
+          p.ProjectID,
+          p.NameProject,
+          p.ProjectAddress,
+          p.AdminProjectID,
+          p.StartDate,
+          p.EndDate,
+          p.Status,
+          bp.FirstName,
+          bp.LastName,
+          bp.MiddleName
+      FROM projects p
+      INNER JOIN employees e ON e.EmployeeID = p.AdminProjectID
+      LEFT JOIN basepersonnel bp ON bp.EmployeeID = e.EmployeeID 
+      ORDER BY p.Status DESC, p.ProjectID DESC`
+    );
     
     return NextResponse.json(projects, { status: 200 });
     
@@ -52,7 +56,7 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   } finally {
-        if (connection) connection.release();
+    if (connection) connection.release();
   }
 }
 
@@ -75,12 +79,20 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    let { NameProject, ProjectAddress, AdminProjectID } = body;
+    let { NameProject, ProjectAddress, AdminProjectID, StartDate, EndDate } = body;
 
     // Validaciones
-    if (!NameProject || !ProjectAddress) {
+    if (!NameProject || !ProjectAddress || !AdminProjectID || !StartDate || !EndDate) {
       return NextResponse.json(
-        { message: 'EL NOMBRE Y LA DIRECCIÓN DEL PROYECTO SON REQUERIDOS' },
+        { message: 'TODOS LOS CAMPOS SON REQUERIDOS (NOMBRE, DIRECCIÓN, ADMINISTRADOR, FECHA INICIO, FECHA TÉRMINO)' },
+        { status: 400 }
+      );
+    }
+
+    // Validar fechas
+    if (new Date(EndDate) <= new Date(StartDate)) {
+      return NextResponse.json(
+        { message: 'LA FECHA DE TÉRMINO DEBE SER POSTERIOR A LA FECHA DE INICIO' },
         { status: 400 }
       );
     }
@@ -89,11 +101,18 @@ export async function POST(req: NextRequest) {
     NameProject = normalizarMayusculas(NameProject.trim());
     ProjectAddress = normalizarMayusculas(ProjectAddress.trim());
 
+    if (NameProject.length > 1000 || ProjectAddress.length > 1000) {
+      return NextResponse.json(
+        { message: 'DATOS DEMASIADO LARGOS' },
+        { status: 400 }
+      );
+    }
+
     connection = await getConnection();
     
     const [result] = await connection.execute(
-      'INSERT INTO projects (NameProject, ProjectAddress, AdminProjectID) VALUES (?, ?, ?)',
-      [NameProject, ProjectAddress, AdminProjectID]
+      'INSERT INTO projects (NameProject, ProjectAddress, AdminProjectID, StartDate, EndDate, Status) VALUES (?, ?, ?, ?, ?, 1)',
+      [NameProject, ProjectAddress, AdminProjectID, StartDate, EndDate]
     );
     
     const insertedId = (result as any).insertId;
