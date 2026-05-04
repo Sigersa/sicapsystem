@@ -1942,9 +1942,6 @@ export default function SystemAdminDashboard() {
                       disabled={activeTab === 'proyecto' && !!formDataProyecto.proyectoId}
                     />
                   </div>
-                  {activeTab === 'proyecto' && !!formDataProyecto.proyectoId && (
-                    <p className="text-xs text-blue-600 mt-1">* Fecha cargada automáticamente del proyecto (no editable)</p>
-                  )}
                 </div>
                 
                 {/* Solo mostrar fecha de fin de contrato para personal de proyecto */}
@@ -1972,9 +1969,6 @@ export default function SystemAdminDashboard() {
                         disabled={!!formDataProyecto.proyectoId}
                       />
                     </div>
-                    {formDataProyecto.proyectoId && (
-                      <p className="text-xs text-blue-600 mt-1">* Fecha cargada automáticamente del proyecto (no editable)</p>
-                    )}
                   </div>
                 )}
                 
