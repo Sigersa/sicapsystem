@@ -206,7 +206,7 @@ export async function GET(request: NextRequest) {
     }
 
     const employee = employeeInfo[0];
-    let letterFileURL = "";
+    let contractFileURL = "";
     let employeeData: any = {};
 
     // Obtener información según el tipo de empleado
@@ -236,14 +236,14 @@ export async function GET(request: NextRequest) {
           pc.SalaryIMSS,
           pc.Position,
           DATE_FORMAT(pc.StartDate, '%Y-%m-%d') AS StartDate,
+          pc.ContractFileURL,
           pr.NameProject,
           pr.ProjectAddress,
           pb.BeneficiaryFirstName,
           pb.BeneficiaryLastName,
           pb.BeneficiaryMiddleName,
           pb.Relationship,
-          pb.Percentage,
-          pc.LetterFileURL
+          pb.Percentage
         FROM projectpersonnel pp
         LEFT JOIN projectpersonnelpersonalinfo ppi 
           ON ppi.ProjectPersonnelID = pp.ProjectPersonnelID
@@ -266,7 +266,7 @@ export async function GET(request: NextRequest) {
       }
 
       employeeData = rows[0];
-      letterFileURL = employeeData.LetterFileURL || "";
+      contractFileURL = employeeData.ContractFileURL || "";
     } else {
       // Personal Base - CON CAMPOS SEPARADOS DE DIRECCIÓN
       const [rows] = await connection.query<any[]>(
@@ -293,12 +293,12 @@ export async function GET(request: NextRequest) {
           bc.SalaryIMSS,
           bp.Position,
           DATE_FORMAT(bc.StartDate, '%Y-%m-%d') AS StartDate,
+          bc.ContractFileURL,
           bb.BeneficiaryFirstName,
           bb.BeneficiaryLastName,
           bb.BeneficiaryMiddleName,
           bb.Relationship,
-          bb.Percentage,
-          bc.LetterFileURL
+          bb.Percentage
         FROM basepersonnel bp
         LEFT JOIN basepersonnelpersonalinfo bpi 
           ON bpi.BasePersonnelID = bp.BasePersonnelID
@@ -319,7 +319,7 @@ export async function GET(request: NextRequest) {
       }
 
       employeeData = rows[0];
-      letterFileURL = employeeData.LetterFileURL || "";
+      contractFileURL = employeeData.ContractFileURL || "";
       
       // Agregar la dirección fija de SIGERSA para personal base
       employeeData.CompanyName = "SIGERSA INNOVACIONES S.A DE C.V.";
@@ -352,9 +352,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Si ya tenemos un PDF guardado, retornarlo
-    if (letterFileURL) {
+    if (contractFileURL) {
       try {
-        const pdfResponse = await fetch(letterFileURL);
+        const pdfResponse = await fetch(contractFileURL);
 
         if (pdfResponse.ok) {
           const pdfBuffer = await pdfResponse.arrayBuffer();
