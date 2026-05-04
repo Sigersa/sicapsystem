@@ -11,10 +11,8 @@ export async function GET(
   let connection;
   
   try {
-    // Desenvolver params con await
     const { id } = await params;
     
-    // Validar sesión
     const sessionId = request.cookies.get("session")?.value;
 
     if (!sessionId) {
@@ -24,7 +22,6 @@ export async function GET(
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user) {
@@ -34,8 +31,7 @@ export async function GET(
       );
     }
 
-    // Verificar permisos (solo administradores)
-    if (user.UserTypeID !== 2) {
+    if (user.UserTypeID !== 2 && user.UserTypeID !== 1) {
       return NextResponse.json(
         { success: false, message: 'ACCESO DENEGADO' },
         { status: 403 }
@@ -53,17 +49,16 @@ export async function GET(
       );
     }
 
-    // Obtener conexión a la base de datos
     connection = await getConnection();
 
-    let personalInfo = null;
-    let contractInfo = null;
-    let beneficiario = null;
-    let documentacion = null;
-    let projectInfo = null; // Nueva variable para información del proyecto
+    let personalInfo: any = null;
+    let contractInfo: any = null;
+    let beneficiario: any = null;
+    let documentacion: any = null;
+    let projectInfo: any = null;
+    let uniqueKey = `${employeeId}_${tipo}`;
 
     if (tipo === 'BASE') {
-      // Obtener información personal BASE
       const [personalRows] = await connection.execute(`
         SELECT 
           bp.BasePersonnelID,
@@ -100,7 +95,10 @@ export async function GET(
       if (Array.isArray(personalRows) && personalRows.length > 0) {
         const row = (personalRows as any[])[0];
         
+        uniqueKey = `BASE_${employeeId}_${row.BasePersonnelID}`;
+        
         personalInfo = {
+          basePersonnelId: row.BasePersonnelID,
           nombreCompleto: `${row.FirstName} ${row.LastName} ${row.MiddleName || ''}`.trim(),
           fechaNacimiento: row.Birthdate,
           genero: row.Gender,
@@ -126,11 +124,12 @@ export async function GET(
           horario: row.WorkSchedule
         };
 
-        // Obtener información de contrato BASE
         const [contractRows] = await connection.execute(`
           SELECT StartDate, SalaryIMSS, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL
           FROM basecontracts
           WHERE BasePersonnelID = ?
+          ORDER BY StartDate DESC
+          LIMIT 1
         `, [row.BasePersonnelID]);
 
         if (Array.isArray(contractRows) && contractRows.length > 0) {
@@ -145,11 +144,11 @@ export async function GET(
           };
         }
 
-        // Obtener beneficiario BASE
         const [beneficiarioRows] = await connection.execute(`
           SELECT BeneficiaryFirstName, BeneficiaryLastName, BeneficiaryMiddleName, Relationship, Percentage
           FROM basepersonnelbeneficiaries
           WHERE BasePersonnelID = ?
+          LIMIT 1
         `, [row.BasePersonnelID]);
 
         if (Array.isArray(beneficiarioRows) && beneficiarioRows.length > 0) {
@@ -161,7 +160,6 @@ export async function GET(
           };
         }
 
-        // Obtener documentación BASE
         const [docRows] = await connection.execute(`
           SELECT 
             CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, IMSSFileURL, INEFileURL,
@@ -169,6 +167,7 @@ export async function GET(
             RIFileURL, EMFileURL, FotoFileURL, FolletoFileURL
           FROM basepersonneldocumentation
           WHERE BasePersonnelID = ?
+          LIMIT 1
         `, [row.BasePersonnelID]);
 
         if (Array.isArray(docRows) && docRows.length > 0) {
@@ -178,123 +177,158 @@ export async function GET(
 
     } else {
       // PERSONAL DE PROYECTO
-      const [personalRows] = await connection.execute(`
-        SELECT 
-          pp.ProjectPersonnelID,
-          pp.FirstName,
-          pp.LastName,
-          pp.MiddleName,
-          pc.Position,
-          pc.Salary,
-          pc.WorkSchedule,
-          pc.ProjectID,
-          p.NameProject as ProjectName,
-          p.StartDate as ProjectStartDate,
-          p.EndDate as ProjectEndDate,
-          p.Status as ProjectStatus,
-          ppi.Municipality,
-          ppi.Nationality,
-          ppi.Gender,
-          ppi.Birthdate,
-          ppi.MaritalStatus,
-          ppi.RFC,
-          ppi.CURP,
-          ppi.NSS,
-          ppi.NCI,
-          ppi.UMF,
-          ppi.Phone,
-          ppi.Email,
-          ppi.Street,
-          ppi.ExteriorNumber,
-          ppi.InteriorNumber,
-          ppi.Suburb,
-          ppi.State,
-          ppi.ZipCode
-        FROM projectpersonnel pp
-        LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
-        LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
-        LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
-        WHERE pp.EmployeeID = ?
+      const [personnelIdRows] = await connection.execute(`
+        SELECT ProjectPersonnelID
+        FROM projectpersonnel
+        WHERE EmployeeID = ?
+        LIMIT 1
       `, [employeeId]);
 
-      if (Array.isArray(personalRows) && personalRows.length > 0) {
-        const row = (personalRows as any[])[0];
+      if (Array.isArray(personnelIdRows) && personnelIdRows.length > 0) {
+        const projectPersonnelId = (personnelIdRows as any[])[0].ProjectPersonnelID;
         
-        personalInfo = {
-          nombreCompleto: `${row.FirstName} ${row.LastName} ${row.MiddleName || ''}`.trim(),
-          fechaNacimiento: row.Birthdate,
-          genero: row.Gender,
-          estadoCivil: row.MaritalStatus,
-          nacionalidad: row.Nationality,
-          nci: row.NCI,
-          umf: row.UMF?.toString(),
-          calle: row.Street,
-          numeroExterior: row.ExteriorNumber?.toString(),
-          numeroInterior: row.InteriorNumber?.toString(),
-          colonia: row.Suburb,
-          municipio: row.Municipality,
-          estado: row.State,
-          codigoPostal: row.ZipCode?.toString(),
-          rfc: row.RFC,
-          curp: row.CURP,
-          nss: row.NSS,
-          telefono: row.Phone,
-          email: row.Email,
-          puesto: row.Position,
-          proyecto: row.ProjectName,
-          proyectoId: row.ProjectID,
-          salario: row.Salary,
-          horario: row.WorkSchedule,
-          // Fechas del proyecto (solo lectura)
-          fechaInicioProyecto: row.ProjectStartDate,
-          fechaFinProyecto: row.ProjectEndDate
-        };
-
-        // Guardar información del proyecto para visualización
-        if (row.ProjectID) {
-          projectInfo = {
-            projectId: row.ProjectID,
-            projectName: row.ProjectName,
-            startDate: row.ProjectStartDate,
-            endDate: row.ProjectEndDate,
-            status: row.ProjectStatus
-          };
-        }
-
-        // Obtener información de contrato PROJECT (sin fechas)
-        const [contractRows] = await connection.execute(`
-          SELECT SalaryIMSS, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL,
-                 Position, Salary, WorkSchedule, ProjectID,
-                 CDFileURL, CRFileURL, OFFileURL, Status
+        // Obtener el contrato activo más reciente
+        const [activeContractRows] = await connection.execute(`
+          SELECT 
+            ContractID, SalaryIMSS, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL,
+            Position, Salary, WorkSchedule, ProjectID, Status, StartDate
           FROM projectcontracts
-          WHERE ProjectPersonnelID = ?
-        `, [row.ProjectPersonnelID]);
+          WHERE ProjectPersonnelID = ? AND Status = 1
+          ORDER BY StartDate DESC
+          LIMIT 1
+        `, [projectPersonnelId]);
+        
+        const activeContract = Array.isArray(activeContractRows) && activeContractRows.length > 0 
+          ? (activeContractRows as any[])[0] 
+          : null;
+        
+        const contractId = activeContract?.ContractID || '0';
+        uniqueKey = `PROJECT_${employeeId}_${projectPersonnelId}_${contractId}`;
+        
+        // Obtener información personal
+        const [personalRows] = await connection.execute(`
+          SELECT 
+            pp.ProjectPersonnelID,
+            pp.FirstName,
+            pp.LastName,
+            pp.MiddleName,
+            ppi.Municipality,
+            ppi.Nationality,
+            ppi.Gender,
+            ppi.Birthdate,
+            ppi.MaritalStatus,
+            ppi.RFC,
+            ppi.CURP,
+            ppi.NSS,
+            ppi.NCI,
+            ppi.UMF,
+            ppi.Phone,
+            ppi.Email,
+            ppi.Street,
+            ppi.ExteriorNumber,
+            ppi.InteriorNumber,
+            ppi.Suburb,
+            ppi.State,
+            ppi.ZipCode
+          FROM projectpersonnel pp
+          LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
+          WHERE pp.ProjectPersonnelID = ?
+        `, [projectPersonnelId]);
 
-        if (Array.isArray(contractRows) && contractRows.length > 0) {
-          const contractRow = (contractRows as any[])[0];
-          contractInfo = {
-            salaryIMSS: contractRow.SalaryIMSS,
-            contractFileURL: contractRow.ContractFileURL,
-            warningFileURL: contractRow.WarningFileURL,
-            letterFileURL: contractRow.LetterFileURL,
-            agreementFileURL: contractRow.AgreementFileURL,
-            position: contractRow.Position,
-            salary: contractRow.Salary,
-            workSchedule: contractRow.WorkSchedule,
-            projectId: contractRow.ProjectID,
-            cDFileURL: contractRow.CDFileURL,
-            cRFileURL: contractRow.CRFileURL,
-            oFFileURL: contractRow.OFFileURL,
-            status: contractRow.Status
+        if (Array.isArray(personalRows) && personalRows.length > 0) {
+          const row = (personalRows as any[])[0];
+          
+          // Construir personalInfo con todas las propiedades
+          personalInfo = {
+            projectPersonnelId: row.ProjectPersonnelID,
+            nombreCompleto: `${row.FirstName} ${row.LastName} ${row.MiddleName || ''}`.trim(),
+            fechaNacimiento: row.Birthdate,
+            genero: row.Gender,
+            estadoCivil: row.MaritalStatus,
+            nacionalidad: row.Nationality,
+            nci: row.NCI,
+            umf: row.UMF?.toString(),
+            calle: row.Street,
+            numeroExterior: row.ExteriorNumber?.toString(),
+            numeroInterior: row.InteriorNumber?.toString(),
+            colonia: row.Suburb,
+            municipio: row.Municipality,
+            estado: row.State,
+            codigoPostal: row.ZipCode?.toString(),
+            rfc: row.RFC,
+            curp: row.CURP,
+            nss: row.NSS,
+            telefono: row.Phone,
+            email: row.Email,
+            // Inicializar con valores por defecto
+            puesto: null,
+            salario: null,
+            horario: null,
+            proyecto: null,
+            proyectoId: null
           };
         }
 
-        // Obtener beneficiario PROJECT
+        // Información de contrato (usando el contrato activo)
+        if (activeContract) {
+          contractInfo = {
+            contractId: activeContract.ContractID,
+            salaryIMSS: activeContract.SalaryIMSS,
+            contractFileURL: activeContract.ContractFileURL,
+            warningFileURL: activeContract.WarningFileURL,
+            letterFileURL: activeContract.LetterFileURL,
+            agreementFileURL: activeContract.AgreementFileURL,
+            position: activeContract.Position,
+            salary: activeContract.Salary,
+            workSchedule: activeContract.WorkSchedule,
+            projectId: activeContract.ProjectID,
+            status: activeContract.Status,
+            fechaInicio: activeContract.StartDate
+          };
+          
+          // Actualizar personalInfo con los datos del contrato
+          if (personalInfo) {
+            personalInfo.puesto = activeContract.Position;
+            personalInfo.salario = activeContract.Salary;
+            personalInfo.horario = activeContract.WorkSchedule;
+          }
+
+          // Información del proyecto
+          if (activeContract.ProjectID) {
+            const [projectRows] = await connection.execute(`
+              SELECT NameProject, StartDate, EndDate, Status
+              FROM projects
+              WHERE ProjectID = ?
+            `, [activeContract.ProjectID]);
+            
+            if (Array.isArray(projectRows) && projectRows.length > 0) {
+              const projRow = (projectRows as any[])[0];
+              projectInfo = {
+                projectId: activeContract.ProjectID,
+                projectName: projRow.NameProject,
+                startDate: projRow.StartDate,
+                endDate: projRow.EndDate,
+                status: projRow.Status
+              };
+              
+              // Actualizar personalInfo con los datos del proyecto
+              if (personalInfo) {
+                personalInfo.proyecto = projRow.NameProject;
+                personalInfo.proyectoId = activeContract.ProjectID;
+                personalInfo.fechaInicioProyecto = projRow.StartDate;
+                personalInfo.fechaFinProyecto = projRow.EndDate;
+              }
+            }
+          }
+        }
+
+        // Beneficiario
         const [beneficiarioRows] = await connection.execute(`
           SELECT BeneficiaryFirstName, BeneficiaryLastName, BeneficiaryMiddleName, Relationship, Percentage
           FROM projectpersonnelbeneficiaries
           WHERE ProjectPersonnelID = ?
-        `, [row.ProjectPersonnelID]);
+          LIMIT 1
+        `, [projectPersonnelId]);
 
         if (Array.isArray(beneficiarioRows) && beneficiarioRows.length > 0) {
           const benRow = (beneficiarioRows as any[])[0];
@@ -305,7 +339,7 @@ export async function GET(
           };
         }
 
-        // Obtener documentación PROJECT
+        // Documentación
         const [docRows] = await connection.execute(`
           SELECT 
             CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, IMSSFileURL, INEFileURL,
@@ -313,7 +347,8 @@ export async function GET(
             RIFileURL, EMFileURL, FotoFileURL, FolletoFileURL
           FROM projectpersonneldocumentation
           WHERE ProjectPersonnelID = ?
-        `, [row.ProjectPersonnelID]);
+          LIMIT 1
+        `, [projectPersonnelId]);
 
         if (Array.isArray(docRows) && docRows.length > 0) {
           documentacion = (docRows as any[])[0];
@@ -323,6 +358,9 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
+      uniqueKey,
+      employeeId: parseInt(employeeId),
+      tipo,
       personalInfo,
       contractInfo,
       beneficiario,
