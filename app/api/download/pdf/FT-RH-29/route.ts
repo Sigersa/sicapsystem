@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
     let fullName = "";
     let startDate = "";
     let position = "";
-    let letterFileURL = "";
+    let agreementFileURL = "";
 
     // Obtener información según el tipo de empleado
     if (employee.EmployeeType === "PROJECT") {
@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
           pp.MiddleName,
           DATE_FORMAT(pc.StartDate, '%Y/%m/%d') AS StartDate,
           pc.Position,
-          pc.LetterFileURL
+          pc.AgreementFileURL
         FROM projectpersonnel pp
         LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
         WHERE pp.EmployeeID = ?
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
       fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
       position = r.Position || "";
       startDate = r.StartDate || "";
-      letterFileURL = r.LetterFileURL || "";
+      agreementFileURL = r.AgreementFileURL || "";
     } else {
       // Personal Base
       const [rows] = await connection.query<any[]>(
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
           bp.MiddleName,
           bp.Position,
           DATE_FORMAT(bc.StartDate, '%Y/%m/%d') AS StartDate,
-          bc.LetterFileURL
+          bc.AgreementFileURL
         FROM basepersonnel bp
         LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
         WHERE bp.EmployeeID = ?
@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
       fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
       position = r.Position || "";
       startDate = r.StartDate || "";
-      letterFileURL = r.LetterFileURL || "";
+      agreementFileURL = r.AgreementFileURL || "";
     }
 
     // Validar que se obtuvo el nombre
@@ -150,9 +150,9 @@ export async function GET(request: NextRequest) {
     const fechaFormateada = formatFecha(startDate);
 
     // Si ya tenemos un PDF guardado, retornarlo
-    if (letterFileURL) {
+    if (agreementFileURL) {
       try {
-        const pdfResponse = await fetch(letterFileURL);
+        const pdfResponse = await fetch(agreementFileURL);
 
         if (pdfResponse.ok) {
           const pdfBuffer = await pdfResponse.arrayBuffer();
