@@ -1,24 +1,47 @@
 // app/administrative-personnel-dashboard/job-termination/page.tsx
 'use client';
 
+import React, { useState, useEffect } from 'react';
 import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
-import { useState, useEffect } from 'react';
-import { Search, ChevronLeft, ChevronRight, UserX, UserMinus, X, RefreshCw, Trash2, CheckCircle, AlertCircle, Eye, Download, FileText } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, UserX, UserMinus, X, RefreshCw, Trash2, CheckCircle, AlertCircle, Eye, Download, FileText, FolderOpen } from 'lucide-react';
 import JSZip from 'jszip';
 
 type EmployeeType = 'BASE' | 'PROJECT';
 
-interface BaseEmployee {
+interface ContractDocument {
+  ContractID: number;
+  ProjectID?: number;
+  ProjectName?: string;
+  Position?: string;
+  StartDate?: string;
+  EndDate?: string;
+  Status: number;
+  CDFileURL?: string | null;
+  CRFileURL?: string | null;
+  OFFileURL?: string | null;
+}
+
+interface Employee {
   EmployeeID: number;
-  BasePersonnelID: number;
+  Status: number;
+  tipo: EmployeeType;
+  uniqueKey: string;
+  // Campos BASE
+  BasePersonnelID?: number;
+  // Campos PROJECT
+  ProjectPersonnelID?: number;
+  EmployeeStatus?: number;
+  // Campos comunes
   FirstName: string;
   LastName: string;
   MiddleName: string | null;
   Position: string;
-  Area: string;
+  Area?: string;
+  ProjectName?: string;
+  ProjectID?: number | null;
   Salary: number;
   WorkSchedule: string;
   RFC: string;
@@ -26,33 +49,16 @@ interface BaseEmployee {
   NSS: string;
   Email: string;
   Phone: string;
-  tipo: 'BASE';
-  Status?: number;
+  ContractID?: number;
+  // Documentos de terminación para BASE
+  TerminationDocuments?: {
+    CDFileURL?: string | null;
+    CRFileURL?: string | null;
+    OFFileURL?: string | null;
+  };
+  // Contratos históricos para PROJECT
+  Contracts?: ContractDocument[];
 }
-
-interface ProjectEmployee {
-  EmployeeID: number;
-  ProjectPersonnelID: number;
-  FirstName: string;
-  LastName: string;
-  MiddleName: string | null;
-  ProjectName: string;
-  ProjectID: number;
-  Position: string;
-  Salary: number;
-  WorkSchedule: string;
-  StartDate: string;
-  EndDate: string | null;
-  RFC: string;
-  CURP: string;
-  NSS: string;
-  Email: string;
-  Phone: string;
-  tipo: 'PROJECT';
-  Status?: number;
-}
-
-type Employee = BaseEmployee | ProjectEmployee;
 
 interface Filters {
   search: string;
@@ -94,6 +100,11 @@ interface ReactivationModal {
   employee: Employee | null;
 }
 
+interface ConfirmDeleteModal {
+  show: boolean;
+  employee: Employee | null;
+}
+
 export default function EmployeesListPage() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
@@ -129,11 +140,18 @@ export default function EmployeesListPage() {
     employee: null
   });
 
-  // Nuevo estado para el modal de reactivación
   const [reactivationModal, setReactivationModal] = useState<ReactivationModal>({
     show: false,
     employee: null
   });
+
+  const [confirmDeleteModal, setConfirmDeleteModal] = useState<ConfirmDeleteModal>({
+    show: false,
+    employee: null
+  });
+
+  // Estado para controlar qué fila de contratos está expandida
+  const [expandedContract, setExpandedContract] = useState<number | null>(null);
 
   useEffect(() => {
     fetchEmployees();
@@ -278,14 +296,12 @@ export default function EmployeesListPage() {
         employee: employee
       });
     } else {
-      // Para empleados inactivos, mostrar modal de reactivación
       if (employee.tipo === 'PROJECT') {
         setReactivationModal({
           show: true,
           employee: employee
         });
       } else {
-        // Para empleados BASE, se puede reactivar directamente
         toggleEmployeeStatus(employee);
       }
     }
@@ -343,15 +359,25 @@ export default function EmployeesListPage() {
     }
   };
 
-  const deleteEmployee = async (employee: Employee) => {
-    if (employee.Status !== 0) {
+  const openDeleteConfirmation = (employee: Employee) => {
+    if ((employee.Status ?? 1) !== 0) {
       setError('Solo se pueden eliminar empleados que están dados de baja');
       return;
     }
+    
+    setConfirmDeleteModal({
+      show: true,
+      employee: employee
+    });
+  };
 
-    if (!confirm(`¿Está seguro de que desea ELIMINAR PERMANENTEMENTE a ${employee.FirstName} ${employee.LastName}? Esta acción no se puede deshacer.`)) {
-      return;
-    }
+  const closeDeleteConfirmation = () => {
+    setConfirmDeleteModal({ show: false, employee: null });
+  };
+
+  const deleteEmployee = async () => {
+    const employee = confirmDeleteModal.employee;
+    if (!employee) return;
 
     try {
       setActionLoading(employee.EmployeeID);
@@ -371,16 +397,17 @@ export default function EmployeesListPage() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        setSuccessMessage(data.message || 'Empleado eliminado permanentemente');
+        setSuccessMessage(data.message || 'EMPLEADO ELIMINADO PERMANENTEMENTE DEL SISTEMA');
         await fetchEmployees();
       } else {
-        setError(data.message || 'Error al eliminar al empleado');
+        setError(data.message || 'ERROR AL ELIMINAR EL EMPLEADO');
       }
     } catch (error) {
       console.error('Error:', error);
-      setError('Error de conexión al eliminar al empleado');
+      setError('ERROR DE CONEXIÓN AL ELIMINAR EL EMPLEADO');
     } finally {
       setActionLoading(null);
+      setConfirmDeleteModal({ show: false, employee: null });
     }
   };
 
@@ -571,7 +598,7 @@ export default function EmployeesListPage() {
 
     if (filters.projectId && filters.tipo === 'PROJECT') {
       filtered = filtered.filter(emp => 
-        emp.tipo === 'PROJECT' && (emp as ProjectEmployee).ProjectID === parseInt(filters.projectId!)
+        emp.tipo === 'PROJECT' && emp.ProjectID === parseInt(filters.projectId!)
       );
     }
 
@@ -584,6 +611,14 @@ export default function EmployeesListPage() {
       tipo: 'TODOS',
       projectId: undefined
     });
+  };
+
+  const toggleContractExpand = (contractId: number) => {
+    if (expandedContract === contractId) {
+      setExpandedContract(null);
+    } else {
+      setExpandedContract(contractId);
+    }
   };
 
   if (sessionLoading) {
@@ -652,6 +687,59 @@ export default function EmployeesListPage() {
         </div>
       )}
 
+      {/* Modal de confirmación de eliminación */}
+      {confirmDeleteModal.show && confirmDeleteModal.employee && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
+          style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
+        >
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative z-[10000]">
+            <div className="p-6 pb-4 border-b border-gray-300">
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+                <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
+                CONFIRMAR ELIMINACIÓN
+              </h2>
+              <p className="text-sm text-gray-600 mt-4 leading-5">
+                ¿Está seguro de que desea ELIMINAR a <span className="font-bold text-gray-800">{confirmDeleteModal.employee.FirstName} {confirmDeleteModal.employee.LastName}</span>?
+              </p>
+              <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <p className="text-xs text-gray-800">
+                  <span className="font-bold">Consecuencias:</span><br />
+                  • Se eliminarán todos los registros asociados a este empleado<br />
+                  • No se podrá recuperar la información del empleado<br />
+                  • Esta acción no se puede deshacer
+                </p>
+              </div>
+            </div>
+            
+            <div className="p-6 pt-4 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeDeleteConfirmation}
+                className="bg-gray-200 text-black font-bold py-2.5 px-6 rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
+              >
+                CANCELAR
+              </button>
+              <button
+                type="button"
+                onClick={deleteEmployee}
+                disabled={actionLoading === confirmDeleteModal.employee.EmployeeID}
+                className="px-6 py-2.5 bg-red-700 text-white font-bold rounded-lg hover:bg-red-800 transition-colors flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {actionLoading === confirmDeleteModal.employee.EmployeeID ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    ELIMINANDO...
+                  </>
+                ) : (
+                  'ELIMINAR'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de reactivación para personal de proyecto */}
       {reactivationModal.show && reactivationModal.employee && (
         <div 
@@ -669,7 +757,7 @@ export default function EmployeesListPage() {
               </p>
               <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-sm text-yellow-800 font-medium">
-                  ⚠️ Debe dirigirse al módulo de <span className="font-bold">EDICIÓN DE USUARIO</span> para reactivar su contrato y asignar un nuevo proyecto.
+                  Debe dirigirse al módulo de <span className="font-bold">EDICIÓN DE USUARIO</span> para reactivar su contrato y asignar un nuevo proyecto.
                 </p>
               </div>
               <p className="text-sm text-gray-600 mt-4">
@@ -1102,13 +1190,14 @@ export default function EmployeesListPage() {
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">PUESTO / PROYECTO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">CONTACTO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ESTADO</th>
+                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FORMATOS</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center">
+                      <td colSpan={8} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
                           <p className="text-gray-600">Cargando empleados...</p>
@@ -1117,7 +1206,7 @@ export default function EmployeesListPage() {
                     </tr>
                   ) : filteredEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center">
+                      <td colSpan={8} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
                           <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
@@ -1130,84 +1219,212 @@ export default function EmployeesListPage() {
                     </tr>
                   ) : (
                     currentEmployees.map((employee) => (
-                      <tr key={employee.EmployeeID} className="hover:bg-gray-50 transition-colors border-b border-gray-300">
-                        <td className="py-3 px-4 text-sm text-gray-800 font-medium">{employee.EmployeeID}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center">
+                      <React.Fragment key={employee.uniqueKey}>
+                        <tr className="hover:bg-gray-50 transition-colors border-b border-gray-300">
+                          <td className="py-3 px-4 text-sm text-gray-800 font-medium">{employee.EmployeeID}</td>
+                          <td className="py-3 px-4">
                             <div>
                               <div className="text-sm font-medium text-gray-800">
                                 {employee.FirstName} {employee.LastName} {employee.MiddleName}
                               </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center">
-                            <div>
-                              <div className="text-sm font-medium text-gray-800">
-                                {employee.tipo === 'BASE' ? 'BASE' : 'PROYECTO'}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              employee.tipo === 'BASE' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                            }`}>
+                              {employee.tipo === 'BASE' ? 'BASE' : 'PROYECTO'}
+                            </span>
+                           </td>
+                          <td className="py-3 px-4">
+                            <div className="text-sm text-gray-800">{employee.Position || 'N/A'}</div>
+                            {employee.tipo === 'PROJECT' && employee.ProjectName && (
+                              <div className="text-xs text-gray-500">
+                                {employee.ProjectName}
                               </div>
+                            )}
+                            {employee.tipo === 'BASE' && employee.Area && (
+                              <div className="text-xs text-gray-500">
+                                {employee.Area}
+                              </div>
+                            )}
+                           </td>
+                          <td className="py-3 px-4">
+                            <div className="text-sm text-gray-800">{employee.Email}</div>
+                            <div className="text-xs text-gray-500">{employee.Phone}</div>
+                           </td>
+                          <td className="py-3 px-4">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              (employee.Status ?? 1) === 1 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {(employee.Status ?? 1) === 1 ? 'ACTIVO' : 'INACTIVO'}
+                            </span>
+                           </td>
+                          <td className="py-3 px-4">
+                            {employee.tipo === 'BASE' && (employee.Status ?? 1) === 0 ? (
+                              <div className="flex items-center gap-2">
+                                {employee.TerminationDocuments?.CDFileURL && (
+                                  <button
+                                    onClick={() => window.open(`/api/download/pdf/FT-RH-12?empleadoId=${employee.EmployeeID}&preview=1`, '_blank')}
+                                    className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                    title="FT-RH-12"
+                                  >
+                                    <FileText className="h-4 w-4 text-gray-700" />
+                                  </button>
+                                )}
+                                {employee.TerminationDocuments?.CRFileURL && (
+                                  <button
+                                    onClick={() => window.open(`/api/download/pdf/FT-RH-13?empleadoId=${employee.EmployeeID}&preview=1`, '_blank')}
+                                    className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                    title="FT-RH-13"
+                                  >
+                                    <FileText className="h-4 w-4 text-gray-700" />
+                                  </button>
+                                )}
+                                {employee.TerminationDocuments?.OFFileURL && (
+                                  <button
+                                    onClick={() => window.open(`/api/download/pdf/FT-RH-14?empleadoId=${employee.EmployeeID}&preview=1`, '_blank')}
+                                    className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                    title="FT-RH-14"
+                                  >
+                                    <FileText className="h-4 w-4 text-gray-700" />
+                                  </button>
+                                )}
+                                {(!employee.TerminationDocuments?.CDFileURL && 
+                                  !employee.TerminationDocuments?.CRFileURL && 
+                                  !employee.TerminationDocuments?.OFFileURL) && (
+                                  <span className="text-xs text-gray-400">Sin documentos</span>
+                                )}
+                              </div>
+                            ) : employee.tipo === 'PROJECT' && (employee.Status ?? 1) === 0 && employee.Contracts && employee.Contracts.length > 0 ? (
+                              <div className="space-y-2">
+                                <button
+                                  onClick={() => toggleContractExpand(employee.EmployeeID)}
+                                  className="flex items-center gap-1 text-xs text-[#3a6ea5] hover:text-[#2d5582]"
+                                >
+                                  <FolderOpen className="h-3 w-3" />
+                                  {expandedContract === employee.EmployeeID ? 'OCULTAR' : `VER ${employee.Contracts.length} CONTRATO${employee.Contracts.length !== 1 ? 'S' : ''}`}
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400">-</span>
+                            )}
+                           </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => confirmToggleStatus(employee)}
+                                disabled={actionLoading === employee.EmployeeID}
+                                className={`p-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                  (employee.Status ?? 1) === 1
+                                    ? 'text-red-600 hover:bg-red-50'
+                                    : 'text-green-600 hover:bg-green-50'
+                                }`}
+                                title={(employee.Status ?? 1) === 1 ? "Dar de baja usuario" : "Reactivar usuario"}
+                              >
+                                {(employee.Status ?? 1) === 1 ? (
+                                  <UserMinus className="h-4 w-4" />
+                                ) : (
+                                  <UserX className="h-4 w-4" />
+                                )}
+                              </button>
+                              <button
+                                onClick={() => openDeleteConfirmation(employee)}
+                                disabled={actionLoading === employee.EmployeeID || (employee.Status ?? 1) === 1}
+                                className={`p-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                  (employee.Status ?? 1) === 0
+                                    ? 'text-red-600 hover:bg-red-50'
+                                    : 'text-gray-400 cursor-not-allowed'
+                                }`}
+                                title={(employee.Status ?? 1) === 0 ? "Eliminar usuario permanentemente" : "Solo disponible para usuarios inactivos"}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
                             </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="text-sm text-gray-800">{employee.Position || 'N/A'}</div>
-                          {employee.tipo === 'PROJECT' && (
-                            <div className="text-xs text-gray-500 uppercase">
-                              {(employee as ProjectEmployee).ProjectName || 'Sin proyecto'}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="text-sm text-gray-800">{employee.Email}</div>
-                          <div className="text-xs text-gray-500">{employee.Phone}</div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            (employee.Status ?? 1) === 1 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {(employee.Status ?? 1) === 1 ? 'ACTIVO' : 'INACTIVO'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => confirmToggleStatus(employee)}
-                              disabled={actionLoading === employee.EmployeeID}
-                              className={`p-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                                (employee.Status ?? 1) === 1
-                                  ? 'text-red-600 hover:bg-red-50'
-                                  : 'text-green-600 hover:bg-green-50'
-                              }`}
-                              title={(employee.Status ?? 1) === 1 ? "Dar de baja usuario" : "Reactivar usuario"}
-                            >
-                              {(employee.Status ?? 1) === 1 ? (
-                                <UserMinus className="h-4 w-4" />
-                              ) : (
-                                <UserX className="h-4 w-4" />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => deleteEmployee(employee)}
-                              disabled={actionLoading === employee.EmployeeID || (employee.Status ?? 1) === 1}
-                              className={`p-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                                (employee.Status ?? 1) === 0
-                                  ? 'text-red-600 hover:bg-red-50'
-                                  : 'text-gray-400 cursor-not-allowed'
-                              }`}
-                              title={(employee.Status ?? 1) === 0 ? "Eliminar usuario permanentemente" : "Solo disponible para usuarios inactivos"}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                           </td>
+                        </tr>
+                        
+                        {/* Fila expandida de contratos para PROJECT inactivos */}
+                        {employee.tipo === 'PROJECT' && (employee.Status ?? 1) === 0 && expandedContract === employee.EmployeeID && employee.Contracts && employee.Contracts.length > 0 && (
+                          <tr className="bg-gray-50">
+                            <td colSpan={8} className="py-3 px-4">
+                              <div className="border-l-4 border-[#3a6ea5] pl-4">
+                                <p className="text-xs font-bold text-gray-700 mb-2 uppercase">CONTRATOS HISTÓRICOS</p>
+                                <div className="space-y-3">
+                                  {employee.Contracts.map((contract, idx) => (
+                                    <div key={contract.ContractID} className="bg-white rounded-lg p-3 border border-gray-200">
+                                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs font-bold text-gray-700">CONTRATO #{idx + 1}</span>
+                                          <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
+                                            contract.Status === 1 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                          }`}>
+                                            {contract.Status === 1 ? 'ACTIVO' : 'FINALIZADO'}
+                                          </span>
+                                        </div>
+                                        {contract.ProjectName && (
+                                          <span className="text-xs text-gray-600">
+                                             {contract.ProjectName}
+                                          </span>
+                                        )}
+                                      </div>
+                                      
+                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-600 mb-3">
+                                        {contract.Position && <div><span className="font-bold">Puesto:</span> {contract.Position}</div>}
+                                        {contract.StartDate && <div><span className="font-bold">Inicio:</span> {new Date(contract.StartDate).toLocaleDateString()}</div>}
+                                        {contract.EndDate && <div><span className="font-bold">Fin:</span> {new Date(contract.EndDate).toLocaleDateString()}</div>}
+                                      </div>
+                                      
+                                      <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
+                                        <span className="text-xs font-bold text-gray-600">Formatos de terminación:</span>
+                                        {contract.CDFileURL && (
+                                          <button
+                                            onClick={() => window.open(`/api/download/pdf/FT-RH-12?contractId=${contract.ContractID}&preview=1`, '_blank')}
+                                            className="flex items-center gap-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors text-xs"
+                                            title="FT-RH-12"
+                                          >
+                                            <FileText className="h-3 w-3" />
+                                            FT-RH-12
+                                          </button>
+                                        )}
+                                        {contract.CRFileURL && (
+                                          <button
+                                            onClick={() => window.open(`/api/download/pdf/FT-RH-13?contractId=${contract.ContractID}&preview=1`, '_blank')}
+                                            className="flex items-center gap-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors text-xs"
+                                            title="FT-RH-13"
+                                          >
+                                            <FileText className="h-3 w-3" />
+                                            FT-RH-13
+                                          </button>
+                                        )}
+                                        {contract.OFFileURL && (
+                                          <button
+                                            onClick={() => window.open(`/api/download/pdf/FT-RH-14?contractId=${contract.ContractID}&preview=1`, '_blank')}
+                                            className="flex items-center gap-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors text-xs"
+                                            title="FT-RH-14"
+                                          >
+                                            <FileText className="h-3 w-3" />
+                                            FT-RH-14
+                                          </button>
+                                        )}
+                                        {(!contract.CDFileURL && !contract.CRFileURL && !contract.OFFileURL) && (
+                                          <span className="text-xs text-gray-400">Sin documentos generados</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     ))
                   )}
                 </tbody>
-              </table>
+               </table>
             </div>
 
             {filteredEmployees.length > 0 && totalPages > 1 && (
