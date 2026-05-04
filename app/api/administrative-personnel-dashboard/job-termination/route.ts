@@ -50,7 +50,6 @@ export async function GET(request: NextRequest) {
     
     // Obtener URLs de documentos guardados
     if (action === 'getDocumentUrls' && employeeId) {
-      // Primero verificar si es personal base o proyecto
       const [employeeType] = await connection.execute(
         `SELECT 
           CASE 
@@ -83,7 +82,6 @@ export async function GET(request: NextRequest) {
           });
         }
       } else if (type === 'PROJECT') {
-        // Para personal de proyecto, buscar en projectcontracts
         const [projectPersonnel] = await connection.execute(
           `SELECT ProjectPersonnelID FROM projectpersonnel WHERE EmployeeID = ?`,
           [parseInt(employeeId)]
@@ -95,7 +93,8 @@ export async function GET(request: NextRequest) {
           const [rows] = await connection.execute(
             `SELECT CDFileURL, CRFileURL, OFFileURL 
              FROM projectcontracts 
-             WHERE ProjectPersonnelID = ? AND Status = 1`,
+             WHERE ProjectPersonnelID = ? AND Status = 1
+             ORDER BY ContractID DESC LIMIT 1`,
             [projectPersonnelID]
           );
           
@@ -135,7 +134,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Obtener lista de empleados
+    // 1. Obtener personal base - UN SOLO REGISTRO POR EMPLEADO
     const [baseEmployees] = await connection.execute(`
       SELECT 
         e.EmployeeID,
@@ -148,71 +147,153 @@ export async function GET(request: NextRequest) {
         bp.Area,
         bp.Salary,
         bp.WorkSchedule,
-        bpi.RFC,
-        bpi.CURP,
-        bpi.NSS,
-        bpi.Email,
-        bpi.Phone
+        COALESCE(bpi.RFC, '') as RFC,
+        COALESCE(bpi.CURP, '') as CURP,
+        COALESCE(bpi.NSS, '') as NSS,
+        COALESCE(bpi.Email, '') as Email,
+        COALESCE(bpi.Phone, '') as Phone,
+        jt.CDFileURL as CDFileURL,
+        jt.CRFileURL as CRFileURL,
+        jt.OFFileURL as OFFileURL
       FROM basepersonnel bp
       INNER JOIN employees e ON bp.EmployeeID = e.EmployeeID
       LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
-      ORDER BY bp.LastName, bp.FirstName
+      LEFT JOIN jobtermination jt ON bp.EmployeeID = jt.EmployeeID
+      ORDER BY e.EmployeeID
     `);
 
+    // 2. Obtener personal de proyecto - CON TODOS SUS CONTRATOS HISTÓRICOS
     const [projectEmployees] = await connection.execute(`
       SELECT 
         e.EmployeeID,
-        e.Status,
+        e.Status as EmployeeStatus,
         pp.ProjectPersonnelID,
         pp.FirstName,
         pp.LastName,
         pp.MiddleName,
-        p.NameProject as ProjectName,
+        COALESCE(p.NameProject, '') as ProjectName,
         pc.ProjectID,
         pc.Position,
         pc.Salary,
         pc.WorkSchedule,
-        pc.StartDate,
-        pc.EndDate,
-        pc.Status as ContractStatus,
-        ppi.RFC,
-        ppi.CURP,
-        ppi.NSS,
-        ppi.Email,
-        ppi.Phone
+        COALESCE(ppi.RFC, '') as RFC,
+        COALESCE(ppi.CURP, '') as CURP,
+        COALESCE(ppi.NSS, '') as NSS,
+        COALESCE(ppi.Email, '') as Email,
+        COALESCE(ppi.Phone, '') as Phone,
+        pc.ContractID
       FROM projectpersonnel pp
       INNER JOIN employees e ON pp.EmployeeID = e.EmployeeID
       LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
-      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID AND pc.Status = 1
+      LEFT JOIN (
+        SELECT 
+          pc1.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY pc1.ProjectPersonnelID 
+            ORDER BY CASE WHEN pc1.Status = 1 THEN 0 ELSE 1 END, pc1.StartDate DESC
+          ) as rn
+        FROM projectcontracts pc1
+      ) pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID AND pc.rn = 1
       LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
-      ORDER BY pp.LastName, pp.FirstName
+      ORDER BY e.EmployeeID
     `);
 
-    const allEmployees = [
-      ...(baseEmployees as any[]).map(emp => ({ ...emp, tipo: 'BASE' as const })),
-      ...(projectEmployees as any[]).map(emp => ({ ...emp, tipo: 'PROJECT' as const }))
-    ];
+    // 3. Obtener todos los contratos históricos para personal de proyecto
+    const [allProjectContracts] = await connection.execute(`
+      SELECT 
+        pc.ContractID,
+        pc.ProjectPersonnelID,
+        pc.ProjectID,
+        p.NameProject as ProjectName,
+        pc.Position,
+        pc.StartDate,
+        pc.EndDate,
+        pc.Status,
+        pc.CDFileURL,
+        pc.CRFileURL,
+        pc.OFFileURL
+      FROM projectcontracts pc
+      LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
+      ORDER BY pc.ProjectPersonnelID, pc.StartDate DESC
+    `);
 
-    let filteredEmployees = allEmployees;
-
-    if (tipo && tipo !== 'TODOS') {
-      filteredEmployees = filteredEmployees.filter(emp => emp.tipo === tipo);
+    // Organizar contratos por ProjectPersonnelID
+    const contractsByPersonnel: Record<number, any[]> = {};
+    for (const contract of allProjectContracts as any[]) {
+      if (!contractsByPersonnel[contract.ProjectPersonnelID]) {
+        contractsByPersonnel[contract.ProjectPersonnelID] = [];
+      }
+      contractsByPersonnel[contract.ProjectPersonnelID].push(contract);
     }
 
+    // Construir arrays de empleados con claves únicas
+    const baseEmployeesFormatted = (baseEmployees as any[]).map(emp => ({ 
+      ...emp, 
+      tipo: 'BASE' as const,
+      Status: emp.Status,
+      uniqueKey: `BASE_${emp.EmployeeID}`,
+      TerminationDocuments: {
+        CDFileURL: emp.CDFileURL,
+        CRFileURL: emp.CRFileURL,
+        OFFileURL: emp.OFFileURL
+      },
+      Contracts: []
+    }));
+    
+    const projectEmployeesFormatted = (projectEmployees as any[]).map(emp => ({ 
+      ...emp, 
+      tipo: 'PROJECT' as const,
+      Status: emp.EmployeeStatus,
+      uniqueKey: `PROJECT_${emp.EmployeeID}`,
+      TerminationDocuments: null,
+      Contracts: contractsByPersonnel[emp.ProjectPersonnelID] || []
+    }));
+
+    // Combinar todos los empleados
+    let allEmployees = [...baseEmployeesFormatted, ...projectEmployeesFormatted];
+
+    // DEDUPLICAR POR EMPLOYEEID (un empleado no puede aparecer dos veces)
+    const uniqueByEmployeeId = new Map<number, (typeof allEmployees)[0]>();
+    
+    for (const emp of allEmployees) {
+      const existing = uniqueByEmployeeId.get(emp.EmployeeID);
+      if (!existing) {
+        uniqueByEmployeeId.set(emp.EmployeeID, emp);
+      } else {
+        console.warn(` Empleado duplicado encontrado: ID=${emp.EmployeeID}, tipos: ${existing.tipo} y ${emp.tipo}`);
+      }
+    }
+    
+    let finalEmployees = Array.from(uniqueByEmployeeId.values());
+
+    // Filtrar por tipo
+    if (tipo && tipo !== 'TODOS') {
+      finalEmployees = finalEmployees.filter(emp => emp.tipo === tipo);
+    }
+
+    // Filtrar por búsqueda
     if (search && search.trim()) {
       const searchLower = search.toLowerCase().trim();
-      filteredEmployees = filteredEmployees.filter(emp => 
+      finalEmployees = finalEmployees.filter(emp => 
         emp.FirstName.toLowerCase().includes(searchLower) ||
         emp.LastName.toLowerCase().includes(searchLower) ||
         (emp.MiddleName?.toLowerCase() || '').includes(searchLower) ||
-        `${emp.FirstName} ${emp.LastName}`.toLowerCase().includes(searchLower)
+        `${emp.FirstName} ${emp.LastName}`.toLowerCase().includes(searchLower) ||
+        (emp.RFC?.toLowerCase() || '').includes(searchLower) ||
+        (emp.CURP?.toLowerCase() || '').includes(searchLower) ||
+        (emp.Email?.toLowerCase() || '').includes(searchLower) ||
+        (emp.NSS?.toLowerCase() || '').includes(searchLower) ||
+        emp.EmployeeID.toString().includes(searchLower)
       );
     }
 
+    // Ordenar por ID de empleado de menor a mayor
+    finalEmployees.sort((a, b) => a.EmployeeID - b.EmployeeID);
+
     return NextResponse.json({
       success: true,
-      employees: filteredEmployees,
-      total: filteredEmployees.length
+      employees: finalEmployees,
+      total: finalEmployees.length
     });
 
   } catch (error) {
@@ -259,7 +340,6 @@ export async function PUT(request: NextRequest) {
 
     await connection.beginTransaction();
 
-    // 🔍 Tipo de empleado
     const [employeeType] = await connection.execute(
       `SELECT 
         CASE 
@@ -271,7 +351,6 @@ export async function PUT(request: NextRequest) {
 
     const type = (employeeType as any[])[0]?.EmployeeType;
 
-    // 🔄 Actualizar estado en employees
     await connection.execute(
       `UPDATE employees SET Status = ? WHERE EmployeeID = ?`,
       [Status, EmployeeID]
@@ -280,13 +359,7 @@ export async function PUT(request: NextRequest) {
     let contractID: number | null = null;
 
     if (Status === 0) {
-      // ========================
-      // 🔻 BAJA
-      // ========================
-
       if (type === 'PROJECT') {
-
-        // 1. Obtener ProjectPersonnelID
         const [pp] = await connection.execute(
           `SELECT ProjectPersonnelID FROM projectpersonnel WHERE EmployeeID = ?`,
           [EmployeeID]
@@ -295,11 +368,8 @@ export async function PUT(request: NextRequest) {
         const projectPersonnelID = (pp as any[])[0]?.ProjectPersonnelID;
 
         if (projectPersonnelID) {
-
-          // 2. Obtener contrato ACTIVO antes de cambiarlo
           const [contract] = await connection.execute(
-            `SELECT ContractID, EndDate 
-             FROM projectcontracts 
+            `SELECT ContractID FROM projectcontracts 
              WHERE ProjectPersonnelID = ? AND Status = 1
              LIMIT 1`,
             [projectPersonnelID]
@@ -307,22 +377,15 @@ export async function PUT(request: NextRequest) {
 
           if ((contract as any[]).length > 0) {
             contractID = (contract as any[])[0].ContractID;
-
-            // 3. Solo cambiar status (NO tocar EndDate)
             await connection.execute(
-              `UPDATE projectcontracts 
-               SET Status = 0 
-               WHERE ContractID = ?`,
+              `UPDATE projectcontracts SET Status = 0, EndDate = CURDATE() WHERE ContractID = ?`,
               [contractID]
             );
-
           } else {
-            // ⚠️ Solo si no existe contrato (caso raro)
             const [insert] = await connection.execute(
-              `INSERT INTO projectcontracts (ProjectPersonnelID, Status) VALUES (?, 0)`,
+              `INSERT INTO projectcontracts (ProjectPersonnelID, Status, EndDate) VALUES (?, 0, CURDATE())`,
               [projectPersonnelID]
             );
-
             contractID = (insert as any).insertId;
           }
         }
@@ -344,9 +407,6 @@ export async function PUT(request: NextRequest) {
 
       await connection.commit();
 
-      // ========================
-      // 📄 GENERAR PDFs
-      // ========================
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
       const cookies = request.headers.get('cookie') || '';
 
@@ -360,39 +420,28 @@ export async function PUT(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: 'Empleado dado de baja',
+        message: 'EMPLEADO DADO DE BAJA',
         ...pdfUrls
       });
 
     } else {
-      // ========================
-      // 🔼 REACTIVAR
-      // ========================
-
       if (type === 'PROJECT') {
-        // 🔴 IMPORTANTE: Para personal de proyecto, NO se reactiva automáticamente
-        // Se devuelve un mensaje indicando que debe ir al módulo de edición
         await connection.rollback();
-        
         return NextResponse.json({
           success: false,
           message: 'Para reactivar personal de proyecto, debe ir al módulo de EDICIÓN DE USUARIO y asignar un nuevo contrato y proyecto.',
           requiresManualReactivation: true,
           employeeType: 'PROJECT'
         }, { status: 400 });
-        
       } else if (type === 'BASE') {
-        // Para personal BASE, se puede reactivar directamente
         await connection.execute(
           `DELETE FROM jobtermination WHERE EmployeeID = ?`,
           [EmployeeID]
         );
-
         await connection.commit();
-
         return NextResponse.json({
           success: true,
-          message: 'Empleado reactivado exitosamente'
+          message: 'EMPLEADO REACTIVADO EXITOSAMENTE'
         });
       }
       
@@ -470,7 +519,6 @@ export async function DELETE(request: NextRequest) {
     await connection.beginTransaction();
 
     try {
-      // Eliminar de jobtermination o limpiar projectcontracts según el tipo
       const [employeeType] = await connection.execute(
         `SELECT 
           CASE 
@@ -484,10 +532,7 @@ export async function DELETE(request: NextRequest) {
       const type = (employeeType as any[])[0]?.EmployeeType;
 
       if (type === 'BASE') {
-        await connection.execute(
-          'DELETE FROM jobtermination WHERE EmployeeID = ?',
-          [EmployeeID]
-        );
+        await connection.execute('DELETE FROM jobtermination WHERE EmployeeID = ?', [EmployeeID]);
         
         const [basePersonnel] = await connection.execute(
           'SELECT BasePersonnelID FROM basepersonnel WHERE EmployeeID = ?',
@@ -496,16 +541,8 @@ export async function DELETE(request: NextRequest) {
         
         if ((basePersonnel as any[]).length > 0) {
           const basePersonnelID = (basePersonnel as any[])[0].BasePersonnelID;
-          
-          await connection.execute(
-            'DELETE FROM basepersonnelpersonalinfo WHERE BasePersonnelID = ?',
-            [basePersonnelID]
-          );
-          
-          await connection.execute(
-            'DELETE FROM basepersonnel WHERE EmployeeID = ?',
-            [EmployeeID]
-          );
+          await connection.execute('DELETE FROM basepersonnelpersonalinfo WHERE BasePersonnelID = ?', [basePersonnelID]);
+          await connection.execute('DELETE FROM basepersonnel WHERE EmployeeID = ?', [EmployeeID]);
         }
       } else if (type === 'PROJECT') {
         const [projectPersonnel] = await connection.execute(
@@ -516,37 +553,24 @@ export async function DELETE(request: NextRequest) {
         if ((projectPersonnel as any[]).length > 0) {
           const projectPersonnelID = (projectPersonnel as any[])[0].ProjectPersonnelID;
           
-          // Limpiar las URLs de documentos y Status en projectcontracts
           await connection.execute(
             `UPDATE projectcontracts 
-             SET CDFileURL = NULL, CRFileURL = NULL, OFFileURL = NULL, 
-                 EndDate = NULL, Status = 0
+             SET CDFileURL = NULL, CRFileURL = NULL, OFFileURL = NULL
              WHERE ProjectPersonnelID = ?`,
             [projectPersonnelID]
           );
           
-          await connection.execute(
-            'DELETE FROM projectpersonnelpersonalinfo WHERE ProjectPersonnelID = ?',
-            [projectPersonnelID]
-          );
-          
-          await connection.execute(
-            'DELETE FROM projectpersonnel WHERE EmployeeID = ?',
-            [EmployeeID]
-          );
+          await connection.execute('DELETE FROM projectpersonnelpersonalinfo WHERE ProjectPersonnelID = ?', [projectPersonnelID]);
+          await connection.execute('DELETE FROM projectpersonnel WHERE EmployeeID = ?', [EmployeeID]);
         }
       }
 
-      await connection.execute(
-        'DELETE FROM employees WHERE EmployeeID = ?',
-        [EmployeeID]
-      );
-
+      await connection.execute('DELETE FROM employees WHERE EmployeeID = ?', [EmployeeID]);
       await connection.commit();
 
       return NextResponse.json({
         success: true,
-        message: 'Empleado eliminado permanentemente'
+        message: 'EMPLEADO ELIMINADO PERMANENTEMENTE'
       });
 
     } catch (error) {
@@ -571,13 +595,14 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-// Función auxiliar para obtener información del empleado
 async function getEmployeeInfo(connection: any, employeeId: number) {
   const [employeeInfo] = await connection.query(
-    `SELECT EmployeeType 
-    FROM employees 
-    WHERE EmployeeID = ?`,
-    [employeeId]
+    `SELECT 
+      CASE 
+        WHEN EXISTS (SELECT 1 FROM basepersonnel WHERE EmployeeID = ?) THEN 'BASE'
+        WHEN EXISTS (SELECT 1 FROM projectpersonnel WHERE EmployeeID = ?) THEN 'PROJECT'
+      END as EmployeeType`,
+    [employeeId, employeeId]
   );
 
   if (!employeeInfo || (employeeInfo as any[]).length === 0) {
@@ -663,12 +688,10 @@ async function generateAndSaveAllPDFsFixed(
   employeeType: string,
   contractID: number | null
 ) {
-
   const formatos: FormatoPDF[] = ['FT-RH-12', 'FT-RH-13', 'FT-RH-14'];
   const result: any = {};
 
   for (const formato of formatos) {
-
     const url = `${baseUrl}/api/download/pdf/${formato}?empleadoId=${employeeId}&save=1`;
 
     const response = await fetch(url, {
@@ -678,32 +701,21 @@ async function generateAndSaveAllPDFsFixed(
     const data = await response.json();
 
     if (data.success && data.fileUrl) {
-
       const fieldName = fieldMap[formato];
-
       const connection = await getConnection();
 
       try {
         if (employeeType === 'PROJECT' && contractID) {
-
-          // 🔥 SIEMPRE UPDATE (NO INSERT)
           await connection.execute(
-            `UPDATE projectcontracts 
-             SET ${fieldName} = ? 
-             WHERE ContractID = ?`,
+            `UPDATE projectcontracts SET ${fieldName} = ? WHERE ContractID = ?`,
             [data.fileUrl, contractID]
           );
-
         } else if (employeeType === 'BASE') {
-
           await connection.execute(
-            `UPDATE jobtermination 
-             SET ${fieldName} = ? 
-             WHERE EmployeeID = ?`,
+            `UPDATE jobtermination SET ${fieldName} = ? WHERE EmployeeID = ?`,
             [data.fileUrl, employeeId]
           );
         }
-
       } finally {
         await connection.release();
       }
