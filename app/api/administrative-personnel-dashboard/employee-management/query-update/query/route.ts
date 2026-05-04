@@ -1,53 +1,13 @@
+// app/api/administrative-personnel-dashboard/employee-management/query-update/query/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
-
-// Interface para empleado base
-interface BaseEmployee {
-  EmployeeID: number;
-  BasePersonnelID: number;
-  FirstName: string;
-  LastName: string;
-  MiddleName: string | null;
-  Position: string;
-  Area: string;
-  Salary: number;
-  WorkSchedule: string;
-  RFC: string;
-  CURP: string;
-  NSS: string;
-  Email: string;
-  Phone: string;
-  tipo: 'BASE';
-}
-
-// Interface para empleado de proyecto
-interface ProjectEmployee {
-  EmployeeID: number;
-  ProjectPersonnelID: number;
-  FirstName: string;
-  LastName: string;
-  MiddleName: string | null;
-  ProjectName: string;
-  ProjectID: number;
-  Position: string;
-  Salary: number;
-  WorkSchedule: string;
-  StartDate: string;
-  EndDate: string | null;
-  RFC: string;
-  CURP: string;
-  NSS: string;
-  Email: string;
-  Phone: string;
-  tipo: 'PROJECT';
-}
 
 export async function GET(request: NextRequest) {
   let connection;
   
   try {
-    // Validar sesión
     const sessionId = request.cookies.get("session")?.value;
 
     if (!sessionId) {
@@ -57,7 +17,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user) {
@@ -67,29 +26,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verificar permisos (solo administradores)
-    if (user.UserTypeID !== 2) {
+    if (user.UserTypeID !== 2 && user.UserTypeID !== 1) {
       return NextResponse.json(
         { success: false, message: 'ACCESO DENEGADO' },
         { status: 403 }
       );
     }
 
-    // Obtener conexión a la base de datos
     connection = await getConnection();
 
-    // Obtener parámetros de consulta (opcional)
     const url = new URL(request.url);
     const tipo = url.searchParams.get('tipo');
     const search = url.searchParams.get('search');
+    const status = url.searchParams.get('status');
 
-    // Array para almacenar todos los empleados
-    let allEmployees: (BaseEmployee | ProjectEmployee)[] = [];
-
-    // 1. Obtener personal base
+    // 1. Obtener personal base - UN SOLO REGISTRO POR EMPLEADO
     const [baseEmployees] = await connection.execute(`
       SELECT 
         e.EmployeeID,
+        e.Status,
         bp.BasePersonnelID,
         bp.FirstName,
         bp.LastName,
@@ -98,60 +53,114 @@ export async function GET(request: NextRequest) {
         bp.Area,
         bp.Salary,
         bp.WorkSchedule,
-        bpi.RFC,
-        bpi.CURP,
-        bpi.NSS,
-        bpi.Email,
-        bpi.Phone
+        COALESCE(bpi.RFC, '') as RFC,
+        COALESCE(bpi.CURP, '') as CURP,
+        COALESCE(bpi.NSS, '') as NSS,
+        COALESCE(bpi.Email, '') as Email,
+        COALESCE(bpi.Phone, '') as Phone,
+        bc.ContractFileURL,
+        bc.WarningFileURL,
+        bc.LetterFileURL,
+        bc.AgreementFileURL
       FROM basepersonnel bp
       INNER JOIN employees e ON bp.EmployeeID = e.EmployeeID
       LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
-      ORDER BY bp.LastName, bp.FirstName
+      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
+      ORDER BY e.EmployeeID
     `);
 
-    // 2. Obtener personal de proyecto
+    // 2. Obtener personal de proyecto - UN SOLO REGISTRO POR EMPLEADO
+    // Usamos una subconsulta para obtener el contrato más reciente (Status=1 tiene prioridad)
     const [projectEmployees] = await connection.execute(`
       SELECT 
         e.EmployeeID,
+        e.Status as EmployeeStatus,
         pp.ProjectPersonnelID,
         pp.FirstName,
         pp.LastName,
         pp.MiddleName,
-        p.NameProject as ProjectName,
+        COALESCE(p.NameProject, '') as ProjectName,
         pc.ProjectID,
         pc.Position,
         pc.Salary,
         pc.WorkSchedule,
-        pc.StartDate,
-        pc.EndDate,
-        ppi.RFC,
-        ppi.CURP,
-        ppi.NSS,
-        ppi.Email,
-        ppi.Phone
+        COALESCE(ppi.RFC, '') as RFC,
+        COALESCE(ppi.CURP, '') as CURP,
+        COALESCE(ppi.NSS, '') as NSS,
+        COALESCE(ppi.Email, '') as Email,
+        COALESCE(ppi.Phone, '') as Phone,
+        pc.ContractFileURL,
+        pc.WarningFileURL,
+        pc.LetterFileURL,
+        pc.AgreementFileURL,
+        pc.ContractID
       FROM projectpersonnel pp
       INNER JOIN employees e ON pp.EmployeeID = e.EmployeeID
       LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
-      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+      LEFT JOIN (
+        SELECT 
+          pc1.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY pc1.ProjectPersonnelID 
+            ORDER BY CASE WHEN pc1.Status = 1 THEN 0 ELSE 1 END, pc1.StartDate DESC
+          ) as rn
+        FROM projectcontracts pc1
+      ) pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID AND pc.rn = 1
       LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
-      ORDER BY pp.LastName, pp.FirstName
+      ORDER BY e.EmployeeID
     `);
 
-    // Combinar resultados y agregar el tipo
-    allEmployees = [
-      ...(baseEmployees as any[]).map(emp => ({ ...emp, tipo: 'BASE' as const })),
-      ...(projectEmployees as any[]).map(emp => ({ ...emp, tipo: 'PROJECT' as const }))
-    ];
+    // Construir arrays de empleados con claves únicas
+    const baseEmployeesFormatted = (baseEmployees as any[]).map(emp => ({ 
+      ...emp, 
+      tipo: 'BASE' as const,
+      Status: emp.Status,
+      uniqueKey: `BASE_${emp.EmployeeID}`
+    }));
+    
+    const projectEmployeesFormatted = (projectEmployees as any[]).map(emp => ({ 
+      ...emp, 
+      tipo: 'PROJECT' as const,
+      Status: emp.EmployeeStatus,
+      uniqueKey: `PROJECT_${emp.EmployeeID}`
+    }));
 
-    // Filtrar por tipo si se especifica
+    // Combinar todos los empleados
+    let allEmployees = [...baseEmployeesFormatted, ...projectEmployeesFormatted];
+
+    // DEDUPLICAR POR EMPLOYEEID (un empleado no puede aparecer dos veces)
+    // Esto es crítico - un mismo EmployeeID no puede estar en BASE y PROJECT simultáneamente
+    const uniqueByEmployeeId = new Map<number, (typeof allEmployees)[0]>();
+    
+    for (const emp of allEmployees) {
+      const existing = uniqueByEmployeeId.get(emp.EmployeeID);
+      if (!existing) {
+        uniqueByEmployeeId.set(emp.EmployeeID, emp);
+      } else {
+        // Si ya existe, logueamos el conflicto (esto no debería pasar)
+        console.warn(`⚠️ Empleado duplicado encontrado: ID=${emp.EmployeeID}, tipos: ${existing.tipo} y ${emp.tipo}`);
+      }
+    }
+    
+    let finalEmployees = Array.from(uniqueByEmployeeId.values());
+
+    // Filtrar por tipo
     if (tipo && tipo !== 'TODOS') {
-      allEmployees = allEmployees.filter(emp => emp.tipo === tipo);
+      finalEmployees = finalEmployees.filter(emp => emp.tipo === tipo);
     }
 
-    // Filtrar por búsqueda si se especifica
+    // Filtrar por estado
+    if (status && status !== 'TODOS') {
+      const statusNumber = parseInt(status);
+      if (!isNaN(statusNumber)) {
+        finalEmployees = finalEmployees.filter(emp => emp.Status === statusNumber);
+      }
+    }
+
+    // Filtrar por búsqueda
     if (search && search.trim()) {
       const searchLower = search.toLowerCase().trim();
-      allEmployees = allEmployees.filter(emp => 
+      finalEmployees = finalEmployees.filter(emp => 
         emp.FirstName.toLowerCase().includes(searchLower) ||
         emp.LastName.toLowerCase().includes(searchLower) ||
         (emp.MiddleName?.toLowerCase() || '').includes(searchLower) ||
@@ -159,42 +168,45 @@ export async function GET(request: NextRequest) {
         (emp.RFC?.toLowerCase() || '').includes(searchLower) ||
         (emp.CURP?.toLowerCase() || '').includes(searchLower) ||
         (emp.Email?.toLowerCase() || '').includes(searchLower) ||
-        (emp.NSS?.toLowerCase() || '').includes(searchLower)
+        (emp.NSS?.toLowerCase() || '').includes(searchLower) ||
+        emp.EmployeeID.toString().includes(searchLower)
       );
     }
 
-    // Ordenar por apellido y nombre
-    allEmployees.sort((a, b) => {
-      const nameA = `${a.LastName} ${a.FirstName}`;
-      const nameB = `${b.LastName} ${b.FirstName}`;
-      return nameA.localeCompare(nameB);
-    });
+    // Ordenar por ID de empleado de menor a mayor
+    finalEmployees.sort((a, b) => a.EmployeeID - b.EmployeeID);
+
+    // Log para depuración - verificar que no haya claves duplicadas
+    const keys = finalEmployees.map(e => e.uniqueKey);
+    const uniqueKeys = new Set(keys);
+    if (keys.length !== uniqueKeys.size) {
+      console.error('❌ Claves duplicadas encontradas en la respuesta final:', 
+        keys.filter((k, i) => keys.indexOf(k) !== i));
+    }
 
     return NextResponse.json({
       success: true,
-      employees: allEmployees,
-      total: allEmployees.length
+      employees: finalEmployees,
+      total: finalEmployees.length,
+      filters: {
+        tipo: tipo || 'TODOS',
+        status: status || 'TODOS',
+        search: search || ''
+      }
     });
 
   } catch (error) {
     console.error('Error al obtener empleados:', error);
     
-    let errorMessage = 'ERROR AL OBTENER LA LISTA DE EMPLEADOS';
-    
-    if (error instanceof Error) {
-      console.error('Detalles del error:', error.message);
-    }
-    
     return NextResponse.json(
       { 
         success: false, 
-        message: errorMessage,
+        message: 'ERROR AL OBTENER LA LISTA DE EMPLEADOS',
         error: process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : undefined
       },
       { status: 500 }
     );
   } finally {
-    // Cerrar conexión
     if (connection) {
       try {
         await connection.release();
