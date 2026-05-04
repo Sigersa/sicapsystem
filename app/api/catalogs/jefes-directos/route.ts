@@ -37,41 +37,46 @@ export async function GET(request: NextRequest) {
     connection = await getConnection();
 
     // Obtener todos los empleados que pueden ser jefes directos
-    // Incluimos tanto personal base como de proyecto
+    // Usamos COALESCE para priorizar un tipo si el empleado aparece en ambas tablas
     const query = `
-      SELECT 
+      SELECT DISTINCT
         e.EmployeeID as id,
-        bp.FirstName,
-        bp.LastName,
-        bp.MiddleName,
-        bp.Position as puesto,
-        'BASE' as tipoPersonal,
-        CONCAT(bp.FirstName, ' ', bp.LastName, IFNULL(CONCAT(' ', bp.MiddleName), '')) as nombreCompleto
-      FROM basepersonnel bp
-      INNER JOIN employees e ON e.EmployeeID = bp.EmployeeID
-      WHERE e.EmployeeType = 'BASE' AND Status = 1
-      
-      UNION ALL
-      
-      SELECT 
-        e.EmployeeID as id,
-        pp.FirstName,
-        pp.LastName,
-        pp.MiddleName,
-        pc.Position as puesto,
-        'PROJECT' as tipoPersonal,
-        CONCAT(pp.FirstName, ' ', pp.LastName, IFNULL(CONCAT(' ', pp.MiddleName), '')) as nombreCompleto
-      FROM projectpersonnel pp
-      INNER JOIN employees e ON e.EmployeeID = pp.EmployeeID
-      INNER JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
-      WHERE e.EmployeeType = 'PROJECT' AND e.Status = 1
-      
+        COALESCE(bp.FirstName, pp.FirstName) as FirstName,
+        COALESCE(bp.LastName, pp.LastName) as LastName,
+        COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
+        COALESCE(bp.Position, pc.Position) as puesto,
+        CASE 
+          WHEN bp.BasePersonnelID IS NOT NULL THEN 'BASE'
+          WHEN pp.ProjectPersonnelID IS NOT NULL THEN 'PROYECTO'
+        END as tipoPersonal,
+        TRIM(CONCAT(
+          COALESCE(bp.FirstName, pp.FirstName), ' ',
+          COALESCE(bp.LastName, pp.LastName), ' ',
+          COALESCE(bp.MiddleName, pp.MiddleName, '')
+        )) as nombreCompleto
+      FROM employees e
+      LEFT JOIN basepersonnel bp ON e.EmployeeID = bp.EmployeeID
+      LEFT JOIN projectpersonnel pp ON e.EmployeeID = pp.EmployeeID
+      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID AND pc.Status = 1
+      WHERE e.Status = 1
+        AND (bp.BasePersonnelID IS NOT NULL OR pp.ProjectPersonnelID IS NOT NULL)
       ORDER BY nombreCompleto
     `;
 
     const [rows] = await connection.execute(query);
 
-    return NextResponse.json(rows, { status: 200 });
+    // Asegurar que no haya IDs duplicados usando un Map
+    const uniqueJefesMap = new Map<number, any>();
+    
+    for (const jefe of (rows as any[])) {
+      if (!uniqueJefesMap.has(jefe.id)) {
+        uniqueJefesMap.set(jefe.id, jefe);
+      }
+    }
+    
+    const uniqueJefes = Array.from(uniqueJefesMap.values());
+
+    return NextResponse.json(uniqueJefes, { status: 200 });
 
   } catch (error) {
     console.error('Error al obtener jefes directos:', error);
