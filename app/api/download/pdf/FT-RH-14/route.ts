@@ -130,11 +130,12 @@ export async function GET(request: NextRequest) {
           pr.StartDate,
           pr.EndDate,
           TIMESTAMPDIFF(MONTH, pr.StartDate, CURDATE()) AS meses_trabajados,
-          pr.ProjectAddress
+          pr.ProjectAddress,
+          pc.Status
         FROM projectpersonnel pp
         LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
         LEFT JOIN projects pr ON pr.ProjectID = pc.ProjectID
-        WHERE pp.EmployeeID = ?
+        WHERE pp.EmployeeID = ? AND pc.Status = 1
       `, [empleadoId]);
 
       if (rows.length) {
