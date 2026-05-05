@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
           const [rows] = await connection.execute(
             `SELECT CDFileURL, CRFileURL, OFFileURL 
              FROM projectcontracts 
-             WHERE ProjectPersonnelID = ? AND Status = 1
+             WHERE ProjectPersonnelID = ? AND Status = 0
              ORDER BY ContractID DESC LIMIT 1`,
             [projectPersonnelID]
           );
@@ -115,6 +115,71 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         urls: null
+      });
+    }
+    
+    // Nueva acción para obtener URLs de documentos específicos por formato
+    if (action === 'getDocumentUrl' && employeeId) {
+      const formato = url.searchParams.get('formato') as FormatoPDF;
+      const [employeeType] = await connection.execute(
+        `SELECT 
+          CASE 
+            WHEN EXISTS (SELECT 1 FROM basepersonnel WHERE EmployeeID = ?) THEN 'BASE'
+            WHEN EXISTS (SELECT 1 FROM projectpersonnel WHERE EmployeeID = ?) THEN 'PROJECT'
+            ELSE 'UNKNOWN'
+          END as EmployeeType`,
+        [parseInt(employeeId), parseInt(employeeId)]
+      );
+
+      const type = (employeeType as any[])[0]?.EmployeeType;
+      const fieldName = fieldMap[formato];
+
+      if (type === 'BASE') {
+        const [rows] = await connection.execute(
+          `SELECT ${fieldName} as fileUrl
+           FROM jobtermination 
+           WHERE EmployeeID = ?`,
+          [parseInt(employeeId)]
+        );
+        
+        if ((rows as any[]).length > 0) {
+          const fileUrl = (rows as any[])[0].fileUrl;
+          return NextResponse.json({
+            success: true,
+            fileUrl: fileUrl
+          });
+        }
+      } else if (type === 'PROJECT') {
+        const [projectPersonnel] = await connection.execute(
+          `SELECT ProjectPersonnelID FROM projectpersonnel WHERE EmployeeID = ?`,
+          [parseInt(employeeId)]
+        );
+
+        if ((projectPersonnel as any[]).length > 0) {
+          const projectPersonnelID = (projectPersonnel as any[])[0].ProjectPersonnelID;
+          
+          const [rows] = await connection.execute(
+            `SELECT ${fieldName} as fileUrl
+             FROM projectcontracts 
+             WHERE ProjectPersonnelID = ? AND Status = 0
+             ORDER BY ContractID DESC LIMIT 1`,
+            [projectPersonnelID]
+          );
+          
+          if ((rows as any[]).length > 0) {
+            const fileUrl = (rows as any[])[0].fileUrl;
+            return NextResponse.json({
+              success: true,
+              fileUrl: fileUrl
+            });
+          }
+        }
+      }
+      
+      return NextResponse.json({
+        success: false,
+        fileUrl: null,
+        message: 'Documento no encontrado'
       });
     }
     
@@ -165,37 +230,45 @@ export async function GET(request: NextRequest) {
     // 2. Obtener personal de proyecto - CON TODOS SUS CONTRATOS HISTÓRICOS
     const [projectEmployees] = await connection.execute(`
       SELECT 
-        e.EmployeeID,
-        e.Status as EmployeeStatus,
-        pp.ProjectPersonnelID,
-        pp.FirstName,
-        pp.LastName,
-        pp.MiddleName,
-        COALESCE(p.NameProject, '') as ProjectName,
-        pc.ProjectID,
-        pc.Position,
-        pc.Salary,
-        pc.WorkSchedule,
-        COALESCE(ppi.RFC, '') as RFC,
-        COALESCE(ppi.CURP, '') as CURP,
-        COALESCE(ppi.NSS, '') as NSS,
-        COALESCE(ppi.Email, '') as Email,
-        COALESCE(ppi.Phone, '') as Phone,
-        pc.ContractID
-      FROM projectpersonnel pp
-      INNER JOIN employees e ON pp.EmployeeID = e.EmployeeID
-      LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
-      LEFT JOIN (
-        SELECT 
-          pc1.*,
-          ROW_NUMBER() OVER (
+    e.EmployeeID,
+    e.Status as EmployeeStatus,
+    pp.ProjectPersonnelID,
+    pp.FirstName,
+    pp.LastName,
+    pp.MiddleName,
+    COALESCE(p.NameProject, '') as ProjectName,
+    pc.ProjectID,
+    pc.Position,
+    pc.Salary,
+    pc.WorkSchedule,
+    COALESCE(ppi.RFC, '') as RFC,
+    COALESCE(ppi.CURP, '') as CURP,
+    COALESCE(ppi.NSS, '') as NSS,
+    COALESCE(ppi.Email, '') as Email,
+    COALESCE(ppi.Phone, '') as Phone,
+    pc.ContractFileURL,
+    pc.WarningFileURL,
+    pc.LetterFileURL,
+    pc.AgreementFileURL,
+    pc.ContractID
+FROM projectpersonnel pp
+INNER JOIN employees e ON pp.EmployeeID = e.EmployeeID
+LEFT JOIN projectpersonnelpersonalinfo ppi 
+    ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
+LEFT JOIN (
+    SELECT 
+        pc1.*,
+        ROW_NUMBER() OVER (
             PARTITION BY pc1.ProjectPersonnelID 
-            ORDER BY CASE WHEN pc1.Status = 1 THEN 0 ELSE 1 END
-          ) as rn
-        FROM projectcontracts pc1
-      ) pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID AND pc.rn = 1
-      LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
-      ORDER BY e.EmployeeID
+            ORDER BY pc1.ContractID DESC
+        ) as rn
+    FROM projectcontracts pc1
+) pc 
+    ON pp.ProjectPersonnelID = pc.ProjectPersonnelID 
+    AND pc.rn = 1
+LEFT JOIN projects p 
+    ON pc.ProjectID = p.ProjectID
+ORDER BY e.EmployeeID;
     `);
 
     // 3. Obtener todos los contratos históricos para personal de proyecto
@@ -336,37 +409,33 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: false, message: 'Faltan datos' }, { status: 400 });
     }
 
-    connection = await getConnection();
-
-    await connection.beginTransaction();
-
-    const [employeeType] = await connection.execute(
-      `SELECT 
-        CASE 
-          WHEN EXISTS (SELECT 1 FROM basepersonnel WHERE EmployeeID = ?) THEN 'BASE'
-          WHEN EXISTS (SELECT 1 FROM projectpersonnel WHERE EmployeeID = ?) THEN 'PROJECT'
-        END as EmployeeType`,
-      [EmployeeID, EmployeeID]
-    );
-
-    const type = (employeeType as any[])[0]?.EmployeeType;
-
-    await connection.execute(
-      `UPDATE employees SET Status = ? WHERE EmployeeID = ?`,
-      [Status, EmployeeID]
-    );
-
-    let contractID: number | null = null;
-
+    // Para dar de baja (Status = 0)
     if (Status === 0) {
+      // 1. Obtener información ANTES de hacer cualquier cambio
+      connection = await getConnection();
+      
+      const [employeeType] = await connection.execute(
+        `SELECT 
+          CASE 
+            WHEN EXISTS (SELECT 1 FROM basepersonnel WHERE EmployeeID = ?) THEN 'BASE'
+            WHEN EXISTS (SELECT 1 FROM projectpersonnel WHERE EmployeeID = ?) THEN 'PROJECT'
+          END as EmployeeType`,
+        [EmployeeID, EmployeeID]
+      );
+
+      const type = (employeeType as any[])[0]?.EmployeeType;
+      let contractID: number | null = null;
+      let projectPersonnelID: number | null = null;
+
+      // 2. Obtener el contractID del contrato activo (Status = 1)
       if (type === 'PROJECT') {
         const [pp] = await connection.execute(
           `SELECT ProjectPersonnelID FROM projectpersonnel WHERE EmployeeID = ?`,
           [EmployeeID]
         );
-
-        const projectPersonnelID = (pp as any[])[0]?.ProjectPersonnelID;
-
+        
+        projectPersonnelID = (pp as any[])[0]?.ProjectPersonnelID;
+        
         if (projectPersonnelID) {
           const [contract] = await connection.execute(
             `SELECT ContractID FROM projectcontracts 
@@ -374,57 +443,87 @@ export async function PUT(request: NextRequest) {
              LIMIT 1`,
             [projectPersonnelID]
           );
-
+          
           if ((contract as any[]).length > 0) {
             contractID = (contract as any[])[0].ContractID;
-            await connection.execute(
-              `UPDATE projectcontracts SET Status = 0 WHERE ContractID = ?`,
-              [contractID]
-            );
-          } else {
-            const [insert] = await connection.execute(
-              `INSERT INTO projectcontracts (ProjectPersonnelID, Status) VALUES (?, 0)`,
-              [projectPersonnelID]
-            );
-            contractID = (insert as any).insertId;
           }
         }
       }
 
-      if (type === 'BASE') {
-        const [existing] = await connection.execute(
-          `SELECT JobTerminationID FROM jobtermination WHERE EmployeeID = ?`,
-          [EmployeeID]
-        );
-
-        if ((existing as any[]).length === 0) {
-          await connection.execute(
-            `INSERT INTO jobtermination (EmployeeID) VALUES (?)`,
-            [EmployeeID]
-          );
-        }
-      }
-
-      await connection.commit();
-
+      // 3. Generar PDFs ANTES de actualizar el status (mientras el contrato está activo)
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
       const cookies = request.headers.get('cookie') || '';
-
+      
+      // IMPORTANTE: Pasar el contractID para que sepa qué contrato actualizar
       const pdfUrls = await generateAndSaveAllPDFsFixed(
         EmployeeID,
         baseUrl,
         cookies,
         type,
-        contractID
+        contractID,
+        projectPersonnelID  // Pasamos también el ProjectPersonnelID por si acaso
       );
 
-      return NextResponse.json({
-        success: true,
-        message: 'EMPLEADO DADO DE BAJA',
-        ...pdfUrls
-      });
+      // 4. Ahora sí, actualizar los status (después de generar PDFs)
+      await connection.beginTransaction();
+      
+      try {
+        // Actualizar status del empleado
+        await connection.execute(
+          `UPDATE employees SET Status = ? WHERE EmployeeID = ?`,
+          [Status, EmployeeID]
+        );
 
+        if (type === 'PROJECT' && contractID) {
+          // Actualizar el contrato específico a Status = 0
+          await connection.execute(
+            `UPDATE projectcontracts SET Status = 0 WHERE ContractID = ?`,
+            [contractID]
+          );
+        }
+
+        if (type === 'BASE') {
+          const [existing] = await connection.execute(
+            `SELECT JobTerminationID FROM jobtermination WHERE EmployeeID = ?`,
+            [EmployeeID]
+          );
+
+          if ((existing as any[]).length === 0) {
+            await connection.execute(
+              `INSERT INTO jobtermination (EmployeeID) VALUES (?)`,
+              [EmployeeID]
+            );
+          }
+        }
+
+        await connection.commit();
+        
+        return NextResponse.json({
+          success: true,
+          message: 'EMPLEADO DADO DE BAJA',
+          ...pdfUrls
+        });
+        
+      } catch (dbError) {
+        await connection.rollback();
+        throw dbError;
+      }
+      
     } else {
+      // Reactivación (Status = 1)
+      connection = await getConnection();
+      
+      const [employeeType] = await connection.execute(
+        `SELECT 
+          CASE 
+            WHEN EXISTS (SELECT 1 FROM basepersonnel WHERE EmployeeID = ?) THEN 'BASE'
+            WHEN EXISTS (SELECT 1 FROM projectpersonnel WHERE EmployeeID = ?) THEN 'PROJECT'
+          END as EmployeeType`,
+        [EmployeeID, EmployeeID]
+      );
+
+      const type = (employeeType as any[])[0]?.EmployeeType;
+
       if (type === 'PROJECT') {
         await connection.rollback();
         return NextResponse.json({
@@ -457,7 +556,13 @@ export async function PUT(request: NextRequest) {
     console.error(error);
     return NextResponse.json({ success: false, message: 'Error interno del servidor' }, { status: 500 });
   } finally {
-    if (connection) await connection.release();
+    if (connection) {
+      try {
+        await connection.release();
+      } catch (error) {
+        console.error('Error al cerrar la conexión:', error);
+      }
+    }
   }
 }
 
@@ -686,13 +791,16 @@ async function generateAndSaveAllPDFsFixed(
   baseUrl: string,
   cookies: string,
   employeeType: string,
-  contractID: number | null
+  contractID: number | null,
+  projectPersonnelID?: number | null  // Nuevo parámetro opcional
 ) {
   const formatos: FormatoPDF[] = ['FT-RH-12', 'FT-RH-13', 'FT-RH-14'];
   const result: any = {};
 
   for (const formato of formatos) {
     const url = `${baseUrl}/api/download/pdf/${formato}?empleadoId=${employeeId}&save=1`;
+    
+    console.log(`Generando ${formato} para empleado ${employeeId} (Status aún activo)`);
 
     const response = await fetch(url, {
       headers: { Cookie: cookies }
@@ -702,25 +810,36 @@ async function generateAndSaveAllPDFsFixed(
 
     if (data.success && data.fileUrl) {
       const fieldName = fieldMap[formato];
-      const connection = await getConnection();
-
+      let updateConnection = null;
+      
       try {
+        updateConnection = await getConnection();
+        
         if (employeeType === 'PROJECT' && contractID) {
-          await connection.execute(
+          // Actualizar el contrato específico (que aún tiene Status = 1 en este momento)
+          await updateConnection.execute(
             `UPDATE projectcontracts SET ${fieldName} = ? WHERE ContractID = ?`,
             [data.fileUrl, contractID]
           );
+          console.log(`${formato} guardado para ContractID: ${contractID}`);
         } else if (employeeType === 'BASE') {
-          await connection.execute(
+          await updateConnection.execute(
             `UPDATE jobtermination SET ${fieldName} = ? WHERE EmployeeID = ?`,
             [data.fileUrl, employeeId]
           );
+          console.log(`${formato} guardado para EmployeeID: ${employeeId}`);
         }
+        
+        result[fieldName] = data.fileUrl;
+      } catch (error) {
+        console.error(`Error guardando ${formato}:`, error);
       } finally {
-        await connection.release();
+        if (updateConnection) {
+          await updateConnection.release();
+        }
       }
-
-      result[fieldName] = data.fileUrl;
+    } else {
+      console.warn(`No se pudo generar ${formato}:`, data.message || 'Error desconocido');
     }
   }
 
