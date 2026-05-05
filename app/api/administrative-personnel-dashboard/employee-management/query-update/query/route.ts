@@ -70,44 +70,48 @@ export async function GET(request: NextRequest) {
     `);
 
     // 2. Obtener personal de proyecto - UN SOLO REGISTRO POR EMPLEADO
-    // Usamos una subconsulta para obtener el contrato más reciente (Status=1 tiene prioridad)
+    // Usamos una subconsulta para obtener el contrato más reciente (muestra el ultimo contrato (registro de la tabla projectcontracts))
     const [projectEmployees] = await connection.execute(`
       SELECT 
-        e.EmployeeID,
-        e.Status as EmployeeStatus,
-        pp.ProjectPersonnelID,
-        pp.FirstName,
-        pp.LastName,
-        pp.MiddleName,
-        COALESCE(p.NameProject, '') as ProjectName,
-        pc.ProjectID,
-        pc.Position,
-        pc.Salary,
-        pc.WorkSchedule,
-        COALESCE(ppi.RFC, '') as RFC,
-        COALESCE(ppi.CURP, '') as CURP,
-        COALESCE(ppi.NSS, '') as NSS,
-        COALESCE(ppi.Email, '') as Email,
-        COALESCE(ppi.Phone, '') as Phone,
-        pc.ContractFileURL,
-        pc.WarningFileURL,
-        pc.LetterFileURL,
-        pc.AgreementFileURL,
-        pc.ContractID
-      FROM projectpersonnel pp
-      INNER JOIN employees e ON pp.EmployeeID = e.EmployeeID
-      LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
-      LEFT JOIN (
-        SELECT 
-          pc1.*,
-          ROW_NUMBER() OVER (
+    e.EmployeeID,
+    e.Status as EmployeeStatus,
+    pp.ProjectPersonnelID,
+    pp.FirstName,
+    pp.LastName,
+    pp.MiddleName,
+    COALESCE(p.NameProject, '') as ProjectName,
+    pc.ProjectID,
+    pc.Position,
+    pc.Salary,
+    pc.WorkSchedule,
+    COALESCE(ppi.RFC, '') as RFC,
+    COALESCE(ppi.CURP, '') as CURP,
+    COALESCE(ppi.NSS, '') as NSS,
+    COALESCE(ppi.Email, '') as Email,
+    COALESCE(ppi.Phone, '') as Phone,
+    pc.ContractFileURL,
+    pc.WarningFileURL,
+    pc.LetterFileURL,
+    pc.AgreementFileURL,
+    pc.ContractID
+FROM projectpersonnel pp
+INNER JOIN employees e ON pp.EmployeeID = e.EmployeeID
+LEFT JOIN projectpersonnelpersonalinfo ppi 
+    ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
+LEFT JOIN (
+    SELECT 
+        pc1.*,
+        ROW_NUMBER() OVER (
             PARTITION BY pc1.ProjectPersonnelID 
-            ORDER BY CASE WHEN pc1.Status = 1 THEN 0 ELSE 1 END
-          ) as rn
-        FROM projectcontracts pc1
-      ) pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID AND pc.rn = 1
-      LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
-      ORDER BY e.EmployeeID
+            ORDER BY pc1.ContractID DESC
+        ) as rn
+    FROM projectcontracts pc1
+) pc 
+    ON pp.ProjectPersonnelID = pc.ProjectPersonnelID 
+    AND pc.rn = 1
+LEFT JOIN projects p 
+    ON pc.ProjectID = p.ProjectID
+ORDER BY e.EmployeeID;
     `);
 
     // Construir arrays de empleados con claves únicas
