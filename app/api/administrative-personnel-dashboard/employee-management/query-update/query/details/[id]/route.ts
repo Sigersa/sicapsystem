@@ -191,10 +191,9 @@ export async function GET(
         const [activeContractRows] = await connection.execute(`
           SELECT 
             ContractID, SalaryIMSS, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL,
-            Position, Salary, WorkSchedule, ProjectID, Status, StartDate
+            Position, Salary, WorkSchedule, ProjectID, Status
           FROM projectcontracts
           WHERE ProjectPersonnelID = ? AND Status = 1
-          ORDER BY StartDate DESC
           LIMIT 1
         `, [projectPersonnelId]);
         
