@@ -51,17 +51,18 @@ export async function GET(request: NextRequest) {
           pp.LastName,
           pp.MiddleName,
           pd.*,
-          DATE_FORMAT(pc.StartDate, '%Y/%m/%d') AS StartDate,
+          DATE_FORMAT(pr.StartDate, '%Y/%m/%d') AS StartDate,
           pc.Position,
           pc.WorkSchedule,
           pc.Salary,
           pr.NameProject,
-          pp.ProjectPersonnelID
+          pp.ProjectPersonnelID,
+          pc.Status
         FROM projectpersonnel pp
         LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
         LEFT JOIN projectpersonneldocumentation pd ON pp.ProjectPersonnelID = pd.ProjectPersonnelID
         LEFT JOIN projects pr ON pr.ProjectID = pc.ProjectID
-        WHERE pp.EmployeeID = ?
+        WHERE pp.EmployeeID = ? AND pc.Status = 1
       `, [empleadoId]);
 
       if (!rows.length) {
