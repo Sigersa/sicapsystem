@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
           pc1.*,
           ROW_NUMBER() OVER (
             PARTITION BY pc1.ProjectPersonnelID 
-            ORDER BY CASE WHEN pc1.Status = 1 THEN 0 ELSE 1 END, pc1.StartDate DESC
+            ORDER BY CASE WHEN pc1.Status = 1 THEN 0 ELSE 1 END
           ) as rn
         FROM projectcontracts pc1
       ) pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID AND pc.rn = 1
@@ -206,15 +206,15 @@ export async function GET(request: NextRequest) {
         pc.ProjectID,
         p.NameProject as ProjectName,
         pc.Position,
-        pc.StartDate,
-        pc.EndDate,
+        p.StartDate,
+        p.EndDate,
         pc.Status,
         pc.CDFileURL,
         pc.CRFileURL,
         pc.OFFileURL
       FROM projectcontracts pc
       LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
-      ORDER BY pc.ProjectPersonnelID, pc.StartDate DESC
+      ORDER BY pc.ProjectPersonnelID, p.StartDate DESC
     `);
 
     // Organizar contratos por ProjectPersonnelID
@@ -378,12 +378,12 @@ export async function PUT(request: NextRequest) {
           if ((contract as any[]).length > 0) {
             contractID = (contract as any[])[0].ContractID;
             await connection.execute(
-              `UPDATE projectcontracts SET Status = 0, EndDate = CURDATE() WHERE ContractID = ?`,
+              `UPDATE projectcontracts SET Status = 0 WHERE ContractID = ?`,
               [contractID]
             );
           } else {
             const [insert] = await connection.execute(
-              `INSERT INTO projectcontracts (ProjectPersonnelID, Status, EndDate) VALUES (?, 0, CURDATE())`,
+              `INSERT INTO projectcontracts (ProjectPersonnelID, Status) VALUES (?, 0)`,
               [projectPersonnelID]
             );
             contractID = (insert as any).insertId;
@@ -626,8 +626,8 @@ async function getEmployeeInfo(connection: any, employeeId: number) {
         pp.MiddleName,
         pc.Position,
         pc.StartDate,
-        pc.EndDate,
-        TIMESTAMPDIFF(MONTH, pc.StartDate, CURDATE()) AS meses_trabajados,
+        pr.EndDate,
+        TIMESTAMPDIFF(MONTH, pr.StartDate, CURDATE()) AS meses_trabajados,
         pr.ProjectAddress
       FROM projectpersonnel pp
       LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID AND pc.Status = 1
