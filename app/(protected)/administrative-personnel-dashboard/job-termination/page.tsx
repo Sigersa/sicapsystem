@@ -1,4 +1,3 @@
-// app/administrative-personnel-dashboard/job-termination/page.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -29,12 +28,9 @@ interface Employee {
   Status: number;
   tipo: EmployeeType;
   uniqueKey: string;
-  // Campos BASE
   BasePersonnelID?: number;
-  // Campos PROJECT
   ProjectPersonnelID?: number;
   EmployeeStatus?: number;
-  // Campos comunes
   FirstName: string;
   LastName: string;
   MiddleName: string | null;
@@ -50,13 +46,11 @@ interface Employee {
   Email: string;
   Phone: string;
   ContractID?: number;
-  // Documentos de terminación para BASE
   TerminationDocuments?: {
     CDFileURL?: string | null;
     CRFileURL?: string | null;
     OFFileURL?: string | null;
   };
-  // Contratos históricos para PROJECT
   Contracts?: ContractDocument[];
 }
 
@@ -150,7 +144,6 @@ export default function EmployeesListPage() {
     employee: null
   });
 
-  // Estado para controlar qué fila de contratos está expandida
   const [expandedContract, setExpandedContract] = useState<number | null>(null);
 
   useEffect(() => {
@@ -213,6 +206,22 @@ export default function EmployeesListPage() {
     }
   };
 
+  // Función para obtener la URL guardada de un formato específico
+  const getDocumentUrl = async (empleadoId: string, formato: FormatoActivo): Promise<string | null> => {
+    try {
+      const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?action=getDocumentUrl&employeeId=${empleadoId}&formato=${formato}`);
+      const data = await response.json();
+      
+      if (data.success && data.fileUrl) {
+        return data.fileUrl;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error al obtener URL del documento:', error);
+      return null;
+    }
+  };
+
   const getSavedDocumentUrls = async (empleadoId: string): Promise<any> => {
     try {
       const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?action=getDocumentUrls&employeeId=${empleadoId}`);
@@ -237,12 +246,12 @@ export default function EmployeesListPage() {
       puesto,
       tipoPersonal,
       fechaTerminacion: new Date().toLocaleDateString('es-MX'),
-      ftRh12PdfUrl: savedUrls?.ftRh12PdfUrl || `/api/download/pdf/FT-RH-12?empleadoId=${empleadoId}&preview=1`,
-      ftRh12PdfDownloadUrl: savedUrls?.ftRh12PdfUrl || `/api/download/pdf/FT-RH-12?empleadoId=${empleadoId}`,
-      ftRh13PdfUrl: savedUrls?.ftRh13PdfUrl || `/api/download/pdf/FT-RH-13?empleadoId=${empleadoId}&preview=1`,
-      ftRh13PdfDownloadUrl: savedUrls?.ftRh13PdfUrl || `/api/download/pdf/FT-RH-13?empleadoId=${empleadoId}`,
-      ftRh14PdfUrl: savedUrls?.ftRh14PdfUrl || `/api/download/pdf/FT-RH-14?empleadoId=${empleadoId}&preview=1`,
-      ftRh14PdfDownloadUrl: savedUrls?.ftRh14PdfUrl || `/api/download/pdf/FT-RH-14?empleadoId=${empleadoId}`,
+      ftRh12PdfUrl: savedUrls?.ftRh12PdfUrl || null,
+      ftRh12PdfDownloadUrl: savedUrls?.ftRh12PdfUrl || null,
+      ftRh13PdfUrl: savedUrls?.ftRh13PdfUrl || null,
+      ftRh13PdfDownloadUrl: savedUrls?.ftRh13PdfUrl || null,
+      ftRh14PdfUrl: savedUrls?.ftRh14PdfUrl || null,
+      ftRh14PdfDownloadUrl: savedUrls?.ftRh14PdfUrl || null,
       ftRh12WordUrl: `/api/download/edit/FT-RH-12?empleadoId=${empleadoId}`,
       ftRh13WordUrl: `/api/download/edit/FT-RH-13?empleadoId=${empleadoId}`,
       ftRh14WordUrl: `/api/download/edit/FT-RH-14?empleadoId=${empleadoId}`
@@ -415,7 +424,12 @@ export default function EmployeesListPage() {
     setReactivationModal({ show: false, employee: null });
   };
 
-  const handleDownloadFile = async (url: string, filename: string) => {
+  const handleDownloadFile = async (url: string | null | undefined, filename: string) => {
+    if (!url) {
+      setError('No hay archivo disponible para descargar');
+      return;
+    }
+    
     try {
       setDownloading(true);
       
@@ -555,6 +569,7 @@ export default function EmployeesListPage() {
   };
 
   const siguienteFormato = () => {
+    setPdfLoading(true);
     if (formatoActivo === 'FT-RH-12') {
       setFormatoActivo('FT-RH-13');
     } else if (formatoActivo === 'FT-RH-13') {
@@ -563,6 +578,7 @@ export default function EmployeesListPage() {
   };
 
   const anteriorFormato = () => {
+    setPdfLoading(true);
     if (formatoActivo === 'FT-RH-14') {
       setFormatoActivo('FT-RH-13');
     } else if (formatoActivo === 'FT-RH-13') {
@@ -865,18 +881,18 @@ export default function EmployeesListPage() {
                               <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-12 (PDF)</span>
                             </div>
                             <div className="flex gap-2">
-                              <a
-                                href={terminationDetails.ftRh12PdfUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                                title="Vista previa"
-                              >
-                                <Eye className="h-4 w-4 text-gray-700" />
-                              </a>
+                              {terminationDetails.ftRh12PdfUrl && (
+                                <button
+                                  onClick={() => window.open(terminationDetails.ftRh12PdfUrl!, '_blank')}
+                                  className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                  title="Vista previa"
+                                >
+                                  <Eye className="h-4 w-4 text-gray-700" />
+                                </button>
+                              )}
                               <button
-                                onClick={() => handleDownloadFile(terminationDetails.ftRh12PdfDownloadUrl || '', `FT-RH-12_${terminationDetails.empleadoId}.pdf`)}
-                                disabled={downloading}
+                                onClick={() => handleDownloadFile(terminationDetails.ftRh12PdfDownloadUrl, `FT-RH-12_${terminationDetails.empleadoId}.pdf`)}
+                                disabled={downloading || !terminationDetails.ftRh12PdfDownloadUrl}
                                 className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Descargar PDF"
                               >
@@ -911,18 +927,18 @@ export default function EmployeesListPage() {
                               <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-13 (PDF)</span>
                             </div>
                             <div className="flex gap-2">
-                              <a
-                                href={terminationDetails.ftRh13PdfUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                                title="Vista previa"
-                              >
-                                <Eye className="h-4 w-4 text-gray-700" />
-                              </a>
+                              {terminationDetails.ftRh13PdfUrl && (
+                                <button
+                                  onClick={() => window.open(terminationDetails.ftRh13PdfUrl!, '_blank')}
+                                  className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                  title="Vista previa"
+                                >
+                                  <Eye className="h-4 w-4 text-gray-700" />
+                                </button>
+                              )}
                               <button
-                                onClick={() => handleDownloadFile(terminationDetails.ftRh13PdfDownloadUrl || '', `FT-RH-13_${terminationDetails.empleadoId}.pdf`)}
-                                disabled={downloading}
+                                onClick={() => handleDownloadFile(terminationDetails.ftRh13PdfDownloadUrl, `FT-RH-13_${terminationDetails.empleadoId}.pdf`)}
+                                disabled={downloading || !terminationDetails.ftRh13PdfDownloadUrl}
                                 className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Descargar PDF"
                               >
@@ -957,18 +973,18 @@ export default function EmployeesListPage() {
                               <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-14 (PDF)</span>
                             </div>
                             <div className="flex gap-2">
-                              <a
-                                href={terminationDetails.ftRh14PdfUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                                title="Vista previa"
-                              >
-                                <Eye className="h-4 w-4 text-gray-700" />
-                              </a>
+                              {terminationDetails.ftRh14PdfUrl && (
+                                <button
+                                  onClick={() => window.open(terminationDetails.ftRh14PdfUrl!, '_blank')}
+                                  className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                  title="Vista previa"
+                                >
+                                  <Eye className="h-4 w-4 text-gray-700" />
+                                </button>
+                              )}
                               <button
-                                onClick={() => handleDownloadFile(terminationDetails.ftRh14PdfDownloadUrl || '', `FT-RH-14_${terminationDetails.empleadoId}.pdf`)}
-                                disabled={downloading}
+                                onClick={() => handleDownloadFile(terminationDetails.ftRh14PdfDownloadUrl, `FT-RH-14_${terminationDetails.empleadoId}.pdf`)}
+                                disabled={downloading || !terminationDetails.ftRh14PdfDownloadUrl}
                                 className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Descargar PDF"
                               >
@@ -1058,25 +1074,31 @@ export default function EmployeesListPage() {
                 </div>
                 
                 <div className="flex-1 border border-gray-300 rounded-lg overflow-hidden relative bg-gray-50">
-                  {pdfLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-                      <div className="flex flex-col items-center">
-                        <div className="w-12 h-12 border-4 border-gray-300 border-t-[#3a6ea5] animate-spin rounded-full mb-3"></div>
-                        <p className="text-sm text-gray-600">Cargando vista previa...</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  <iframe
-                    src={
-                      formatoActivo === 'FT-RH-12' ? terminationDetails.ftRh12PdfUrl :
-                      formatoActivo === 'FT-RH-13' ? terminationDetails.ftRh13PdfUrl : 
-                      terminationDetails.ftRh14PdfUrl
+                  {(() => {
+                    let currentUrl = '';
+                    if (formatoActivo === 'FT-RH-12') {
+                      currentUrl = terminationDetails.ftRh12PdfUrl || '';
+                    } else if (formatoActivo === 'FT-RH-13') {
+                      currentUrl = terminationDetails.ftRh13PdfUrl || '';
+                    } else {
+                      currentUrl = terminationDetails.ftRh14PdfUrl || '';
                     }
-                    className="w-full h-full border-0"
-                    onLoad={() => setPdfLoading(false)}
-                    title={`Vista previa del ${formatoActivo}`}
-                  />
+                    
+                    return currentUrl ? (
+                      <iframe
+                        src={currentUrl}
+                        className="w-full h-full border-0"
+                        onLoad={() => setPdfLoading(false)}
+                        onError={() => setPdfLoading(false)}
+                        title={`Vista previa del ${formatoActivo}`}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-gray-500">
+                        <FileText className="h-12 w-12 mb-4" />
+                        <p className="text-sm">No hay documento disponible</p>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -1215,6 +1237,7 @@ export default function EmployeesListPage() {
                               : 'No hay empleados registrados en el sistema'}
                           </p>
                         </div>
+                      
                       </td>
                     </tr>
                   ) : (
