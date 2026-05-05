@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
+import os from "os";
+import ConvertAPI from "convertapi";
 import { getConnection } from "@/lib/db";
 import { createReport } from "docx-templates";
+import { UTApi } from "uploadthing/server";
+
+const convertapi = new ConvertAPI(process.env.CONVERTAPI_SECRET!);
+const utapi = new UTApi();
 
 /* ================================
    FUNCIÓN SALARIO A LETRA (0–50000)
@@ -106,20 +112,42 @@ function salarioIMSSALetras(num: number): string {
 }
 
 /* ================================
-   FUNCIÓN PARA FORMATEAR FECHAS
+   FUNCIÓN PARA FORMATEAR FECHAS (CORREGIDA - SIN ZONA HORARIA)
 ================================== */
+function getMonthName(month: number): string {
+  const meses = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+  ];
+  return meses[month - 1];
+}
+
 function formatFecha(fecha: string): string {
   if (!fecha) return "";
-  try {
-    const d = new Date(fecha);
-    const dia = d.getDate().toString().padStart(2, "0");
-    const mes = new Intl.DateTimeFormat("es-MX", { month: "long" }).format(d);
-    const anio = d.getFullYear();
-    return `${dia} de ${mes} del ${anio}`;
-  } catch (error) {
-    console.warn("Error al formatear fecha:", error);
-    return fecha;
+  
+  // Si ya viene formateada de SQL (YYYY/MM/DD o YYYY-MM-DD)
+  let year: string, month: string, day: string;
+  
+  // Formato YYYY/MM/DD
+  if (fecha.includes('/')) {
+    const partes = fecha.split('/');
+    if (partes[0].length === 4) {
+      [year, month, day] = partes;
+      return `${parseInt(day)} de ${getMonthName(parseInt(month))} del ${year}`;
+    }
   }
+  
+  // Formato YYYY-MM-DD
+  if (fecha.includes('-')) {
+    const partes = fecha.split('-');
+    if (partes[0].length === 4) {
+      [year, month, day] = partes;
+      return `${parseInt(day)} de ${getMonthName(parseInt(month))} del ${year}`;
+    }
+  }
+  
+  // Si no se puede parsear, devolver la fecha original
+  return fecha;
 }
 
 /* ================================
@@ -160,6 +188,8 @@ function construirDireccionCompleta(
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const empleadoId = searchParams.get("empleadoId");
+  const isPreview = searchParams.get("preview") === "1";
+  const saveToUploadThing = searchParams.get("saveUploadThing") === "1";
 
   if (!empleadoId) {
     return NextResponse.json(
@@ -167,6 +197,15 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  const tempWordPath = path.join(
+    os.tmpdir(),
+    `FT-RH-02-${Date.now()}-${empleadoId}.docx`
+  );
+  const tempPdfPath = path.join(
+    os.tmpdir(),
+    `FT-RH-02-${Date.now()}-${empleadoId}.pdf`
+  );
 
   let connection;
 
@@ -191,6 +230,7 @@ export async function GET(request: NextRequest) {
     }
 
     const employee = employeeInfo[0];
+    let contractFileURL = "";
     let employeeData: any = {};
 
     // Obtener información según el tipo de empleado
@@ -211,18 +251,19 @@ export async function GET(request: NextRequest) {
           ppi.ZipCode,
           ppi.Nationality,
           ppi.Gender,
-          ppi.Birthdate,
+          DATE_FORMAT(ppi.Birthdate, '%Y/%m/%d') AS Birthdate,
           ppi.MaritalStatus,
           ppi.RFC,
           ppi.NSS,
           ppi.CURP,
-          pc.EndDate,
+          DATE_FORMAT(p.EndDate, '%Y/%m/%d') AS EndDate,
           pc.SalaryIMSS,
           pc.Position,
           pc.Salary,
           pc.WorkSchedule,
           pc.ProjectID,
-          DATE_FORMAT(pc.StartDate, '%Y-%m-%d') AS StartDate,
+          DATE_FORMAT(p.StartDate, '%Y/%m/%d') AS StartDate,
+          pc.ContractFileURL,
           p.NameProject,
           p.ProjectAddress,
           pb.BeneficiaryFirstName,
@@ -239,7 +280,7 @@ export async function GET(request: NextRequest) {
           ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
         LEFT JOIN projects p 
           ON p.ProjectID = pc.ProjectID
-        WHERE pp.EmployeeID = ?
+        WHERE pp.EmployeeID = ? AND pc.Status = 1
         `,
         [empleadoId]
       );
@@ -252,6 +293,7 @@ export async function GET(request: NextRequest) {
       }
 
       employeeData = rows[0];
+      contractFileURL = employeeData.ContractFileURL || "";
     } else {
       // Personal Base - CON CAMPOS SEPARADOS DE DIRECCIÓN
       const [rows] = await connection.query<any[]>(
@@ -273,14 +315,15 @@ export async function GET(request: NextRequest) {
           bpi.ZipCode,
           bpi.Nationality,
           bpi.Gender,
-          bpi.Birthdate,
+          DATE_FORMAT(bpi.Birthdate, '%Y/%m/%d') AS Birthdate,
           bpi.MaritalStatus,
           bpi.RFC,
           bpi.NSS,
           bpi.CURP,
-          bc.EndDate,
+          DATE_FORMAT(bc.EndDate, '%Y/%m/%d') AS EndDate,
           bc.SalaryIMSS,
-          DATE_FORMAT(bc.StartDate, '%Y-%m-%d') AS StartDate,
+          DATE_FORMAT(bc.StartDate, '%Y/%m/%d') AS StartDate,
+          bc.ContractFileURL,
           bb.BeneficiaryFirstName,
           bb.BeneficiaryLastName,
           bb.BeneficiaryMiddleName,
@@ -306,10 +349,36 @@ export async function GET(request: NextRequest) {
       }
 
       employeeData = rows[0];
+      contractFileURL = employeeData.ContractFileURL || "";
       
       // Agregar la dirección fija de SIGERSA para personal base
       employeeData.CompanyName = "SIGERSA INNOVACIONES S.A DE C.V.";
       employeeData.CompanyAddress = "AV. EL SAUZ 7, EL DEPOSITO, 42795 TLAHUELILPAN, HGO.";
+    }
+
+    // Si ya tenemos un PDF guardado y no estamos forzando la regeneración, retornarlo
+    if (contractFileURL && !saveToUploadThing) {
+      try {
+        const pdfResponse = await fetch(contractFileURL);
+        if (pdfResponse.ok) {
+          const pdfBuffer = await pdfResponse.arrayBuffer();
+          
+          const fileName = employee.EmployeeType === 'PROJECT'
+            ? `FT-RH-02-PROYECTO-${empleadoId}.pdf`
+            : `FT-RH-02-BASE-${empleadoId}.pdf`;
+
+          return new NextResponse(pdfBuffer, {
+            headers: {
+              "Content-Type": "application/pdf",
+              "Content-Disposition": isPreview
+                ? `inline; filename="${fileName}"`
+                : `attachment; filename="${fileName}"`,
+            },
+          });
+        }
+      } catch (error) {
+        console.warn("Error al obtener PDF existente, generando uno nuevo:", error);
+      }
     }
 
     // Procesar los datos del empleado
@@ -367,52 +436,161 @@ export async function GET(request: NextRequest) {
     const report = await createReport({
       template,
       data: {
-        NOMBRE_COMPLETO: nombreCompleto,
-        FECHA_DE_INGRESO: formatFecha(employeeData.StartDate),
-        FECHA_DE_NACIMIENTO_DEL_EMPLEADO: formatFecha(employeeData.Birthdate),
-        FECHA_TERMINO: formatFecha(employeeData.EndDate),
-        PUESTO_DEL_EMPLEADO: puesto,
-        MUNICIPIO_DEL_EMPLEADO: employeeData.Municipality || "",
-        NACIONALIDAD_DEL_EMPLEADO: employeeData.Nationality || "",
-        GENERO_DEL_EMPLEADO: employeeData.Gender || "",
-        ESTADO_CIVIL_DEL_EMPLEADO: employeeData.MaritalStatus || "",
-        RFC_DEL_EMPLEADO: employeeData.RFC || "",
-        NSS_DEL_EMPLEADO: employeeData.NSS || "",
-        CURP_DEL_EMPLEADO: employeeData.CURP || "",
-        DIRECCION_DEL_EMPLEADO: direccionCompleta || "",
-        NOMBRE_DEL_PROYECTO: employeeData.NameProject || employeeData.CompanyName || "",
-        DIRECCION_DEL_PROYECTO: employeeData.ProjectAddress || employeeData.CompanyAddress || "",
+        NOMBRE_COMPLETO: nombreCompleto || "NO ESPECIFICADO",
+        FECHA_DE_INGRESO: formatFecha(employeeData.StartDate) || "NO ESPECIFICADO",
+        FECHA_DE_NACIMIENTO_DEL_EMPLEADO: formatFecha(employeeData.Birthdate) || "NO ESPECIFICADO",
+        FECHA_TERMINO: formatFecha(employeeData.EndDate) || "NO ESPECIFICADO",
+        PUESTO_DEL_EMPLEADO: puesto || "NO ESPECIFICADO",
+        MUNICIPIO_DEL_EMPLEADO: employeeData.Municipality || "NO ESPECIFICADO",
+        NACIONALIDAD_DEL_EMPLEADO: employeeData.Nationality || "NO ESPECIFICADO",
+        GENERO_DEL_EMPLEADO: employeeData.Gender || "NO ESPECIFICADO",
+        ESTADO_CIVIL_DEL_EMPLEADO: employeeData.MaritalStatus || "NO ESPECIFICADO",
+        RFC_DEL_EMPLEADO: employeeData.RFC || "NO ESPECIFICADO",
+        NSS_DEL_EMPLEADO: employeeData.NSS || "NO ESPECIFICADO",
+        CURP_DEL_EMPLEADO: employeeData.CURP || "NO ESPECIFICADO",
+        DIRECCION_DEL_EMPLEADO: direccionCompleta || "NO ESPECIFICADO",
+        NOMBRE_DEL_PROYECTO: employeeData.NameProject || employeeData.CompanyName || "NO ESPECIFICADO",
+        DIRECCION_DEL_PROYECTO: employeeData.ProjectAddress || employeeData.CompanyAddress || "NO ESPECIFICADO",
         SALARIO_IMSS_DEL_EMPLEADO: salarioNumero.toFixed(2),
-        SALARIO_IMSS_LETRA: SALARIO_IMSS_LETRA,
+        SALARIO_IMSS_LETRA: SALARIO_IMSS_LETRA || "NO ESPECIFICADO",
         NOMBRE_COMPLETO_B: nombreCompletoB || "NO ESPECIFICADO",
         PARENTESCO_B: employeeData.Relationship || "NO ESPECIFICADO",
         PORCENTAGE_B: employeeData.Percentage ? employeeData.Percentage.toString() : "0",
-        FECHA_GENERACION: new Date().toLocaleDateString("es-MX"),
+        FECHA_GENERACION: new Date().toLocaleDateString("es-MX", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric"
+        }),
       },
       cmdDelimiter: ["[[", "]]"],
     });
 
-    const fileBuffer = Buffer.from(report);
+    const wordBuffer = Buffer.from(report);
+
+    // Guardar Word temporal
+    fs.writeFileSync(tempWordPath, wordBuffer);
+
+    // Convertir a PDF usando ConvertAPI
+    const result = await convertapi.convert("pdf", {
+      File: tempWordPath,
+      PageRange: "1-10",
+      PdfResolution: "300",
+    });
+
+    // Descargar el PDF
+    const pdfResponse = await fetch(result.file.url);
+    const pdfBuffer = await pdfResponse.arrayBuffer();
+
+    // Guardar temporalmente
+    fs.writeFileSync(tempPdfPath, Buffer.from(pdfBuffer));
+
+    let pdfUrl = "";
+
+    // Subir a UploadThing si se solicita
+    if (saveToUploadThing) {
+      try {
+        const fileName = `FT-RH-02-${nombreCompleto.replace(/\s+/g, '_')}-${Date.now()}.pdf`;
+        const file = new File([Buffer.from(pdfBuffer)], fileName, { type: 'application/pdf' });
+        
+        const uploadResult = await utapi.uploadFiles(file);
+        
+        if (uploadResult && uploadResult.data && uploadResult.data.url) {
+          pdfUrl = uploadResult.data.url;
+          
+          // Actualizar el campo ContractFileURL en la base de datos
+          if (employee.EmployeeType === 'PROJECT') {
+            await connection.execute(
+              `UPDATE projectcontracts SET ContractFileURL = ? WHERE ProjectPersonnelID = (SELECT ProjectPersonnelID FROM projectpersonnel WHERE EmployeeID = ?)`,
+              [pdfUrl, empleadoId]
+            );
+          } else {
+            await connection.execute(
+              `UPDATE basecontracts SET ContractFileURL = ? WHERE BasePersonnelID = (SELECT BasePersonnelID FROM basepersonnel WHERE EmployeeID = ?)`,
+              [pdfUrl, empleadoId]
+            );
+          }
+          
+          console.log(`PDF subido a UploadThing: ${pdfUrl}`);
+        }
+      } catch (uploadError) {
+        console.error("Error al subir PDF a UploadThing:", uploadError);
+      }
+    }
 
     // Nombre del archivo con tipo de empleado e ID
     const fileName =
       employee.EmployeeType === "PROJECT"
-        ? `FT-RH-02-PROYECTO-${empleadoId}.docx`
-        : `FT-RH-02-BASE-${empleadoId}.docx`;
+        ? `FT-RH-02-PROYECTO-${empleadoId}.pdf`
+        : `FT-RH-02-BASE-${empleadoId}.pdf`;
 
-    return new NextResponse(fileBuffer, {
+    return new NextResponse(Buffer.from(pdfBuffer), {
       headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Type": "application/pdf",
+        "Content-Disposition": isPreview
+          ? `inline; filename="${fileName}"`
+          : `attachment; filename="${fileName}"`,
       },
     });
   } catch (error: any) {
-    console.error(error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Error al generar FT-RH-02 PDF:", error);
+    return NextResponse.json(
+      { error: error.message || "Error al generar PDF" },
+      { status: 500 }
+    );
   } finally {
     if (connection) {
       connection.release();
     }
+    // Limpiar archivos temporales
+    try {
+      if (fs.existsSync(tempWordPath)) {
+        fs.unlinkSync(tempWordPath);
+      }
+      if (fs.existsSync(tempPdfPath)) {
+        fs.unlinkSync(tempPdfPath);
+      }
+    } catch (cleanupError) {
+      console.warn("Error al limpiar archivos temporales:", cleanupError);
+    }
+  }
+}
+
+// Endpoint para generar y guardar el PDF
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { empleadoId } = body;
+
+    if (!empleadoId) {
+      return NextResponse.json(
+        { error: "Se requiere el ID del empleado" },
+        { status: 400 }
+      );
+    }
+
+    // Llamar al endpoint GET con el parámetro saveUploadThing
+    const pdfResponse = await fetch(
+      `${request.nextUrl.origin}/api/download/pdf/FT-RH-02?empleadoId=${empleadoId}&saveUploadThing=1`
+    );
+
+    if (!pdfResponse.ok) {
+      const error = await pdfResponse.json().catch(() => ({ error: "Error desconocido" }));
+      return NextResponse.json(
+        { error: error.error || "Error al generar el PDF" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "PDF generado y guardado exitosamente",
+      fileName: `FT-RH-02-${empleadoId}.pdf`,
+    });
+  } catch (error: any) {
+    console.error("Error en POST FT-RH-02:", error);
+    return NextResponse.json(
+      { error: error.message || "Error al procesar la solicitud" },
+      { status: 500 }
+    );
   }
 }
