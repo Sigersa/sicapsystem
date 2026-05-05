@@ -84,12 +84,14 @@ export async function GET(request: NextRequest) {
           pp.FirstName,
           pp.LastName,
           pp.MiddleName,
-          DATE_FORMAT(pc.StartDate, '%Y/%m/%d') AS StartDate,
+          DATE_FORMAT(pr.StartDate, '%Y/%m/%d') AS StartDate,
           pc.Position,
-          pc.AgreementFileURL
+          pc.Status
         FROM projectpersonnel pp
         LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
-        WHERE pp.EmployeeID = ?
+        LEFT JOIN projects pr 
+          ON pr.ProjectID = pc.ProjectID
+        WHERE pp.EmployeeID = ? AND pc.Status = 1
       `,
         [empleadoId]
       );
