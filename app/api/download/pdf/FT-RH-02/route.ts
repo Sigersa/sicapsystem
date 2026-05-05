@@ -110,21 +110,42 @@ function salarioIMSSALetras(num: number): string {
 }
 
 /* ================================
-   FUNCIÓN PARA FORMATEAR FECHAS
+   FUNCIÓN PARA FORMATEAR FECHAS (CORREGIDA - SIN ZONA HORARIA)
 ================================== */
+function getMonthName(month: number): string {
+  const meses = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+  ];
+  return meses[month - 1];
+}
+
 function formatFecha(fecha: string): string {
   if (!fecha) return "";
-  try {
-    const d = new Date(fecha);
-    if (isNaN(d.getTime())) return fecha;
-    const dia = d.getDate().toString().padStart(2, "0");
-    const mes = new Intl.DateTimeFormat("es-MX", { month: "long" }).format(d);
-    const anio = d.getFullYear();
-    return `${dia} de ${mes} del ${anio}`;
-  } catch (error) {
-    console.warn("Error al formatear fecha:", error);
-    return fecha;
+  
+  // Si ya viene formateada de SQL (YYYY/MM/DD o YYYY-MM-DD)
+  let year: string, month: string, day: string;
+  
+  // Formato YYYY/MM/DD
+  if (fecha.includes('/')) {
+    const partes = fecha.split('/');
+    if (partes[0].length === 4) {
+      [year, month, day] = partes;
+      return `${parseInt(day)} de ${getMonthName(parseInt(month))} del ${year}`;
+    }
   }
+  
+  // Formato YYYY-MM-DD
+  if (fecha.includes('-')) {
+    const partes = fecha.split('-');
+    if (partes[0].length === 4) {
+      [year, month, day] = partes;
+      return `${parseInt(day)} de ${getMonthName(parseInt(month))} del ${year}`;
+    }
+  }
+  
+  // Si no se puede parsear, devolver la fecha original
+  return fecha;
 }
 
 /* ================================
@@ -227,15 +248,15 @@ export async function GET(request: NextRequest) {
           ppi.ZipCode,
           ppi.Nationality,
           ppi.Gender,
-          ppi.Birthdate,
+          DATE_FORMAT(ppi.Birthdate, '%Y/%m/%d') AS Birthdate,
           ppi.MaritalStatus,
           ppi.RFC,
           ppi.NSS,
           ppi.CURP,
-          pc.EndDate,
+          DATE_FORMAT(pr.EndDate, '%Y/%m/%d') AS EndDate,
           pc.SalaryIMSS,
           pc.Position,
-          DATE_FORMAT(pc.StartDate, '%Y-%m-%d') AS StartDate,
+          DATE_FORMAT(pr.StartDate, '%Y/%m/%d') AS StartDate,
           pc.ContractFileURL,
           pr.NameProject,
           pr.ProjectAddress,
@@ -253,7 +274,7 @@ export async function GET(request: NextRequest) {
           ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
         LEFT JOIN projects pr 
           ON pr.ProjectID = pc.ProjectID
-        WHERE pp.EmployeeID = ?
+        WHERE pp.EmployeeID = ? AND pc.Status = 1
       `,
         [empleadoId]
       );
@@ -284,15 +305,15 @@ export async function GET(request: NextRequest) {
           bpi.ZipCode,
           bpi.Nationality,
           bpi.Gender,
-          bpi.Birthdate,
+          DATE_FORMAT(bpi.Birthdate, '%Y/%m/%d') AS Birthdate,
           bpi.MaritalStatus,
           bpi.RFC,
           bpi.NSS,
           bpi.CURP,
-          bc.EndDate,
+          DATE_FORMAT(bc.EndDate, '%Y/%m/%d') AS EndDate,
           bc.SalaryIMSS,
           bp.Position,
-          DATE_FORMAT(bc.StartDate, '%Y-%m-%d') AS StartDate,
+          DATE_FORMAT(bc.StartDate, '%Y/%m/%d') AS StartDate,
           bc.ContractFileURL,
           bb.BeneficiaryFirstName,
           bb.BeneficiaryLastName,
