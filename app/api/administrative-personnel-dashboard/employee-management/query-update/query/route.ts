@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
           pc1.*,
           ROW_NUMBER() OVER (
             PARTITION BY pc1.ProjectPersonnelID 
-            ORDER BY CASE WHEN pc1.Status = 1 THEN 0 ELSE 1 END, pc1.StartDate DESC
+            ORDER BY CASE WHEN pc1.Status = 1 THEN 0 ELSE 1 END
           ) as rn
         FROM projectcontracts pc1
       ) pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID AND pc.rn = 1
