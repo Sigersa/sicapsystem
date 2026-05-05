@@ -878,135 +878,162 @@ export default function EmployeesListPage() {
   };
 
   const handleSaveChanges = async () => {
-    if (!selectedEmployee) return;
+  if (!selectedEmployee) return;
+  
+  // Validación para empleados de PROYECTO activos - no permitir cambios laborales
+  if (selectedEmployee.tipo === 'PROJECT' && selectedEmployee.Status === 1) {
+    const laboralFieldsChanged = 
+      editFormData.puesto !== selectedEmployee.Position ||
+      editFormData.salario !== selectedEmployee.Salary?.toString() ||
+      editFormData.horario !== selectedEmployee.WorkSchedule ||
+      editFormData.proyectoId !== (selectedEmployee as ProjectEmployee).ProjectID?.toString() ||
+      editFormData.jefeDirectoId !== '' ||
+      editFormData.salaryIMSS !== (employeeDetails?.contractInfo?.salaryIMSS?.toString() || '');
     
-    // Validación para empleados de PROYECTO activos - no permitir cambios laborales
-    if (selectedEmployee.tipo === 'PROJECT' && selectedEmployee.Status === 1) {
-      const laboralFieldsChanged = 
-        editFormData.puesto !== selectedEmployee.Position ||
-        editFormData.salario !== selectedEmployee.Salary?.toString() ||
-        editFormData.horario !== selectedEmployee.WorkSchedule ||
-        editFormData.proyectoId !== (selectedEmployee as ProjectEmployee).ProjectID?.toString() ||
-        editFormData.jefeDirectoId !== '' ||
-        editFormData.salaryIMSS !== (employeeDetails?.contractInfo?.salaryIMSS?.toString() || '');
-      
-      if (laboralFieldsChanged) {
-        setError('NO SE PUEDEN GUARDAR CAMBIOS LABORALES. EL EMPLEADO DE PROYECTO ESTÁ ACTIVO. PRIMERO DEBE REALIZAR LA BAJA.');
+    if (laboralFieldsChanged) {
+      setError('NO SE PUEDEN GUARDAR CAMBIOS LABORALES. EL EMPLEADO DE PROYECTO ESTÁ ACTIVO. PRIMERO DEBE REALIZAR LA BAJA.');
+      return;
+    }
+  }
+  
+  try {
+    setSavingEdit(true);
+    setError('');
+    let newFileUrls: Record<string, string> = {};
+    const hasFilesToUpload = Object.values(uploadFiles).some(file => file !== null);
+    if (hasFilesToUpload) {
+      try {
+        newFileUrls = await uploadNewFiles(selectedEmployee.EmployeeID);
+        await deleteExistingFiles(newFileUrls);
+      } catch (uploadError) {
+        setError('Error al subir archivos. Por favor, intente nuevamente.');
+        setSavingEdit(false);
         return;
       }
     }
+    const finalUrls = { ...existingUrls, ...newFileUrls };
+    const documentUrls = {
+      CVFileURL: finalUrls.CVFileURL,
+      ANFileURL: finalUrls.ANFileURL,
+      CURPFileURL: finalUrls.CURPFileURL,
+      RFCFileURL: finalUrls.RFCFileURL,
+      IMSSFileURL: finalUrls.IMSSFileURL,
+      INEFileURL: finalUrls.INEFileURL,
+      CDFileURL: finalUrls.CDFileURL,
+      CEFileURL: finalUrls.CEFileURL,
+      CPFileURL: finalUrls.CPFileURL,
+      LMFileURL: finalUrls.LMFileURL,
+      ANPFileURL: finalUrls.ANPFileURL,
+      CRFileURL: finalUrls.CRFileURL,
+      RIFileURL: finalUrls.RIFileURL,
+      EMFileURL: finalUrls.EMFileURL,
+      FotoFileURL: finalUrls.FotoFileURL,
+      FolletoFileURL: finalUrls.FolletoFileURL
+    };
     
-    try {
-      setSavingEdit(true);
-      setError('');
-      let newFileUrls: Record<string, string> = {};
-      const hasFilesToUpload = Object.values(uploadFiles).some(file => file !== null);
-      if (hasFilesToUpload) {
-        try {
-          newFileUrls = await uploadNewFiles(selectedEmployee.EmployeeID);
-          await deleteExistingFiles(newFileUrls);
-        } catch (uploadError) {
-          setError('Error al subir archivos. Por favor, intente nuevamente.');
-          setSavingEdit(false);
-          return;
-        }
+    // IMPORTANTE: Determinar si el empleado está inactivo
+    const isEmployeeInactive = selectedEmployee.Status === 0;
+    
+    // Construir contractInfo SOLO si el empleado está inactivo
+    let contractInfoData = undefined;
+    
+    if (isEmployeeInactive) {
+      if (selectedEmployee.tipo === 'BASE') {
+        contractInfoData = {
+          startDate: editFormData.fechaInicio,
+          salaryIMSS: editFormData.salaryIMSS ? parseFloat(editFormData.salaryIMSS) : null,
+          jefeDirectoId: editFormData.jefeDirectoId ? parseInt(editFormData.jefeDirectoId) : null
+        };
+      } else {
+        contractInfoData = {
+          salaryIMSS: editFormData.salaryIMSS ? parseFloat(editFormData.salaryIMSS) : null,
+          position: toUpperCaseWithAccents(editFormData.puesto),
+          salary: parseFloat(editFormData.salario) || 0,
+          workSchedule: toUpperCaseWithAccents(editFormData.horario),
+          projectId: editFormData.proyectoId ? parseInt(editFormData.proyectoId) : null,
+          jefeDirectoId: editFormData.jefeDirectoId ? parseInt(editFormData.jefeDirectoId) : null
+        };
       }
-      const finalUrls = { ...existingUrls, ...newFileUrls };
-      const documentUrls = {
-        CVFileURL: finalUrls.CVFileURL,
-        ANFileURL: finalUrls.ANFileURL,
-        CURPFileURL: finalUrls.CURPFileURL,
-        RFCFileURL: finalUrls.RFCFileURL,
-        IMSSFileURL: finalUrls.IMSSFileURL,
-        INEFileURL: finalUrls.INEFileURL,
-        CDFileURL: finalUrls.CDFileURL,
-        CEFileURL: finalUrls.CEFileURL,
-        CPFileURL: finalUrls.CPFileURL,
-        LMFileURL: finalUrls.LMFileURL,
-        ANPFileURL: finalUrls.ANPFileURL,
-        CRFileURL: finalUrls.CRFileURL,
-        RIFileURL: finalUrls.RIFileURL,
-        EMFileURL: finalUrls.EMFileURL,
-        FotoFileURL: finalUrls.FotoFileURL,
-        FolletoFileURL: finalUrls.FolletoFileURL
-      };
+    }
+    
+    const updateData = {
+      tipo: selectedEmployee.tipo,
+      personalInfo: {
+        firstName: toUpperCaseWithAccents(editFormData.firstName),
+        lastName: toUpperCaseWithAccents(editFormData.lastName),
+        middleName: toUpperCaseWithAccents(editFormData.middleName),
+        // Siempre enviar posición, salario y horario para actualizar la tabla principal
+        position: toUpperCaseWithAccents(editFormData.puesto),
+        ...(selectedEmployee.tipo === 'BASE' && {
+          area: toUpperCaseWithAccents(editFormData.area),
+        }),
+        salary: parseFloat(editFormData.salario) || 0,
+        workSchedule: toUpperCaseWithAccents(editFormData.horario)
+      },
+      personalInfoExtra: {
+        calle: toUpperCaseWithAccents(editFormData.calle),
+        numeroExterior: editFormData.numeroExterior ? parseInt(editFormData.numeroExterior) : null,
+        numeroInterior: editFormData.numeroInterior ? parseInt(editFormData.numeroInterior) : null,
+        colonia: toUpperCaseWithAccents(editFormData.colonia),
+        municipio: toUpperCaseWithAccents(editFormData.municipio),
+        estado: toUpperCaseWithAccents(editFormData.estado),
+        codigoPostal: editFormData.codigoPostal ? parseInt(editFormData.codigoPostal) : null,
+        municipality: toUpperCaseWithAccents(editFormData.municipio),
+        nationality: toUpperCaseWithAccents(editFormData.nacionalidad),
+        gender: toUpperCaseWithAccents(editFormData.genero),
+        birthdate: editFormData.fechaNacimiento,
+        maritalStatus: toUpperCaseWithAccents(editFormData.estadoCivil),
+        rfc: toUpperCaseWithAccents(editFormData.rfc),
+        curp: toUpperCaseWithAccents(editFormData.curp),
+        nss: editFormData.nss,
+        nci: toUpperCaseWithAccents(editFormData.nci),
+        umf: editFormData.umf ? parseInt(editFormData.umf) : null,
+        phone: editFormData.telefono,
+        email: editFormData.email.toLowerCase().trim()
+      },
+      contractInfo: contractInfoData,
+      documentacion: documentUrls,
+      beneficiario: {
+        beneficiaryFirstName: toUpperCaseWithAccents(editFormData.beneficiaryFirstName),
+        beneficiaryLastName: toUpperCaseWithAccents(editFormData.beneficiaryLastName),
+        beneficiaryMiddleName: toUpperCaseWithAccents(editFormData.beneficiaryMiddleName),
+        relationship: toUpperCaseWithAccents(editFormData.beneficiaryRelationship),
+        percentage: parseFloat(editFormData.beneficiaryPercentage) || 0
+      }
+    };
+    
+    console.log('=== ENVIANDO ACTUALIZACIÓN ===');
+    console.log('Empleado ID:', selectedEmployee.EmployeeID);
+    console.log('Status actual:', selectedEmployee.Status);
+    console.log('isEmployeeInactive:', isEmployeeInactive);
+    console.log('contractInfo enviado:', contractInfoData);
+    console.log('===============================');
+    
+    const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/query-update/update/${selectedEmployee.EmployeeID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData),
+    });
+    const data = await response.json();
+    
+    console.log('=== RESPUESTA DEL SERVIDOR ===');
+    console.log('success:', data.success);
+    console.log('message:', data.message);
+    console.log('contractFileURL:', data.contractFileURL);
+    console.log('warningFileURL:', data.warningFileURL);
+    console.log('letterFileURL:', data.letterFileURL);
+    console.log('agreementFileURL:', data.agreementFileURL);
+    console.log('===============================');
+    
+    if (response.ok && data.success) {
+      setShowDetailsModal(false);
+      setEmployeeDetails(null);
+      setSelectedEmployee(null);
+      setIsEditing(false);
+      await fetchEmployees();
       
-      const updateData = {
-        tipo: selectedEmployee.tipo,
-        personalInfo: {
-          firstName: toUpperCaseWithAccents(editFormData.firstName),
-          lastName: toUpperCaseWithAccents(editFormData.lastName),
-          middleName: toUpperCaseWithAccents(editFormData.middleName),
-          ...(selectedEmployee.tipo === 'BASE' && selectedEmployee.Status === 0 && {
-            position: toUpperCaseWithAccents(editFormData.puesto),
-            area: toUpperCaseWithAccents(editFormData.area),
-            salary: parseFloat(editFormData.salario) || 0,
-            workSchedule: toUpperCaseWithAccents(editFormData.horario)
-          }),
-          ...(selectedEmployee.tipo === 'PROJECT' && selectedEmployee.Status === 0 && {
-            position: toUpperCaseWithAccents(editFormData.puesto),
-            salary: parseFloat(editFormData.salario) || 0,
-            workSchedule: toUpperCaseWithAccents(editFormData.horario)
-          })
-        },
-        personalInfoExtra: {
-          calle: toUpperCaseWithAccents(editFormData.calle),
-          numeroExterior: editFormData.numeroExterior ? parseInt(editFormData.numeroExterior) : null,
-          numeroInterior: editFormData.numeroInterior ? parseInt(editFormData.numeroInterior) : null,
-          colonia: toUpperCaseWithAccents(editFormData.colonia),
-          municipio: toUpperCaseWithAccents(editFormData.municipio),
-          estado: toUpperCaseWithAccents(editFormData.estado),
-          codigoPostal: editFormData.codigoPostal ? parseInt(editFormData.codigoPostal) : null,
-          municipality: toUpperCaseWithAccents(editFormData.municipio),
-          nationality: toUpperCaseWithAccents(editFormData.nacionalidad),
-          gender: toUpperCaseWithAccents(editFormData.genero),
-          birthdate: editFormData.fechaNacimiento,
-          maritalStatus: toUpperCaseWithAccents(editFormData.estadoCivil),
-          rfc: toUpperCaseWithAccents(editFormData.rfc),
-          curp: toUpperCaseWithAccents(editFormData.curp),
-          nss: editFormData.nss,
-          nci: toUpperCaseWithAccents(editFormData.nci),
-          umf: editFormData.umf ? parseInt(editFormData.umf) : null,
-          phone: editFormData.telefono,
-          email: editFormData.email.toLowerCase().trim()
-        },
-        contractInfo: selectedEmployee.tipo === 'BASE' ? {
-          startDate: selectedEmployee.Status === 0 ? editFormData.fechaInicio : undefined,
-          salaryIMSS: (selectedEmployee.Status === 0 && editFormData.salaryIMSS) ? parseFloat(editFormData.salaryIMSS) : null,
-          jefeDirectoId: selectedEmployee.Status === 0 && editFormData.jefeDirectoId ? parseInt(editFormData.jefeDirectoId) : null
-        } 
-        : {
-          salaryIMSS: (selectedEmployee.Status === 0 && editFormData.salaryIMSS) ? parseFloat(editFormData.salaryIMSS) : null,
-          position: selectedEmployee.Status === 0 ? toUpperCaseWithAccents(editFormData.puesto) : undefined,
-          salary: selectedEmployee.Status === 0 ? (parseFloat(editFormData.salario) || 0) : undefined,
-          workSchedule: selectedEmployee.Status === 0 ? toUpperCaseWithAccents(editFormData.horario) : undefined,
-          projectId: selectedEmployee.Status === 0 && editFormData.proyectoId ? parseInt(editFormData.proyectoId) : null,
-          jefeDirectoId: selectedEmployee.Status === 0 && editFormData.jefeDirectoId ? parseInt(editFormData.jefeDirectoId) : null
-        },
-        documentacion: documentUrls,
-        beneficiario: {
-          beneficiaryFirstName: toUpperCaseWithAccents(editFormData.beneficiaryFirstName),
-          beneficiaryLastName: toUpperCaseWithAccents(editFormData.beneficiaryLastName),
-          beneficiaryMiddleName: toUpperCaseWithAccents(editFormData.beneficiaryMiddleName),
-          relationship: toUpperCaseWithAccents(editFormData.beneficiaryRelationship),
-          percentage: parseFloat(editFormData.beneficiaryPercentage) || 0
-        }
-      };
-      
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/query-update/update/${selectedEmployee.EmployeeID}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateData),
-      });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        setShowDetailsModal(false);
-        setEmployeeDetails(null);
-        setSelectedEmployee(null);
-        setIsEditing(false);
-        await fetchEmployees();
-        
-        // Mostrar el modal con los formatos generados
+      // Solo mostrar el modal si se generaron documentos
+      if (data.contractFileURL || data.warningFileURL || data.letterFileURL || data.agreementFileURL) {
         const nombreCompleto = data.employeeName || `${editFormData.firstName} ${editFormData.lastName} ${editFormData.middleName}`.trim();
         
         setUpdateSuccessDetails({
@@ -1030,16 +1057,21 @@ export default function EmployeesListPage() {
         });
         setShowUpdateSuccessModal(true);
       } else {
-        setError(data.message || 'ERROR AL ACTUALIZAR EMPLEADO');
+        setSuccessMessage(data.message || 'EMPLEADO ACTUALIZADO EXITOSAMENTE');
+        // Ocultar el mensaje después de 3 segundos
+        setTimeout(() => setSuccessMessage(''), 3000);
       }
-    } catch (error) {
-      console.error('Error:', error);
-      setError('ERROR DE CONEXIÓN AL ACTUALIZAR EMPLEADO');
-    } finally {
-      setSavingEdit(false);
-      setUploadProgress(0);
+    } else {
+      setError(data.message || 'ERROR AL ACTUALIZAR EMPLEADO');
     }
-  };
+  } catch (error) {
+    console.error('Error:', error);
+    setError('ERROR DE CONEXIÓN AL ACTUALIZAR EMPLEADO');
+  } finally {
+    setSavingEdit(false);
+    setUploadProgress(0);
+  }
+};
 
   const openPdfInNewTab = (url: string) => {
     if (!url) return;
@@ -1687,7 +1719,7 @@ export default function EmployeesListPage() {
                           <div className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
                             <div className="flex items-center">
                               <File className="h-5 w-5 text-gray-500 mr-2" />
-                              <span className="text-sm font-medium text-gray-700">FT-RH-02 (Contrato)</span>
+                              <span className="text-sm font-medium text-gray-700">FT-RH-02 (Contrato por Tiempo Determinado)</span>
                             </div>
                             <button onClick={() => openPdfInNewTab(employeeDetails.contractInfo!.contractFileURL!)} className="px-3 py-1 bg-gray-50 text-gray-700 rounded-md hover:bg-gray-100 transition-colors text-xs font-medium">Abrir</button>
                           </div>
@@ -1696,7 +1728,7 @@ export default function EmployeesListPage() {
                           <div className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
                             <div className="flex items-center">
                               <File className="h-5 w-5 text-gray-500 mr-2" />
-                              <span className="text-sm font-medium text-gray-700">FT-RH-04 (Carta Advertencia)</span>
+                              <span className="text-sm font-medium text-gray-700">FT-RH-04 (Aviso de Contratación)</span>
                             </div>
                             <button onClick={() => openPdfInNewTab(employeeDetails.contractInfo!.warningFileURL!)} className="px-3 py-1 bg-gray-50 text-gray-700 rounded-md hover:bg-gray-100 transition-colors text-xs font-medium">Abrir</button>
                           </div>
@@ -1705,7 +1737,7 @@ export default function EmployeesListPage() {
                           <div className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
                             <div className="flex items-center">
                               <File className="h-5 w-5 text-gray-500 mr-2" />
-                              <span className="text-sm font-medium text-gray-700">FT-RH-07 (Carta Recomendación)</span>
+                              <span className="text-sm font-medium text-gray-700">FT-RH-07 (Carta Compromiso)</span>
                             </div>
                             <button onClick={() => openPdfInNewTab(employeeDetails.contractInfo!.letterFileURL!)} className="px-3 py-1 bg-gray-50 text-gray-700 rounded-md hover:bg-gray-100 transition-colors text-xs font-medium">Abrir</button>
                           </div>
@@ -1714,7 +1746,7 @@ export default function EmployeesListPage() {
                           <div className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
                             <div className="flex items-center">
                               <File className="h-5 w-5 text-gray-500 mr-2" />
-                              <span className="text-sm font-medium text-gray-700">FT-RH-29 (Convenio)</span>
+                              <span className="text-sm font-medium text-gray-700">FT-RH-29 (Convenio de Confidencialidad)</span>
                             </div>
                             <button onClick={() => openPdfInNewTab(employeeDetails.contractInfo!.agreementFileURL!)} className="px-3 py-1 bg-gray-50 text-gray-700 rounded-md hover:bg-gray-100 transition-colors text-xs font-medium">Abrir</button>
                           </div>
