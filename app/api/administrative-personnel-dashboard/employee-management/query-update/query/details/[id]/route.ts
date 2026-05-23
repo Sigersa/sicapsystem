@@ -125,7 +125,7 @@ export async function GET(
         };
 
         const [contractRows] = await connection.execute(`
-          SELECT StartDate, SalaryIMSS, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL
+          SELECT StartDate, SalaryIMSS, jefeDirectoId, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL
           FROM basecontracts
           WHERE BasePersonnelID = ?
           ORDER BY StartDate DESC
@@ -137,6 +137,7 @@ export async function GET(
           contractInfo = {
             fechaInicio: contractRow.StartDate,
             salaryIMSS: contractRow.SalaryIMSS,
+            jefeDirectoId: contractRow.jefeDirectoId,
             contractFileURL: contractRow.ContractFileURL,
             warningFileURL: contractRow.WarningFileURL,
             letterFileURL: contractRow.LetterFileURL,
@@ -176,7 +177,10 @@ export async function GET(
       }
 
     } else {
-      // PERSONAL DE PROYECTO
+      // ============================================
+      // PERSONAL DE PROYECTO - MODIFICADO
+      // Obtiene AdminProjectID en lugar de jefeDirectoId
+      // ============================================
       const [personnelIdRows] = await connection.execute(`
         SELECT ProjectPersonnelID
         FROM projectpersonnel
@@ -187,24 +191,32 @@ export async function GET(
       if (Array.isArray(personnelIdRows) && personnelIdRows.length > 0) {
         const projectPersonnelId = (personnelIdRows as any[])[0].ProjectPersonnelID;
         
-        // Obtener el contrato activo más reciente
-        const [activeContractRows] = await connection.execute(`
+        const [lastContractRows] = await connection.execute(`
           SELECT 
-            ContractID, SalaryIMSS, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL,
-            Position, Salary, WorkSchedule, ProjectID, Status
+            ContractID, 
+            SalaryIMSS, 
+            ContractFileURL, 
+            WarningFileURL, 
+            LetterFileURL, 
+            AgreementFileURL,
+            Position, 
+            Salary, 
+            WorkSchedule, 
+            ProjectID, 
+            Status
           FROM projectcontracts
-          WHERE ProjectPersonnelID = ? AND Status = 1
+          WHERE ProjectPersonnelID = ?
+          ORDER BY ContractID DESC
           LIMIT 1
         `, [projectPersonnelId]);
         
-        const activeContract = Array.isArray(activeContractRows) && activeContractRows.length > 0 
-          ? (activeContractRows as any[])[0] 
+        const lastContract = Array.isArray(lastContractRows) && lastContractRows.length > 0 
+          ? (lastContractRows as any[])[0] 
           : null;
         
-        const contractId = activeContract?.ContractID || '0';
+        const contractId = lastContract?.ContractID || '0';
         uniqueKey = `PROJECT_${employeeId}_${projectPersonnelId}_${contractId}`;
         
-        // Obtener información personal
         const [personalRows] = await connection.execute(`
           SELECT 
             pp.ProjectPersonnelID,
@@ -237,7 +249,6 @@ export async function GET(
         if (Array.isArray(personalRows) && personalRows.length > 0) {
           const row = (personalRows as any[])[0];
           
-          // Construir personalInfo con todas las propiedades
           personalInfo = {
             projectPersonnelId: row.ProjectPersonnelID,
             nombreCompleto: `${row.FirstName} ${row.LastName} ${row.MiddleName || ''}`.trim(),
@@ -259,7 +270,6 @@ export async function GET(
             nss: row.NSS,
             telefono: row.Phone,
             email: row.Email,
-            // Inicializar con valores por defecto
             puesto: null,
             salario: null,
             horario: null,
@@ -268,60 +278,57 @@ export async function GET(
           };
         }
 
-        // Información de contrato (usando el contrato activo)
-        if (activeContract) {
+        if (lastContract) {
           contractInfo = {
-            contractId: activeContract.ContractID,
-            salaryIMSS: activeContract.SalaryIMSS,
-            contractFileURL: activeContract.ContractFileURL,
-            warningFileURL: activeContract.WarningFileURL,
-            letterFileURL: activeContract.LetterFileURL,
-            agreementFileURL: activeContract.AgreementFileURL,
-            position: activeContract.Position,
-            salary: activeContract.Salary,
-            workSchedule: activeContract.WorkSchedule,
-            projectId: activeContract.ProjectID,
-            status: activeContract.Status,
-            fechaInicio: activeContract.StartDate
+            contractId: lastContract.ContractID,
+            salaryIMSS: lastContract.SalaryIMSS,
+            contractFileURL: lastContract.ContractFileURL,
+            warningFileURL: lastContract.WarningFileURL,
+            letterFileURL: lastContract.LetterFileURL,
+            agreementFileURL: lastContract.AgreementFileURL,
+            position: lastContract.Position,
+            salary: lastContract.Salary,
+            workSchedule: lastContract.WorkSchedule,
+            projectId: lastContract.ProjectID,
+            adminProjectId: lastContract.AdminProjectID,  // AdminProjectID en lugar de jefeDirectoId
+            status: lastContract.Status
           };
           
-          // Actualizar personalInfo con los datos del contrato
           if (personalInfo) {
-            personalInfo.puesto = activeContract.Position;
-            personalInfo.salario = activeContract.Salary;
-            personalInfo.horario = activeContract.WorkSchedule;
+            personalInfo.puesto = lastContract.Position;
+            personalInfo.salario = lastContract.Salary;
+            personalInfo.horario = lastContract.WorkSchedule;
           }
 
-          // Información del proyecto
-          if (activeContract.ProjectID) {
+          if (lastContract.ProjectID) {
             const [projectRows] = await connection.execute(`
-              SELECT NameProject, StartDate, EndDate, Status
+              SELECT NameProject, StartDate, EndDate, Status, AdminProjectID
               FROM projects
               WHERE ProjectID = ?
-            `, [activeContract.ProjectID]);
+            `, [lastContract.ProjectID]);
             
             if (Array.isArray(projectRows) && projectRows.length > 0) {
               const projRow = (projectRows as any[])[0];
               projectInfo = {
-                projectId: activeContract.ProjectID,
+                projectId: lastContract.ProjectID,
                 projectName: projRow.NameProject,
                 startDate: projRow.StartDate,
                 endDate: projRow.EndDate,
-                status: projRow.Status
+                status: projRow.Status,
+                adminProjectId: projRow.AdminProjectID
               };
               
-              // Actualizar personalInfo con los datos del proyecto
               if (personalInfo) {
                 personalInfo.proyecto = projRow.NameProject;
-                personalInfo.proyectoId = activeContract.ProjectID;
+                personalInfo.proyectoId = lastContract.ProjectID;
                 personalInfo.fechaInicioProyecto = projRow.StartDate;
                 personalInfo.fechaFinProyecto = projRow.EndDate;
+                personalInfo.adminProjectId = projRow.AdminProjectID;
               }
             }
           }
         }
 
-        // Beneficiario
         const [beneficiarioRows] = await connection.execute(`
           SELECT BeneficiaryFirstName, BeneficiaryLastName, BeneficiaryMiddleName, Relationship, Percentage
           FROM projectpersonnelbeneficiaries
@@ -338,7 +345,6 @@ export async function GET(
           };
         }
 
-        // Documentación
         const [docRows] = await connection.execute(`
           SELECT 
             CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, IMSSFileURL, INEFileURL,
