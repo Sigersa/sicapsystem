@@ -20,15 +20,13 @@ type Project = {
   MiddleName?: string;
 };
 
-// Tipo para jefes directos
-type JefeDirecto = {
+// Tipo para personal BASE (sin puesto)
+type PersonalBase = {
   id: number;
-  nombre: string;
-  apellidoPaterno: string;
-  apellidoMaterno: string;
-  puesto: string;
-  tipoPersonal: 'BASE' | 'PROJECT';
   nombreCompleto: string;
+  FirstName: string;
+  LastName: string;
+  MiddleName: string;
 };
 
 export default function SystemAdminDashboard() {
@@ -59,14 +57,15 @@ export default function SystemAdminDashboard() {
   const [confirmDelete, setConfirmDelete] = useState<{ show: boolean; id: number | null }>({ show: false, id: null });
   const [confirmComplete, setConfirmComplete] = useState<{ show: boolean; id: number | null; name: string }>({ show: false, id: null, name: '' });
   
-  // Estado para jefes directos
-  const [jefesDirectos, setJefesDirectos] = useState<JefeDirecto[]>([]);
-  const [loadingJefes, setLoadingJefes] = useState(false);
+  // Estado para personal BASE
+  const [personalBase, setPersonalBase] = useState<PersonalBase[]>([]);
+  const [loadingPersonal, setLoadingPersonal] = useState(false);
   
   // Cargar proyectos al montar el componente
   useEffect(() => {
     if (user) {
       fetchProjects();
+      fetchPersonalBase();
     }
   }, [user]);
 
@@ -83,26 +82,21 @@ export default function SystemAdminDashboard() {
     }
   }, [searchTerm, projects]);
 
-  // Cargar jefes directos al montar el componente
-  useEffect(() => {
-    fetchJefesDirectos();
-  }, []);
-
-  // Función para obtener jefes directos
-  const fetchJefesDirectos = async () => {
+  // Función para obtener todo el personal BASE
+  const fetchPersonalBase = async () => {
     try {
-      setLoadingJefes(true);
-      const response = await fetch('/api/catalogs/jefes-directos');
+      setLoadingPersonal(true);
+      const response = await fetch('/api/catalogs/personal-base');
       if (response.ok) {
         const data = await response.json();
-        setJefesDirectos(data);
+        setPersonalBase(data);
       } else {
-        console.error('Error al cargar jefes directos:', response.statusText);
+        console.error('Error al cargar personal base:', response.statusText);
       }
     } catch (error) {
-      console.error('Error al cargar jefes directos:', error);
+      console.error('Error al cargar personal base:', error);
     } finally {
-      setLoadingJefes(false);
+      setLoadingPersonal(false);
     }
   };
 
@@ -157,10 +151,15 @@ export default function SystemAdminDashboard() {
         ...prev,
         [name]: value
       }));
-    } else {
+    } else if (name !== 'AdminProjectID') {
       setFormData(prev => ({
         ...prev,
         [name]: normalizarMayusculas(value)
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
       }));
     }
   };
@@ -251,7 +250,7 @@ export default function SystemAdminDashboard() {
     }
   };
 
-  // Marcar proyecto como concluido (usando PUT en la misma API)
+  // Marcar proyecto como concluido
   const handleComplete = async (id: number) => {
     setLoading(true);
     try {
@@ -260,7 +259,7 @@ export default function SystemAdminDashboard() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ complete: true }), // Enviar flag para concluir
+        body: JSON.stringify({ complete: true }),
       });
 
       if (response.ok) {
@@ -346,7 +345,7 @@ export default function SystemAdminDashboard() {
     resetForm();
   };
 
-  // Renderizar badge de estado con el nuevo diseño
+  // Renderizar badge de estado
   const renderStatusBadge = (status: number) => {
     return (
       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -420,16 +419,26 @@ export default function SystemAdminDashboard() {
                       onChange={handleInputChange}
                       className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                       required
-                      disabled={loadingJefes}
+                      disabled={loadingPersonal}
                     >
                       <option value="">Seleccione un administrador de proyecto</option>
-                      {jefesDirectos.map((jefe) => (
-                        <option key={jefe.id} value={String(jefe.id)}>
-                          {jefe.nombreCompleto} - {jefe.puesto} ({jefe.tipoPersonal})
+                      {personalBase.map((persona) => (
+                        <option key={persona.id} value={String(persona.id)}>
+                          {persona.nombreCompleto}
                         </option>
                       ))}
                     </select>
+                    {loadingPersonal && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#3a6ea5]"></div>
+                      </div>
+                    )}
                   </div>
+                  {!loadingPersonal && personalBase.length === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      No hay personal BASE registrado en el sistema
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -813,10 +822,6 @@ export default function SystemAdminDashboard() {
         
         header, footer {
           z-index: 50 !important;
-        }
-        
-        .fixed.inset-0.z-\\[9999\\] {
-          z-index: 9999 !important;
         }
         
         body.modal-open {
