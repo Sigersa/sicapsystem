@@ -1,3 +1,5 @@
+// app/api/administrative-personnel-dashboard/employee-management/query-update/update/[id]/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -65,6 +67,23 @@ async function uploadFileToUploadThing(fileBuffer: ArrayBuffer, fileName: string
   } catch (error) {
     console.error('Error al subir archivo a UploadThing:', error);
     throw new Error(`Error al subir archivo: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+  }
+}
+
+// Función para obtener el AdminProjectID de un proyecto
+async function getProjectAdminId(projectId: number, connection: any): Promise<number | null> {
+  try {
+    const [rows] = await connection.execute(
+      'SELECT AdminProjectID FROM projects WHERE ProjectID = ?',
+      [projectId]
+    );
+    if (rows && rows.length > 0) {
+      return rows[0].AdminProjectID;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error al obtener AdminProjectID:', error);
+    return null;
   }
 }
 
@@ -193,20 +212,39 @@ export async function PUT(
       console.log('currentStatus:', currentStatus);
 
       // Si el empleado está activo, NO permitir actualización de información laboral
-      if (currentStatus === 1 && contractInfo && Object.keys(contractInfo).some(key => contractInfo[key] !== undefined && contractInfo[key] !== null && key !== 'jefeDirectoId')) {
-        await connection.rollback();
-        return NextResponse.json(
-          { 
-            success: false, 
-            message: 'NO SE PUEDE ACTUALIZAR INFORMACIÓN LABORAL. EL EMPLEADO ESTÁ ACTIVO. PRIMERO DEBE REALIZAR LA BAJA.' 
-          },
-          { status: 403 }
-        );
+      if (currentStatus === 1 && contractInfo && Object.keys(contractInfo).some(key => contractInfo[key] !== undefined && contractInfo[key] !== null)) {
+        // Para PROJECT, si está activo, no permitir cambios laborales
+        if (tipo === 'PROJECT') {
+          await connection.rollback();
+          return NextResponse.json(
+            { 
+              success: false, 
+              message: 'NO SE PUEDE ACTUALIZAR INFORMACIÓN LABORAL. EL EMPLEADO DE PROYECTO ESTÁ ACTIVO. PRIMERO DEBE REALIZAR LA BAJA.' 
+            },
+            { status: 403 }
+          );
+        }
+        // Para BASE, permitir solo si no es información laboral
+        if (tipo === 'BASE') {
+          // Verificar si hay cambios en campos laborales específicos
+          const laboralFields = ['salaryIMSS', 'position', 'salary', 'workSchedule', 'startDate'];
+          const hasLaboralChanges = laboralFields.some(field => contractInfo[field] !== undefined && contractInfo[field] !== null);
+          if (hasLaboralChanges) {
+            await connection.rollback();
+            return NextResponse.json(
+              { 
+                success: false, 
+                message: 'NO SE PUEDE ACTUALIZAR INFORMACIÓN LABORAL. EL EMPLEADO ESTÁ ACTIVO. PRIMERO DEBE REALIZAR LA BAJA.' 
+              },
+              { status: 403 }
+            );
+          }
+        }
       }
 
       let basePersonnelId: number | null = null;
       let projectPersonnelId: number | null = null;
-      let shouldGenerateDocuments = false; // Cambiado: ahora indica si debemos generar documentos
+      let shouldGenerateDocuments = false;
       let contractId: number | null = null;
       let documentGenerationReason = '';
 
@@ -323,7 +361,7 @@ export async function PUT(
           }
         }
 
-        // Actualizar contractInfo - AHORA GENERAMOS DOCUMENTOS TANTO PARA NUEVOS COMO PARA EXISTENTES
+        // Actualizar contractInfo para BASE
         if (contractInfo && currentStatus === 0) {
           const { startDate, salaryIMSS, jefeDirectoId } = contractInfo;
           const fechaInicioFormateada = formatearFechaMySQL(startDate);
@@ -334,7 +372,6 @@ export async function PUT(
           ) as any;
 
           if (contractRows && contractRows.length > 0) {
-            // Actualizar contrato existente
             contractId = contractRows[0].ContractID;
             await connection.execute(
               `UPDATE basecontracts 
@@ -347,12 +384,10 @@ export async function PUT(
                 basePersonnelId
               ]
             );
-            // MARCADO: También generamos documentos para actualización de contrato existente
             shouldGenerateDocuments = true;
             documentGenerationReason = 'Actualización de contrato existente para empleado BASE inactivo';
             console.log(`Contrato existente actualizado para empleado BASE ${employeeId}, se generarán documentos`);
           } else {
-            // Insertar nuevo contrato
             const [insertResult] = await connection.execute(
               `INSERT INTO basecontracts 
                (BasePersonnelID, StartDate, SalaryIMSS, jefeDirectoId) 
@@ -368,7 +403,6 @@ export async function PUT(
             shouldGenerateDocuments = true;
             documentGenerationReason = 'Nuevo contrato para empleado BASE (activación)';
             
-            // Actualizar Status del empleado a ACTIVO
             await connection.execute(
               'UPDATE employees SET Status = 1 WHERE EmployeeID = ?',
               [employeeId]
@@ -491,7 +525,10 @@ export async function PUT(
         }
 
       } else {
-        // PERSONAL DE PROYECTO
+        // ============================================
+        // PERSONAL DE PROYECTO - MODIFICADO
+        // Ya no usa jefeDirectoId, usa AdminProjectID del proyecto
+        // ============================================
         const [projectRows] = await connection.execute(
           'SELECT ProjectPersonnelID FROM projectpersonnel WHERE EmployeeID = ?',
           [employeeId]
@@ -599,14 +636,21 @@ export async function PUT(
           }
         }
 
-        // Actualizar contractInfo para PROJECT - AHORA GENERAMOS DOCUMENTOS SIEMPRE QUE HAY CONTRACTINFO
+        // Actualizar contractInfo para PROJECT
+        // IMPORTANTE: Para PROJECT, AdminProjectID se obtiene del proyecto, no se envía desde el frontend
         if (contractInfo && currentStatus === 0) {
-          const { salaryIMSS, position, salary, workSchedule, projectId, jefeDirectoId } = contractInfo;
+          const { salaryIMSS, position, salary, workSchedule, projectId } = contractInfo;
+          
+          // Obtener el AdminProjectID del proyecto seleccionado
+          let adminProjectId = null;
+          if (projectId) {
+            adminProjectId = await getProjectAdminId(projectId, connection);
+            console.log(`AdminProjectID obtenido para proyecto ${projectId}: ${adminProjectId}`);
+          }
 
-          // Siempre insertamos un nuevo contrato para PROJECT
           const [insertResult] = await connection.execute(
             `INSERT INTO projectcontracts 
-             (ProjectPersonnelID, SalaryIMSS, Position, Salary, WorkSchedule, ProjectID, Status, jefeDirectoId) 
+             (ProjectPersonnelID, SalaryIMSS, Position, Salary, WorkSchedule, ProjectID, Status, AdminProjectID) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               projectPersonnelId,
@@ -616,7 +660,7 @@ export async function PUT(
               normalizarMayusculas(workSchedule || ''),
               projectId || null,
               1,
-              jefeDirectoId || null
+              adminProjectId  // Usamos AdminProjectID en lugar de jefeDirectoId
             ]
           ) as any;
           
@@ -624,13 +668,12 @@ export async function PUT(
           shouldGenerateDocuments = true;
           documentGenerationReason = 'Nuevo contrato para empleado PROJECT (activación/recontratación)';
           
-          // Actualizar el Status del empleado a ACTIVO
           await connection.execute(
             'UPDATE employees SET Status = 1 WHERE EmployeeID = ?',
             [employeeId]
           );
           
-          console.log(`Nuevo contrato creado para empleado de proyecto ${employeeId} con ID: ${contractId}, se generarán documentos`);
+          console.log(`Nuevo contrato creado para empleado de proyecto ${employeeId} con ID: ${contractId}, AdminProjectID: ${adminProjectId}`);
         }
 
         // Actualizar documentación
@@ -757,7 +800,6 @@ export async function PUT(
       let letterFileURL: string | null = null;
       let agreementFileURL: string | null = null;
 
-      // Variables para almacenar las URLs de los nuevos documentos
       let newContractFileURL: string | null = null;
       let newWarningFileURL: string | null = null;
       let newLetterFileURL: string | null = null;
@@ -805,34 +847,28 @@ export async function PUT(
         }
       }
 
-      // GENERAR DOCUMENTOS SI se necesita (ahora también para actualizaciones de contratos existentes)
-      console.log(`shouldGenerateDocuments: ${shouldGenerateDocuments}, contractId: ${contractId}, documentGenerationReason: ${documentGenerationReason}`);
+      console.log(`shouldGenerateDocuments: ${shouldGenerateDocuments}, contractId: ${contractId}`);
       
       if (shouldGenerateDocuments && contractId) {
         try {
-          console.log(`Generando formatos FT-RH para empleado ${employeeId} (tipo: ${tipo}) - Razón: ${documentGenerationReason}`);
+          console.log(`Generando formatos FT-RH para empleado ${employeeId} (tipo: ${tipo})`);
           
-          // Generar FT-RH-02
           const ftRh02PdfBuffer = await generateFT_RH_02_PDF(employeeId, tipo);
           const ftRh02FileName = `FT-RH-02_${tipo}_${employeeId}_${Date.now()}.pdf`;
           newContractFileURL = await uploadFileToUploadThing(ftRh02PdfBuffer, ftRh02FileName, 'application/pdf');
           
-          // Generar FT-RH-04
           const ftRh04PdfBuffer = await generateFT_RH_04_PDF(employeeId, tipo);
           const ftRh04FileName = `FT-RH-04_${tipo}_${employeeId}_${Date.now()}.pdf`;
           newWarningFileURL = await uploadFileToUploadThing(ftRh04PdfBuffer, ftRh04FileName, 'application/pdf');
           
-          // Generar FT-RH-07
           const ftRh07PdfBuffer = await generateFT_RH_07_PDF(employeeId, tipo);
           const ftRh07FileName = `FT-RH-07_${tipo}_${employeeId}_${Date.now()}.pdf`;
           newLetterFileURL = await uploadFileToUploadThing(ftRh07PdfBuffer, ftRh07FileName, 'application/pdf');
           
-          // Generar FT-RH-29
           const ftRh29PdfBuffer = await generateFT_RH_29_PDF(employeeId, tipo);
           const ftRh29FileName = `FT-RH-29_${tipo}_${employeeId}_${Date.now()}.pdf`;
           newAgreementFileURL = await uploadFileToUploadThing(ftRh29PdfBuffer, ftRh29FileName, 'application/pdf');
           
-          // Log para verificar las URLs generadas
           console.log('=== MAPEO DE URLs GENERADAS ===');
           console.log('FT-RH-02 (ContractFileURL):', newContractFileURL);
           console.log('FT-RH-04 (WarningFileURL):', newWarningFileURL);
@@ -840,17 +876,16 @@ export async function PUT(
           console.log('FT-RH-29 (AgreementFileURL):', newAgreementFileURL);
           console.log('================================');
           
-          // Actualizar las URLs en la base de datos usando el ContractID
           const updateConnection = await getConnection();
           
           try {
             if (tipo === 'PROJECT') {
               await updateConnection.execute(
                 `UPDATE projectcontracts 
-                 SET ContractFileURL = ?,   -- FT-RH-02
-                     WarningFileURL = ?,    -- FT-RH-04
-                     LetterFileURL = ?,     -- FT-RH-07
-                     AgreementFileURL = ?   -- FT-RH-29
+                 SET ContractFileURL = ?,
+                     WarningFileURL = ?,
+                     LetterFileURL = ?,
+                     AgreementFileURL = ?
                  WHERE ContractID = ?`,
                 [newContractFileURL, newWarningFileURL, newLetterFileURL, newAgreementFileURL, contractId]
               );
@@ -858,10 +893,10 @@ export async function PUT(
             } else if (tipo === 'BASE') {
               await updateConnection.execute(
                 `UPDATE basecontracts 
-                 SET ContractFileURL = ?,   -- FT-RH-02
-                     WarningFileURL = ?,    -- FT-RH-04
-                     LetterFileURL = ?,     -- FT-RH-07
-                     AgreementFileURL = ?   -- FT-RH-29
+                 SET ContractFileURL = ?,
+                     WarningFileURL = ?,
+                     LetterFileURL = ?,
+                     AgreementFileURL = ?
                  WHERE ContractID = ?`,
                 [newContractFileURL, newWarningFileURL, newLetterFileURL, newAgreementFileURL, contractId]
               );
@@ -937,6 +972,8 @@ export async function PUT(
         errorMessage = 'NO SE PUEDE ACTUALIZAR INFORMACIÓN LABORAL. EL EMPLEADO ESTÁ ACTIVO. PRIMERO DEBE REALIZAR LA BAJA.';
       } else if (error.message.includes('Empleado no encontrado')) {
         errorMessage = 'ERROR: Empleado no encontrado';
+      } else if (error.message.includes('EMPLEADO DE PROYECTO ESTÁ ACTIVO')) {
+        errorMessage = 'NO SE PUEDE ACTUALIZAR INFORMACIÓN LABORAL. EL EMPLEADO DE PROYECTO ESTÁ ACTIVO. PRIMERO DEBE REALIZAR LA BAJA.';
       }
     }
     
