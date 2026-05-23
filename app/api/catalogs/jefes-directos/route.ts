@@ -41,25 +41,19 @@ export async function GET(request: NextRequest) {
     const query = `
       SELECT DISTINCT
         e.EmployeeID as id,
-        COALESCE(bp.FirstName, pp.FirstName) as FirstName,
-        COALESCE(bp.LastName, pp.LastName) as LastName,
-        COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
-        COALESCE(bp.Position, pc.Position) as puesto,
-        CASE 
-          WHEN bp.BasePersonnelID IS NOT NULL THEN 'BASE'
-          WHEN pp.ProjectPersonnelID IS NOT NULL THEN 'PROYECTO'
-        END as tipoPersonal,
-        TRIM(CONCAT(
-          COALESCE(bp.FirstName, pp.FirstName), ' ',
-          COALESCE(bp.LastName, pp.LastName), ' ',
-          COALESCE(bp.MiddleName, pp.MiddleName, '')
-        )) as nombreCompleto
+        bp.FirstName,
+        bp.LastName,
+        bp.MiddleName,
+        bp.Position,
+		TRIM(CONCAT(
+          COALESCE(bp.FirstName), ' ',
+          COALESCE(bp.LastName), ' ',
+          COALESCE(bp.MiddleName), '')
+        ) as nombreCompleto
       FROM employees e
       LEFT JOIN basepersonnel bp ON e.EmployeeID = bp.EmployeeID
-      LEFT JOIN projectpersonnel pp ON e.EmployeeID = pp.EmployeeID
-      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID AND pc.Status = 1
       WHERE e.Status = 1
-        AND (bp.BasePersonnelID IS NOT NULL OR pp.ProjectPersonnelID IS NOT NULL)
+        AND (bp.BasePersonnelID IS NOT NULL)
       ORDER BY nombreCompleto
     `;
 
