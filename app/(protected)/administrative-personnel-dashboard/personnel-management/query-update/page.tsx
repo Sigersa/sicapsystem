@@ -4,7 +4,7 @@ import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
-import { useState, useEffect, ChangeEvent, useRef } from 'react';
+import { useState, useEffect, ChangeEvent, useRef, useCallback } from 'react';
 import { Search, ChevronLeft, ChevronRight, Eye, X, RefreshCw, File, CheckCircle, AlertCircle, Upload, XCircle, Download, FileText } from 'lucide-react';
 import { useUploadThing } from '@/lib/uploadthing';
 import JSZip from 'jszip';
@@ -283,6 +283,17 @@ const formatDateForInput = (dateString?: string): string => {
   }
 };
 
+const formatDate = (dateString?: string): string => {
+  if (!dateString) return 'N/A';
+  try {
+    return new Date(dateString).toLocaleDateString('es-MX', {
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    });
+  } catch {
+    return 'N/A';
+  }
+};
+
 export default function EmployeesListPage() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
@@ -399,6 +410,9 @@ export default function EmployeesListPage() {
     jefeDirectoId: ''
   });
 
+  // Estado para las fechas del proyecto seleccionado (para mostrar en la vista previa de edición)
+  const [selectedProjectDates, setSelectedProjectDates] = useState<{ startDate: string; endDate: string }>({ startDate: '', endDate: '' });
+
   const fileInputRefs = useRef<{
     [key in UploadFileKey]?: HTMLInputElement
   }>({});
@@ -429,6 +443,31 @@ export default function EmployeesListPage() {
     setTotalPages(Math.ceil(filteredEmployees.length / itemsPerPage));
     setCurrentPage(1);
   }, [filteredEmployees, itemsPerPage]);
+
+  // Función para obtener las fechas de un proyecto cuando se selecciona
+  const updateProjectDates = useCallback((projectId: string) => {
+    if (!projectId) {
+      setSelectedProjectDates({ startDate: '', endDate: '' });
+      return;
+    }
+    
+    const selectedProject = proyectos.find(p => p.ProjectID.toString() === projectId);
+    if (selectedProject) {
+      setSelectedProjectDates({
+        startDate: selectedProject.StartDate || '',
+        endDate: selectedProject.EndDate || ''
+      });
+    } else {
+      setSelectedProjectDates({ startDate: '', endDate: '' });
+    }
+  }, [proyectos]);
+
+  // Efecto para actualizar las fechas cuando cambia el proyecto seleccionado
+  useEffect(() => {
+    if (isEditing && selectedEmployee?.tipo === 'PROJECT') {
+      updateProjectDates(editFormData.proyectoId);
+    }
+  }, [editFormData.proyectoId, isEditing, selectedEmployee?.tipo, updateProjectDates]);
 
   const currentEmployees = filteredEmployees.slice(
     (currentPage - 1) * itemsPerPage,
@@ -751,6 +790,9 @@ export default function EmployeesListPage() {
           benMiddleName = parts.slice(2).join(' ') || '';
         }
         
+        // Inicializar el proyectoId con el valor actual
+        const currentProjectId = employee.tipo === 'PROJECT' ? ((employee as ProjectEmployee).ProjectID?.toString() || '') : '';
+        
         setEditFormData({
           firstName: employee.FirstName || '',
           lastName: employee.LastName || '',
@@ -778,7 +820,7 @@ export default function EmployeesListPage() {
           salario: employee.Salary?.toString() || '',
           horario: employee.WorkSchedule || '',
           fechaInicio: formatDateForInput(contractInfo.fechaInicio),
-          proyectoId: employee.tipo === 'PROJECT' ? ((employee as ProjectEmployee).ProjectID?.toString() || '') : '',
+          proyectoId: currentProjectId,
           salaryIMSS: contractInfo.salaryIMSS?.toString() || '',
           beneficiaryFirstName: benFirstName,
           beneficiaryLastName: benLastName,
@@ -787,6 +829,11 @@ export default function EmployeesListPage() {
           beneficiaryPercentage: beneficiario?.porcentaje?.toString() || '',
           jefeDirectoId: ''
         });
+        
+        // Actualizar las fechas del proyecto seleccionado
+        if (employee.tipo === 'PROJECT') {
+          updateProjectDates(currentProjectId);
+        }
         
         setShowDetailsModal(true);
       } else {
@@ -802,9 +849,15 @@ export default function EmployeesListPage() {
 
   const handleEditFormChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    const shouldUpperCase = !['email', 'fechaNacimiento', 'fechaInicio', 'salario', 'salaryIMSS', 'beneficiaryPercentage'].includes(name);
+    const shouldUpperCase = !['email', 'fechaNacimiento', 'fechaInicio', 'salario', 'salaryIMSS', 'beneficiaryPercentage', 'proyectoId'].includes(name);
     const newValue = shouldUpperCase ? toUpperCaseWithAccents(value) : value;
+    
     setEditFormData(prev => ({ ...prev, [name]: newValue }));
+    
+    // Si se cambia el proyecto, actualizar las fechas automáticamente
+    if (name === 'proyectoId' && selectedEmployee?.tipo === 'PROJECT') {
+      updateProjectDates(newValue);
+    }
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, tipo: UploadFileKey) => {
@@ -878,215 +931,204 @@ export default function EmployeesListPage() {
   };
 
   const handleSaveChanges = async () => {
-  if (!selectedEmployee) return;
-  
-  // Validación para empleados de PROYECTO activos - no permitir cambios laborales
-  if (selectedEmployee.tipo === 'PROJECT' && selectedEmployee.Status === 1) {
-    const laboralFieldsChanged = 
-      editFormData.puesto !== selectedEmployee.Position ||
-      editFormData.salario !== selectedEmployee.Salary?.toString() ||
-      editFormData.horario !== selectedEmployee.WorkSchedule ||
-      editFormData.proyectoId !== (selectedEmployee as ProjectEmployee).ProjectID?.toString() ||
-      editFormData.jefeDirectoId !== '' ||
-      editFormData.salaryIMSS !== (employeeDetails?.contractInfo?.salaryIMSS?.toString() || '');
+    if (!selectedEmployee) return;
     
-    if (laboralFieldsChanged) {
-      setError('NO SE PUEDEN GUARDAR CAMBIOS LABORALES. EL EMPLEADO DE PROYECTO ESTÁ ACTIVO. PRIMERO DEBE REALIZAR LA BAJA.');
-      return;
-    }
-  }
-  
-  try {
-    setSavingEdit(true);
-    setError('');
-    let newFileUrls: Record<string, string> = {};
-    const hasFilesToUpload = Object.values(uploadFiles).some(file => file !== null);
-    if (hasFilesToUpload) {
-      try {
-        newFileUrls = await uploadNewFiles(selectedEmployee.EmployeeID);
-        await deleteExistingFiles(newFileUrls);
-      } catch (uploadError) {
-        setError('Error al subir archivos. Por favor, intente nuevamente.');
-        setSavingEdit(false);
+    // Validación para empleados de PROYECTO activos - no permitir cambios laborales
+    if (selectedEmployee.tipo === 'PROJECT' && selectedEmployee.Status === 1) {
+      const laboralFieldsChanged = 
+        editFormData.puesto !== selectedEmployee.Position ||
+        editFormData.salario !== selectedEmployee.Salary?.toString() ||
+        editFormData.horario !== selectedEmployee.WorkSchedule ||
+        editFormData.proyectoId !== (selectedEmployee as ProjectEmployee).ProjectID?.toString() ||
+        editFormData.jefeDirectoId !== '' ||
+        editFormData.salaryIMSS !== (employeeDetails?.contractInfo?.salaryIMSS?.toString() || '');
+      
+      if (laboralFieldsChanged) {
+        setError('NO SE PUEDEN GUARDAR CAMBIOS LABORALES. EL EMPLEADO DE PROYECTO ESTÁ ACTIVO. PRIMERO DEBE REALIZAR LA BAJA.');
         return;
       }
     }
-    const finalUrls = { ...existingUrls, ...newFileUrls };
-    const documentUrls = {
-      CVFileURL: finalUrls.CVFileURL,
-      ANFileURL: finalUrls.ANFileURL,
-      CURPFileURL: finalUrls.CURPFileURL,
-      RFCFileURL: finalUrls.RFCFileURL,
-      IMSSFileURL: finalUrls.IMSSFileURL,
-      INEFileURL: finalUrls.INEFileURL,
-      CDFileURL: finalUrls.CDFileURL,
-      CEFileURL: finalUrls.CEFileURL,
-      CPFileURL: finalUrls.CPFileURL,
-      LMFileURL: finalUrls.LMFileURL,
-      ANPFileURL: finalUrls.ANPFileURL,
-      CRFileURL: finalUrls.CRFileURL,
-      RIFileURL: finalUrls.RIFileURL,
-      EMFileURL: finalUrls.EMFileURL,
-      FotoFileURL: finalUrls.FotoFileURL,
-      FolletoFileURL: finalUrls.FolletoFileURL
-    };
     
-    // IMPORTANTE: Determinar si el empleado está inactivo
-    const isEmployeeInactive = selectedEmployee.Status === 0;
-    
-    // Construir contractInfo SOLO si el empleado está inactivo
-    let contractInfoData = undefined;
-    
-    if (isEmployeeInactive) {
-      if (selectedEmployee.tipo === 'BASE') {
-        contractInfoData = {
-          startDate: editFormData.fechaInicio,
-          salaryIMSS: editFormData.salaryIMSS ? parseFloat(editFormData.salaryIMSS) : null,
-          jefeDirectoId: editFormData.jefeDirectoId ? parseInt(editFormData.jefeDirectoId) : null
-        };
-      } else {
-        contractInfoData = {
-          salaryIMSS: editFormData.salaryIMSS ? parseFloat(editFormData.salaryIMSS) : null,
-          position: toUpperCaseWithAccents(editFormData.puesto),
-          salary: parseFloat(editFormData.salario) || 0,
-          workSchedule: toUpperCaseWithAccents(editFormData.horario),
-          projectId: editFormData.proyectoId ? parseInt(editFormData.proyectoId) : null,
-          jefeDirectoId: editFormData.jefeDirectoId ? parseInt(editFormData.jefeDirectoId) : null
-        };
+    try {
+      setSavingEdit(true);
+      setError('');
+      let newFileUrls: Record<string, string> = {};
+      const hasFilesToUpload = Object.values(uploadFiles).some(file => file !== null);
+      if (hasFilesToUpload) {
+        try {
+          newFileUrls = await uploadNewFiles(selectedEmployee.EmployeeID);
+          await deleteExistingFiles(newFileUrls);
+        } catch (uploadError) {
+          setError('Error al subir archivos. Por favor, intente nuevamente.');
+          setSavingEdit(false);
+          return;
+        }
       }
-    }
-    
-    const updateData = {
-      tipo: selectedEmployee.tipo,
-      personalInfo: {
-        firstName: toUpperCaseWithAccents(editFormData.firstName),
-        lastName: toUpperCaseWithAccents(editFormData.lastName),
-        middleName: toUpperCaseWithAccents(editFormData.middleName),
-        // Siempre enviar posición, salario y horario para actualizar la tabla principal
-        position: toUpperCaseWithAccents(editFormData.puesto),
-        ...(selectedEmployee.tipo === 'BASE' && {
-          area: toUpperCaseWithAccents(editFormData.area),
-        }),
-        salary: parseFloat(editFormData.salario) || 0,
-        workSchedule: toUpperCaseWithAccents(editFormData.horario)
-      },
-      personalInfoExtra: {
-        calle: toUpperCaseWithAccents(editFormData.calle),
-        numeroExterior: editFormData.numeroExterior ? parseInt(editFormData.numeroExterior) : null,
-        numeroInterior: editFormData.numeroInterior ? parseInt(editFormData.numeroInterior) : null,
-        colonia: toUpperCaseWithAccents(editFormData.colonia),
-        municipio: toUpperCaseWithAccents(editFormData.municipio),
-        estado: toUpperCaseWithAccents(editFormData.estado),
-        codigoPostal: editFormData.codigoPostal ? parseInt(editFormData.codigoPostal) : null,
-        municipality: toUpperCaseWithAccents(editFormData.municipio),
-        nationality: toUpperCaseWithAccents(editFormData.nacionalidad),
-        gender: toUpperCaseWithAccents(editFormData.genero),
-        birthdate: editFormData.fechaNacimiento,
-        maritalStatus: toUpperCaseWithAccents(editFormData.estadoCivil),
-        rfc: toUpperCaseWithAccents(editFormData.rfc),
-        curp: toUpperCaseWithAccents(editFormData.curp),
-        nss: editFormData.nss,
-        nci: toUpperCaseWithAccents(editFormData.nci),
-        umf: editFormData.umf ? parseInt(editFormData.umf) : null,
-        phone: editFormData.telefono,
-        email: editFormData.email.toLowerCase().trim()
-      },
-      contractInfo: contractInfoData,
-      documentacion: documentUrls,
-      beneficiario: {
-        beneficiaryFirstName: toUpperCaseWithAccents(editFormData.beneficiaryFirstName),
-        beneficiaryLastName: toUpperCaseWithAccents(editFormData.beneficiaryLastName),
-        beneficiaryMiddleName: toUpperCaseWithAccents(editFormData.beneficiaryMiddleName),
-        relationship: toUpperCaseWithAccents(editFormData.beneficiaryRelationship),
-        percentage: parseFloat(editFormData.beneficiaryPercentage) || 0
-      }
-    };
-    
-    console.log('=== ENVIANDO ACTUALIZACIÓN ===');
-    console.log('Empleado ID:', selectedEmployee.EmployeeID);
-    console.log('Status actual:', selectedEmployee.Status);
-    console.log('isEmployeeInactive:', isEmployeeInactive);
-    console.log('contractInfo enviado:', contractInfoData);
-    console.log('===============================');
-    
-    const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/query-update/update/${selectedEmployee.EmployeeID}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updateData),
-    });
-    const data = await response.json();
-    
-    console.log('=== RESPUESTA DEL SERVIDOR ===');
-    console.log('success:', data.success);
-    console.log('message:', data.message);
-    console.log('contractFileURL:', data.contractFileURL);
-    console.log('warningFileURL:', data.warningFileURL);
-    console.log('letterFileURL:', data.letterFileURL);
-    console.log('agreementFileURL:', data.agreementFileURL);
-    console.log('===============================');
-    
-    if (response.ok && data.success) {
-      setShowDetailsModal(false);
-      setEmployeeDetails(null);
-      setSelectedEmployee(null);
-      setIsEditing(false);
-      await fetchEmployees();
+      const finalUrls = { ...existingUrls, ...newFileUrls };
+      const documentUrls = {
+        CVFileURL: finalUrls.CVFileURL,
+        ANFileURL: finalUrls.ANFileURL,
+        CURPFileURL: finalUrls.CURPFileURL,
+        RFCFileURL: finalUrls.RFCFileURL,
+        IMSSFileURL: finalUrls.IMSSFileURL,
+        INEFileURL: finalUrls.INEFileURL,
+        CDFileURL: finalUrls.CDFileURL,
+        CEFileURL: finalUrls.CEFileURL,
+        CPFileURL: finalUrls.CPFileURL,
+        LMFileURL: finalUrls.LMFileURL,
+        ANPFileURL: finalUrls.ANPFileURL,
+        CRFileURL: finalUrls.CRFileURL,
+        RIFileURL: finalUrls.RIFileURL,
+        EMFileURL: finalUrls.EMFileURL,
+        FotoFileURL: finalUrls.FotoFileURL,
+        FolletoFileURL: finalUrls.FolletoFileURL
+      };
       
-      // Solo mostrar el modal si se generaron documentos
-      if (data.contractFileURL || data.warningFileURL || data.letterFileURL || data.agreementFileURL) {
-        const nombreCompleto = data.employeeName || `${editFormData.firstName} ${editFormData.lastName} ${editFormData.middleName}`.trim();
-        
-        setUpdateSuccessDetails({
-          empleadoId: data.employeeId,
-          nombre: nombreCompleto,
-          puesto: data.employeePosition || editFormData.puesto,
-          tipoPersonal: selectedEmployee.tipo === 'BASE' ? 'PERSONAL BASE' : 'PERSONAL DE PROYECTO',
-          fechaRegistro: new Date().toLocaleDateString('es-MX'),
-          ftRh02PdfUrl: data.contractFileURL ? `${data.contractFileURL}` : `/api/download/pdf/FT-RH-02?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
-          ftRh02PdfDownloadUrl: data.contractFileURL || `/api/download/pdf/FT-RH-02?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
-          ftRh04PdfUrl: data.warningFileURL ? `${data.warningFileURL}` : `/api/download/pdf/FT-RH-04?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
-          ftRh04PdfDownloadUrl: data.warningFileURL || `/api/download/pdf/FT-RH-04?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
-          ftRh07PdfUrl: data.letterFileURL ? `${data.letterFileURL}` : `/api/download/pdf/FT-RH-07?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
-          ftRh07PdfDownloadUrl: data.letterFileURL || `/api/download/pdf/FT-RH-07?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
-          ftRh29PdfUrl: data.agreementFileURL ? `${data.agreementFileURL}` : `/api/download/pdf/FT-RH-29?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
-          ftRh29PdfDownloadUrl: data.agreementFileURL || `/api/download/pdf/FT-RH-29?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
-          ftRh02WordUrl: `/api/download/edit/FT-RH-02?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
-          ftRh04ExcelUrl: `/api/download/edit/FT-RH-04?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
-          ftRh07WordUrl: `/api/download/edit/FT-RH-07?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
-          ftRh29WordUrl: `/api/download/edit/FT-RH-29?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`
-        });
-        setShowUpdateSuccessModal(true);
-      } else {
-        setSuccessMessage(data.message || 'EMPLEADO ACTUALIZADO EXITOSAMENTE');
-        // Ocultar el mensaje después de 3 segundos
-        setTimeout(() => setSuccessMessage(''), 3000);
+      // IMPORTANTE: Determinar si el empleado está inactivo
+      const isEmployeeInactive = selectedEmployee.Status === 0;
+      
+      // Construir contractInfo SOLO si el empleado está inactivo
+      let contractInfoData = undefined;
+      
+      if (isEmployeeInactive) {
+        if (selectedEmployee.tipo === 'BASE') {
+          contractInfoData = {
+            startDate: editFormData.fechaInicio,
+            salaryIMSS: editFormData.salaryIMSS ? parseFloat(editFormData.salaryIMSS) : null,
+            jefeDirectoId: editFormData.jefeDirectoId ? parseInt(editFormData.jefeDirectoId) : null
+          };
+        } else {
+          contractInfoData = {
+            salaryIMSS: editFormData.salaryIMSS ? parseFloat(editFormData.salaryIMSS) : null,
+            position: toUpperCaseWithAccents(editFormData.puesto),
+            salary: parseFloat(editFormData.salario) || 0,
+            workSchedule: toUpperCaseWithAccents(editFormData.horario),
+            projectId: editFormData.proyectoId ? parseInt(editFormData.proyectoId) : null,
+            jefeDirectoId: editFormData.jefeDirectoId ? parseInt(editFormData.jefeDirectoId) : null
+          };
+        }
       }
-    } else {
-      setError(data.message || 'ERROR AL ACTUALIZAR EMPLEADO');
+      
+      const updateData = {
+        tipo: selectedEmployee.tipo,
+        personalInfo: {
+          firstName: toUpperCaseWithAccents(editFormData.firstName),
+          lastName: toUpperCaseWithAccents(editFormData.lastName),
+          middleName: toUpperCaseWithAccents(editFormData.middleName),
+          // Siempre enviar posición, salario y horario para actualizar la tabla principal
+          position: toUpperCaseWithAccents(editFormData.puesto),
+          ...(selectedEmployee.tipo === 'BASE' && {
+            area: toUpperCaseWithAccents(editFormData.area),
+          }),
+          salary: parseFloat(editFormData.salario) || 0,
+          workSchedule: toUpperCaseWithAccents(editFormData.horario)
+        },
+        personalInfoExtra: {
+          calle: toUpperCaseWithAccents(editFormData.calle),
+          numeroExterior: editFormData.numeroExterior ? parseInt(editFormData.numeroExterior) : null,
+          numeroInterior: editFormData.numeroInterior ? parseInt(editFormData.numeroInterior) : null,
+          colonia: toUpperCaseWithAccents(editFormData.colonia),
+          municipio: toUpperCaseWithAccents(editFormData.municipio),
+          estado: toUpperCaseWithAccents(editFormData.estado),
+          codigoPostal: editFormData.codigoPostal ? parseInt(editFormData.codigoPostal) : null,
+          municipality: toUpperCaseWithAccents(editFormData.municipio),
+          nationality: toUpperCaseWithAccents(editFormData.nacionalidad),
+          gender: toUpperCaseWithAccents(editFormData.genero),
+          birthdate: editFormData.fechaNacimiento,
+          maritalStatus: toUpperCaseWithAccents(editFormData.estadoCivil),
+          rfc: toUpperCaseWithAccents(editFormData.rfc),
+          curp: toUpperCaseWithAccents(editFormData.curp),
+          nss: editFormData.nss,
+          nci: toUpperCaseWithAccents(editFormData.nci),
+          umf: editFormData.umf ? parseInt(editFormData.umf) : null,
+          phone: editFormData.telefono,
+          email: editFormData.email.toLowerCase().trim()
+        },
+        contractInfo: contractInfoData,
+        documentacion: documentUrls,
+        beneficiario: {
+          beneficiaryFirstName: toUpperCaseWithAccents(editFormData.beneficiaryFirstName),
+          beneficiaryLastName: toUpperCaseWithAccents(editFormData.beneficiaryLastName),
+          beneficiaryMiddleName: toUpperCaseWithAccents(editFormData.beneficiaryMiddleName),
+          relationship: toUpperCaseWithAccents(editFormData.beneficiaryRelationship),
+          percentage: parseFloat(editFormData.beneficiaryPercentage) || 0
+        }
+      };
+      
+      console.log('=== ENVIANDO ACTUALIZACIÓN ===');
+      console.log('Empleado ID:', selectedEmployee.EmployeeID);
+      console.log('Status actual:', selectedEmployee.Status);
+      console.log('isEmployeeInactive:', isEmployeeInactive);
+      console.log('contractInfo enviado:', contractInfoData);
+      console.log('===============================');
+      
+      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/query-update/update/${selectedEmployee.EmployeeID}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData),
+      });
+      const data = await response.json();
+      
+      console.log('=== RESPUESTA DEL SERVIDOR ===');
+      console.log('success:', data.success);
+      console.log('message:', data.message);
+      console.log('contractFileURL:', data.contractFileURL);
+      console.log('warningFileURL:', data.warningFileURL);
+      console.log('letterFileURL:', data.letterFileURL);
+      console.log('agreementFileURL:', data.agreementFileURL);
+      console.log('===============================');
+      
+      if (response.ok && data.success) {
+        setShowDetailsModal(false);
+        setEmployeeDetails(null);
+        setSelectedEmployee(null);
+        setIsEditing(false);
+        await fetchEmployees();
+        
+        // Solo mostrar el modal si se generaron documentos
+        if (data.contractFileURL || data.warningFileURL || data.letterFileURL || data.agreementFileURL) {
+          const nombreCompleto = data.employeeName || `${editFormData.firstName} ${editFormData.lastName} ${editFormData.middleName}`.trim();
+          
+          setUpdateSuccessDetails({
+            empleadoId: data.employeeId,
+            nombre: nombreCompleto,
+            puesto: data.employeePosition || editFormData.puesto,
+            tipoPersonal: selectedEmployee.tipo === 'BASE' ? 'PERSONAL BASE' : 'PERSONAL DE PROYECTO',
+            fechaRegistro: new Date().toLocaleDateString('es-MX'),
+            ftRh02PdfUrl: data.contractFileURL ? `${data.contractFileURL}` : `/api/download/pdf/FT-RH-02?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
+            ftRh02PdfDownloadUrl: data.contractFileURL || `/api/download/pdf/FT-RH-02?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
+            ftRh04PdfUrl: data.warningFileURL ? `${data.warningFileURL}` : `/api/download/pdf/FT-RH-04?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
+            ftRh04PdfDownloadUrl: data.warningFileURL || `/api/download/pdf/FT-RH-04?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
+            ftRh07PdfUrl: data.letterFileURL ? `${data.letterFileURL}` : `/api/download/pdf/FT-RH-07?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
+            ftRh07PdfDownloadUrl: data.letterFileURL || `/api/download/pdf/FT-RH-07?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
+            ftRh29PdfUrl: data.agreementFileURL ? `${data.agreementFileURL}` : `/api/download/pdf/FT-RH-29?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
+            ftRh29PdfDownloadUrl: data.agreementFileURL || `/api/download/pdf/FT-RH-29?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
+            ftRh02WordUrl: `/api/download/edit/FT-RH-02?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
+            ftRh04ExcelUrl: `/api/download/edit/FT-RH-04?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
+            ftRh07WordUrl: `/api/download/edit/FT-RH-07?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`,
+            ftRh29WordUrl: `/api/download/edit/FT-RH-29?empleadoId=${data.employeeId}&tipo=${selectedEmployee.tipo}`
+          });
+          setShowUpdateSuccessModal(true);
+        } else {
+          setSuccessMessage(data.message || 'EMPLEADO ACTUALIZADO EXITOSAMENTE');
+          // Ocultar el mensaje después de 3 segundos
+          setTimeout(() => setSuccessMessage(''), 3000);
+        }
+      } else {
+        setError(data.message || 'ERROR AL ACTUALIZAR EMPLEADO');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setError('ERROR DE CONEXIÓN AL ACTUALIZAR EMPLEADO');
+    } finally {
+      setSavingEdit(false);
+      setUploadProgress(0);
     }
-  } catch (error) {
-    console.error('Error:', error);
-    setError('ERROR DE CONEXIÓN AL ACTUALIZAR EMPLEADO');
-  } finally {
-    setSavingEdit(false);
-    setUploadProgress(0);
-  }
-};
+  };
 
   const openPdfInNewTab = (url: string) => {
     if (!url) return;
     window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const formatDate = (dateString?: string): string => {
-    if (!dateString) return 'N/A';
-    try {
-      return new Date(dateString).toLocaleDateString('es-MX', {
-        year: 'numeric', month: '2-digit', day: '2-digit'
-      });
-    } catch {
-      return 'N/A';
-    }
   };
 
   const formatCurrency = (amount: number): string => {
@@ -1313,7 +1355,7 @@ export default function EmployeesListPage() {
                                   <button
                                     onClick={() => openPdfInNewTab(employee.WarningFileURL!)}
                                     className="text-xs text-gray-700 hover:underline"
-                                    title="FT-RH-04 (Carta Advertencia)"
+                                    title="FT-RH-04 (Aviso de Contratación)"
                                   >
                                     Ver Aviso de Contratación
                                   </button>
@@ -1322,7 +1364,7 @@ export default function EmployeesListPage() {
                                   <button
                                     onClick={() => openPdfInNewTab(employee.LetterFileURL!)}
                                     className="text-xs text-gray-700 hover:underline"
-                                    title="FT-RH-07 (Carta Recomendación)"
+                                    title="FT-RH-07 (Carta Compromiso)"
                                   >
                                     Ver Carta Compromiso
                                   </button>
@@ -1549,8 +1591,26 @@ export default function EmployeesListPage() {
                               {proyectos.map((proyecto) => (<option key={proyecto.ProjectID} value={proyecto.ProjectID}>{proyecto.NameProject}</option>))}
                             </select>
                           </div>
-                          <div><label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Fecha Inicio (Proyecto)</label><input type="text" value={employeeDetails?.projectInfo?.startDate ? formatDate(employeeDetails.projectInfo.startDate) : 'N/A'} disabled className="w-full px-3 py-2 text-sm bg-gray-100 border border-gray-300 rounded text-gray-600" /></div>
-                          <div><label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Fecha Fin (Proyecto)</label><input type="text" value={employeeDetails?.projectInfo?.endDate ? formatDate(employeeDetails.projectInfo.endDate) : 'N/A'} disabled className="w-full px-3 py-2 text-sm bg-gray-100 border border-gray-300 rounded text-gray-600" /></div>
+                          
+                          {/* FECHAS DEL PROYECTO SELECCIONADO - ACTUALIZACIÓN DINÁMICA */}
+                          <div>
+                            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Fecha Inicio (Proyecto)</label>
+                            <input 
+                              type="text" 
+                              value={selectedProjectDates.startDate ? formatDate(selectedProjectDates.startDate) : 'N/A'} 
+                              disabled 
+                              className="w-full px-3 py-2 text-sm bg-gray-100 border border-gray-300 rounded text-gray-600" 
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Fecha Fin (Proyecto)</label>
+                            <input 
+                              type="text" 
+                              value={selectedProjectDates.endDate ? formatDate(selectedProjectDates.endDate) : 'N/A'} 
+                              disabled 
+                              className="w-full px-3 py-2 text-sm bg-gray-100 border border-gray-300 rounded text-gray-600" 
+                            />
+                          </div>
                         </>
                       )}
                       <div>
