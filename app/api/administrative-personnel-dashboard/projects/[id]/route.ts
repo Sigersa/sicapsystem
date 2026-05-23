@@ -1,3 +1,4 @@
+// app/api/administrative-personnel-dashboard/projects/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '@/lib/db';
 import { validateAndRenewSession } from "@/lib/auth";
@@ -56,7 +57,21 @@ export async function GET(
     connection = await getConnection();
 
     const [projects] = await connection.execute(
-      'SELECT * FROM projects WHERE ProjectID = ?',
+      `SELECT 
+          p.ProjectID,
+          p.NameProject,
+          p.ProjectAddress,
+          p.AdminProjectID,
+          p.StartDate,
+          p.EndDate,
+          p.Status,
+          bp.FirstName,
+          bp.LastName,
+          bp.MiddleName
+      FROM projects p
+      INNER JOIN employees e ON e.EmployeeID = p.AdminProjectID
+      LEFT JOIN basepersonnel bp ON bp.EmployeeID = e.EmployeeID
+      WHERE p.ProjectID = ?`,
       [id]
     );
 
