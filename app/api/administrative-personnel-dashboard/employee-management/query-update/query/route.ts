@@ -142,7 +142,7 @@ ORDER BY e.EmployeeID;
         uniqueByEmployeeId.set(emp.EmployeeID, emp);
       } else {
         // Si ya existe, logueamos el conflicto (esto no debería pasar)
-        console.warn(`⚠️ Empleado duplicado encontrado: ID=${emp.EmployeeID}, tipos: ${existing.tipo} y ${emp.tipo}`);
+        console.warn(`Empleado duplicado encontrado: ID=${emp.EmployeeID}, tipos: ${existing.tipo} y ${emp.tipo}`);
       }
     }
     
@@ -184,7 +184,7 @@ ORDER BY e.EmployeeID;
     const keys = finalEmployees.map(e => e.uniqueKey);
     const uniqueKeys = new Set(keys);
     if (keys.length !== uniqueKeys.size) {
-      console.error('❌ Claves duplicadas encontradas en la respuesta final:', 
+      console.error('Claves duplicadas encontradas en la respuesta final:', 
         keys.filter((k, i) => keys.indexOf(k) !== i));
     }
 
