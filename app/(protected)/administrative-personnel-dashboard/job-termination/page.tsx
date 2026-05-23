@@ -671,7 +671,7 @@ export default function EmployeesListPage() {
               <p className="text-sm text-gray-600 mt-2 leading-5">
                 ¿Está seguro que desea dar de baja a <span className="font-bold text-gray-800">{confirmTermination.employee.FirstName} {confirmTermination.employee.LastName}</span>?
                 <br /><br />
-                Esta acción generará los documentos de terminación laboral y el empleado ya no podrá acceder al sistema.
+                Esta acción generará los documentos de terminación laboral.
               </p>
             </div>
             
@@ -1209,9 +1209,9 @@ export default function EmployeesListPage() {
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ID</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">EMPLEADO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">TIPO</th>
+                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ESTADO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">PUESTO / PROYECTO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">CONTACTO</th>
-                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ESTADO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FORMATOS</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
                   </tr>
@@ -1252,11 +1252,15 @@ export default function EmployeesListPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 px-4">
+                                                  <td className="py-3 px-4"><div className="text-sm font-medium text-gray-800">{employee.tipo === 'BASE' ? 'BASE' : 'PROYECTO'}</div></td>
+
+                           <td className="py-3 px-4">
                             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              employee.tipo === 'BASE' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                              (employee.Status ?? 1) === 1 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
                             }`}>
-                              {employee.tipo === 'BASE' ? 'BASE' : 'PROYECTO'}
+                              {(employee.Status ?? 1) === 1 ? 'ACTIVO' : 'INACTIVO'}
                             </span>
                            </td>
                           <td className="py-3 px-4">
@@ -1275,15 +1279,6 @@ export default function EmployeesListPage() {
                           <td className="py-3 px-4">
                             <div className="text-sm text-gray-800">{employee.Email}</div>
                             <div className="text-xs text-gray-500">{employee.Phone}</div>
-                           </td>
-                          <td className="py-3 px-4">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              (employee.Status ?? 1) === 1 
-                                ? 'bg-green-100 text-green-800' 
-                                : 'bg-red-100 text-red-800'
-                            }`}>
-                              {(employee.Status ?? 1) === 1 ? 'ACTIVO' : 'INACTIVO'}
-                            </span>
                            </td>
                           <td className="py-3 px-4">
                             {employee.tipo === 'BASE' && (employee.Status ?? 1) === 0 ? (
