@@ -1,4 +1,5 @@
 'use client';
+
 import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
@@ -82,7 +83,7 @@ type Documentos = {
   folleto: File[];
 };
 
-// Tipo para proyectos (actualizado con fechas)
+// Tipo para proyectos (actualizado con AdminName)
 type Proyecto = {
   ProjectID: number;
   NameProject: string;
@@ -91,17 +92,16 @@ type Proyecto = {
   StartDate: string;
   EndDate: string;
   Status: number;
+  AdminName?: string;
+  AdminPosition?: string;
 };
 
-// Tipo para jefes directos
+// Tipo para jefes directos (solo para personal BASE)
 type JefeDirecto = {
   id: number;
-  nombre: string;
-  apellidoPaterno: string;
-  apellidoMaterno: string;
-  puesto: string;
-  tipoPersonal: 'BASE' | 'PROJECT';
   nombreCompleto: string;
+  puesto: string;
+  tipoPersonal: string;
 };
 
 // Tipo para los detalles del éxito
@@ -292,7 +292,7 @@ export default function SystemAdminDashboard() {
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
 
-  // Estado para jefes directos
+  // Estado para jefes directos (solo personal BASE)
   const [jefesDirectos, setJefesDirectos] = useState<JefeDirecto[]>([]);
   const [loadingJefes, setLoadingJefes] = useState(false);
 
@@ -346,11 +346,11 @@ export default function SystemAdminDashboard() {
     }
   };
 
-  // Función para obtener jefes directos
+  // Función para obtener jefes directos (solo personal BASE activo)
   const fetchJefesDirectos = async () => {
     try {
       setLoadingJefes(true);
-      const response = await fetch('/api/catalogs/jefes-directos');
+      const response = await fetch('/api/catalogs/personal-base');
       if (response.ok) {
         const data = await response.json();
         setJefesDirectos(data);
@@ -674,9 +674,8 @@ export default function SystemAdminDashboard() {
     
     // Para las fechas del proyecto, no permitir cambios manuales
     if (activeTab === 'proyecto') {
-      // Si el campo es fechaInicioContrato o fechaFinContrato y hay un proyecto seleccionado, no permitir cambios
       if ((name === 'fechaInicioContrato' || name === 'fechaFinContrato') && formDataProyecto.proyectoId) {
-        return; // No permitir cambios
+        return;
       }
       
       setFormDataProyecto(prev => ({
@@ -852,8 +851,16 @@ export default function SystemAdminDashboard() {
       'nombre', 'apellidoPaterno', 'nss', 'curp', 'rfc',
       'fechaNacimiento', 'telefono', 'email', 'puesto',
       'salario', 'calle', 'numeroExterior',
-      'colonia', 'municipio', 'estado', 'codigoPostal', 'jefeDirectoId'
+      'colonia', 'municipio', 'estado', 'codigoPostal'
     ];
+
+    // Para personal base, jefeDirectoId es requerido
+    if (activeTab === 'base') {
+      if (!formData.jefeDirectoId?.trim()) {
+        setErrorMessage('El Jefe Directo es requerido para personal base');
+        return false;
+      }
+    }
 
     if (activeTab === 'proyecto') {
       const proyectoData = formData as FormDataProyecto;
@@ -1097,7 +1104,7 @@ export default function SystemAdminDashboard() {
 
         documentos: documentosUrls,
         
-        jefeDirectoId: formData.jefeDirectoId
+        jefeDirectoId: activeTab === 'base' ? formData.jefeDirectoId : null
       };
 
       if (activeTab === 'proyecto') {
@@ -1892,32 +1899,57 @@ export default function SystemAdminDashboard() {
                   </select>
                 </div>
                 
-                 {/* JEFE DIRECTO */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    JEFE DIRECTO *
-                  </label>
-                  <div className="relative">
-                    <select
-                      name="jefeDirectoId"
-                      value={formData.jefeDirectoId}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                      required
-                      disabled={loadingJefes}
-                    >
-                      <option value="">Seleccione un jefe directo</option>
-                      {jefesDirectos.map((jefe) => (
-                        <option key={jefe.id} value={jefe.id}>
-                          {jefe.nombreCompleto} - {jefe.puesto} ({jefe.tipoPersonal})
-                        </option>
-                      ))}
-                    </select>
+                {/* JEFE DIRECTO - SOLO PARA PERSONAL BASE */}
+                {activeTab === 'base' && (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      JEFE DIRECTO *
+                    </label>
+                    <div className="relative">
+                      <select
+                        name="jefeDirectoId"
+                        value={formData.jefeDirectoId}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                        required
+                        disabled={loadingJefes}
+                      >
+                        <option value="">Seleccione un jefe directo</option>
+                        {jefesDirectos.map((jefe) => (
+                          <option key={jefe.id} value={jefe.id}>
+                            {jefe.nombreCompleto} - {jefe.puesto}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {loadingJefes && (
+                      <p className="text-xs text-gray-500 mt-1">Cargando jefes directos...</p>
+                    )}
                   </div>
-                  {loadingJefes && (
-                    <p className="text-xs text-gray-500 mt-1">Cargando jefes directos...</p>
-                  )}
-                </div>
+                )}
+
+                {/* ADMINISTRADOR DEL PROYECTO - SOLO PARA PERSONAL DE PROYECTO (solo lectura) */}
+                {activeTab === 'proyecto' && (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      ADMINISTRADOR DEL PROYECTO
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={(() => {
+                          const proyectoSeleccionado = proyectos.find(p => p.ProjectID.toString() === formDataProyecto.proyectoId);
+                          if (proyectoSeleccionado && proyectoSeleccionado.AdminName) {
+                            return `${proyectoSeleccionado.AdminName}${proyectoSeleccionado.AdminPosition ? ` - ${proyectoSeleccionado.AdminPosition}` : ''}`;
+                          }
+                          return 'SIN ADMINISTRADOR ASIGNADO';
+                        })()}
+                        disabled
+                        className="w-full px-3 py-2.5 text-sm bg-gray-100 border border-gray-300 rounded text-gray-600 cursor-not-allowed font-medium"
+                      />
+                    </div>
+                  </div>
+                )}
                 
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
