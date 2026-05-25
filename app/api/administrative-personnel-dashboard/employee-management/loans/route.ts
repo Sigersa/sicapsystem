@@ -193,31 +193,41 @@ export async function GET(request: NextRequest) {
 
     const [rows] = await connection.execute(`
       SELECT 
-        el.LoanID,
-        el.EmployeeID,
-        el.ApplicationDate,
-        el.Amount,
-        el.NumberOfPayments,
-        el.DiscountAmount,
-        el.FirstDiscountDate,
-        el.Observations,
-        el.FileURL,
-        e.Status,
-        COALESCE(bp.FirstName, pp.FirstName) as FirstName,
-        COALESCE(bp.LastName, pp.LastName) as LastName,
-        COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
-        COALESCE(bp.Position, pc.Position) as Position,
-        CASE 
-          WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
-          ELSE 'PROJECT'
-        END as tipo
+          el.LoanID,
+          el.EmployeeID,
+          el.ApplicationDate,
+          el.Amount,
+          el.NumberOfPayments,
+          el.DiscountAmount,
+          el.FirstDiscountDate,
+          el.Observations,
+          el.FileURL,
+          e.Status,
+          COALESCE(bp.FirstName, pp.FirstName) as FirstName,
+          COALESCE(bp.LastName, pp.LastName) as LastName,
+          COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
+          COALESCE(bp.Position, pc.Position) as Position,
+          CASE 
+            WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
+            ELSE 'PROJECT'
+          END as tipo
       FROM employeeloans el
-      INNER JOIN employees e ON e.EmployeeID = el.EmployeeID
-      LEFT JOIN basepersonnel bp ON el.EmployeeID = bp.EmployeeID
-      LEFT JOIN projectpersonnel pp ON el.EmployeeID = pp.EmployeeID
-      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+      INNER JOIN employees e 
+          ON e.EmployeeID = el.EmployeeID
+
+      LEFT JOIN basepersonnel bp 
+          ON el.EmployeeID = bp.EmployeeID
+
+      LEFT JOIN projectpersonnel pp 
+          ON el.EmployeeID = pp.EmployeeID
+
+      LEFT JOIN projectcontracts pc 
+          ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+          AND pc.Status = 1
+
       WHERE e.Status = 1
-      ORDER BY el.ApplicationDate DESC, el.LoanID DESC
+
+      ORDER BY el.ApplicationDate DESC, el.LoanID DESC;
     `);
 
     const loans = rows as any[];
@@ -410,25 +420,22 @@ export async function POST(request: NextRequest) {
           let jefeDirectoNombre = "NO ESPECIFICADO";
 
           if (tipo === 'PROJECT') {
+            // Consulta simplificada para personal de proyecto
             const [rows] = await connection.execute<any[]>(
-              `SELECT 
+              `SELECT
                 pp.FirstName,
                 pp.LastName,
                 pp.MiddleName,
                 pc.Position,
                 p.NameProject,
-                -- Intentar obtener nombre del jefe
-                CONCAT(bp_jefe.FirstName, ' ', bp_jefe.LastName, ' ', IFNULL(bp_jefe.MiddleName, '')) as JefeDirectoNombreBase,
-                CONCAT(pp_jefe.FirstName, ' ', pp_jefe.LastName, ' ', IFNULL(pp_jefe.MiddleName, '')) as JefeDirectoNombreProject
+                p.AdminProjectID,
+                CONCAT(bp.FirstName, ' ', bp.LastName, ' ', IFNULL(bp.MiddleName, '')) as JefeDirecto
               FROM projectpersonnel pp
               LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
               LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
-              LEFT JOIN employees je ON pc.jefeDirectoId = je.EmployeeID
-              LEFT JOIN basepersonnel bp_jefe ON je.EmployeeID = bp_jefe.EmployeeID AND je.EmployeeType = 'BASE'
-              LEFT JOIN projectpersonnel pp_jefe ON je.EmployeeID = pp_jefe.EmployeeID AND je.EmployeeType = 'PROJECT'
-              WHERE pp.EmployeeID = ?
-              ORDER BY pc.ContractID DESC
-              LIMIT 1`,
+              LEFT JOIN employees e ON p.AdminProjectID = e.EmployeeID 
+              LEFT JOIN basepersonnel bp ON e.EmployeeID = bp.EmployeeID
+              WHERE pp.EmployeeID = ?`,
               [EmployeeID]
             );
 
@@ -437,9 +444,10 @@ export async function POST(request: NextRequest) {
               fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
               area = r.NameProject || "PROYECTO NO ESPECIFICADO";
               position = r.Position || "NO ESPECIFICADO";
-              jefeDirectoNombre = r.JefeDirectoNombreBase || r.JefeDirectoNombreProject || "NO ESPECIFICADO";
+              jefeDirectoNombre = r.JefeDirecto || "NO ESPECIFICADO";
             }
           } else {
+            // Consulta para personal base - el jefe directo siempre es personal base
             const [rows] = await connection.execute<any[]>(
               `SELECT 
                 bp.FirstName,
@@ -447,17 +455,12 @@ export async function POST(request: NextRequest) {
                 bp.MiddleName,
                 bp.Position,
                 bp.Area,
-                -- Intentar obtener nombre del jefe
-                CONCAT(bp_jefe.FirstName, ' ', bp_jefe.LastName, ' ', IFNULL(bp_jefe.MiddleName, '')) as JefeDirectoNombreBase,
-                CONCAT(pp_jefe.FirstName, ' ', pp_jefe.LastName, ' ', IFNULL(pp_jefe.MiddleName, '')) as JefeDirectoNombreProject
+                CONCAT(bp_jefe.FirstName, ' ', bp_jefe.LastName, ' ', IFNULL(bp_jefe.MiddleName, '')) as JefeDirecto
               FROM basepersonnel bp
               LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
               LEFT JOIN employees je ON bc.jefeDirectoId = je.EmployeeID
               LEFT JOIN basepersonnel bp_jefe ON je.EmployeeID = bp_jefe.EmployeeID AND je.EmployeeType = 'BASE'
-              LEFT JOIN projectpersonnel pp_jefe ON je.EmployeeID = pp_jefe.EmployeeID AND je.EmployeeType = 'PROJECT'
-              WHERE bp.EmployeeID = ?
-              ORDER BY bc.ContractID DESC
-              LIMIT 1`,
+              WHERE bp.EmployeeID = ?`,
               [EmployeeID]
             );
 
@@ -466,7 +469,7 @@ export async function POST(request: NextRequest) {
               fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
               area = r.Area || "ÁREA NO ESPECIFICADA";
               position = r.Position || "NO ESPECIFICADO";
-              jefeDirectoNombre = r.JefeDirectoNombreBase || r.JefeDirectoNombreProject || "NO ESPECIFICADO";
+              jefeDirectoNombre = r.JefeDirecto || "NO ESPECIFICADO";
             }
           }
 
@@ -475,7 +478,7 @@ export async function POST(request: NextRequest) {
           const ws = workbook.getWorksheet(1)!;
 
           ws.getCell("G8").value = fullName || "NO ESPECIFICADO";
-          ws.getCell("C16").value = area || "NO ESPECIFICADO";
+          ws.getCell("B16").value = area || "NO ESPECIFICADO";
 
           if (Amount > 0) {
             try {
@@ -502,15 +505,9 @@ export async function POST(request: NextRequest) {
           ws.getCell("F27").value = NumberOfPayments || "";
           ws.getCell("I27").value = DiscountAmount || "";
           ws.getCell("B28").value = FirstDiscountDate ? new Date(FirstDiscountDate).toLocaleDateString('es-MX') : "";
-          
-          // **CORREGIDO**: Usar Observations, NO fullName
           ws.getCell("C38").value = Observations || "SIN OBSERVACIONES";
-          
           ws.getCell("I16").value = position || "NO ESPECIFICADO";
-          
-          // **NUEVO**: Agregar nombre del jefe directo
           ws.getCell("B45").value = jefeDirectoNombre || "NO ESPECIFICADO";
-          
           ws.getCell("E49").value = fullName || "NO ESPECIFICADO";
 
           await workbook.xlsx.writeFile(tempExcelPath);
