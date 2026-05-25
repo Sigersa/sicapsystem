@@ -274,7 +274,7 @@ export async function POST(request: NextRequest) {
       'nombre', 'apellidoPaterno', 'nss', 'curp', 'rfc',
       'fechaNacimiento', 'telefono', 'email', 'puesto',
       'salario', 'calle', 'numeroExterior',
-      'colonia', 'municipio', 'estado', 'codigoPostal', 'jefeDirectoId'
+      'colonia', 'municipio', 'estado', 'codigoPostal'
     ];
     
     for (const field of requiredFields) {
@@ -299,6 +299,16 @@ export async function POST(request: NextRequest) {
       if (!formData.proyectoId?.trim()) {
         return NextResponse.json(
           { success: false, message: 'EL PROYECTO ES REQUERIDO PARA PERSONAL DE PROYECTO' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validar jefe directo para personal base
+    if (formData.tipoPersonal === 'base') {
+      if (!formData.jefeDirectoId?.trim()) {
+        return NextResponse.json(
+          { success: false, message: 'EL JEFE DIRECTO ES REQUERIDO PARA PERSONAL BASE' },
           { status: 400 }
         );
       }
@@ -360,19 +370,19 @@ export async function POST(request: NextRequest) {
     // Obtener conexión a la base de datos
     connection = await getConnection();
     
-    // Verificar que el jefe directo exista
-    if (formData.jefeDirectoId) {
+    // Verificar que el jefe directo exista (solo para personal base)
+    if (formData.tipoPersonal === 'base' && formData.jefeDirectoId) {
       const jefeDirectoId = parseInt(formData.jefeDirectoId);
       
       const [jefeRows] = await connection.execute(
-        `SELECT EmployeeID FROM employees WHERE EmployeeID = ?`,
+        `SELECT EmployeeID FROM employees WHERE EmployeeID = ? AND Status = 1`,
         [jefeDirectoId]
       );
       
       if (!Array.isArray(jefeRows) || jefeRows.length === 0) {
         await connection.release();
         return NextResponse.json(
-          { success: false, message: 'EL JEFE DIRECTO SELECCIONADO NO EXISTE' },
+          { success: false, message: 'EL JEFE DIRECTO SELECCIONADO NO EXISTE O NO ESTÁ ACTIVO' },
           { status: 400 }
         );
       }
@@ -409,7 +419,7 @@ export async function POST(request: NextRequest) {
       let warningFileURL: string | null = null;
       let letterFileURL: string | null = null;
       let agreementFileURL: string | null = null;
-      const jefeDirectoId = formData.jefeDirectoId ? parseInt(formData.jefeDirectoId) : null;
+      const jefeDirectoId = formData.tipoPersonal === 'base' && formData.jefeDirectoId ? parseInt(formData.jefeDirectoId) : null;
 
       // Procesar según el tipo de personal
       if (formData.tipoPersonal === 'base') {
@@ -645,12 +655,13 @@ export async function POST(request: NextRequest) {
           ]
         );
 
-        // 5. Insertar en projectcontracts SIN StartDate y EndDate
+        // 5. Insertar en projectcontracts - SIN jefeDirectoId (no existe en la tabla)
+        // NOTA: El jefe directo para proyecto es el Administrador del Proyecto (AdminProjectID en projects)
         await connection.execute(
           `INSERT INTO projectcontracts 
            (ProjectPersonnelID, SalaryIMSS, Position, Salary, WorkSchedule, ProjectID, 
-            ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL, jefeDirectoId, Status) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL, Status) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
           [
             projectPersonnelId,
             formData.salaryIMSS ? parseFloat(formData.salaryIMSS) : null,
@@ -661,8 +672,7 @@ export async function POST(request: NextRequest) {
             null,
             null,
             null,
-            null,
-            jefeDirectoId
+            null
           ]
         );
 
@@ -775,7 +785,6 @@ export async function POST(request: NextRequest) {
             [contractFileURL, warningFileURL, letterFileURL, agreementFileURL, employeeIdNumber]
           );
         } else {
-          // Actualizar projectcontracts - SIN StartDate y EndDate, con Status
           await connection.execute(
             `UPDATE projectcontracts 
              SET ContractFileURL = ?, WarningFileURL = ?, LetterFileURL = ?, AgreementFileURL = ?, Status = 1
