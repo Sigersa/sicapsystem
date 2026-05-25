@@ -178,8 +178,7 @@ export async function GET(
 
     } else {
       // ============================================
-      // PERSONAL DE PROYECTO - MODIFICADO
-      // Obtiene AdminProjectID en lugar de jefeDirectoId
+      // PERSONAL DE PROYECTO
       // ============================================
       const [personnelIdRows] = await connection.execute(`
         SELECT ProjectPersonnelID
@@ -290,7 +289,6 @@ export async function GET(
             salary: lastContract.Salary,
             workSchedule: lastContract.WorkSchedule,
             projectId: lastContract.ProjectID,
-            adminProjectId: lastContract.AdminProjectID,  // AdminProjectID en lugar de jefeDirectoId
             status: lastContract.Status
           };
           
@@ -323,7 +321,6 @@ export async function GET(
                 personalInfo.proyectoId = lastContract.ProjectID;
                 personalInfo.fechaInicioProyecto = projRow.StartDate;
                 personalInfo.fechaFinProyecto = projRow.EndDate;
-                personalInfo.adminProjectId = projRow.AdminProjectID;
               }
             }
           }
