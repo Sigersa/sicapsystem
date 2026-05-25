@@ -6,7 +6,6 @@ export async function GET(request: NextRequest) {
   let connection;
   
   try {
-    // Validar sesión
     const sessionId = request.cookies.get("session")?.value;
 
     if (!sessionId) {
@@ -16,7 +15,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user) {
@@ -26,22 +24,35 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Obtener conexión a la base de datos
+    if (user.UserTypeID !== 2 && user.UserTypeID !== 1) {
+      return NextResponse.json(
+        { success: false, message: 'ACCESO DENEGADO' },
+        { status: 403 }
+      );
+    }
+
     connection = await getConnection();
 
-    // Consultar proyectos activos (Status = 1)
     const [projects] = await connection.execute(
       `SELECT 
-        ProjectID,
-        NameProject,
-        ProjectAddress,
-        AdminProjectID,
-        StartDate,
-        EndDate,
-        Status
-      FROM projects 
-      WHERE Status = 1
-      ORDER BY NameProject ASC`
+          p.ProjectID,
+          p.NameProject,
+          p.ProjectAddress,
+          p.AdminProjectID,
+          p.StartDate,
+          p.EndDate,
+          p.Status,
+          CONCAT(
+            COALESCE(bp.FirstName, ''), ' ', 
+            COALESCE(bp.LastName, ''), ' ', 
+            COALESCE(bp.MiddleName, '')
+          ) as AdminName,
+          bp.Position as AdminPosition
+      FROM projects p
+      LEFT JOIN employees e ON e.EmployeeID = p.AdminProjectID
+      LEFT JOIN basepersonnel bp ON bp.EmployeeID = e.EmployeeID
+      WHERE p.Status = 1
+      ORDER BY p.NameProject ASC`
     );
 
     await connection.release();
