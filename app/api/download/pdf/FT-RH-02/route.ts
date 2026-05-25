@@ -183,9 +183,59 @@ function construirDireccionCompleta(
   return partes.join(", ");
 }
 
+/* ================================
+   FUNCIÓN PARA CALCULAR FECHA DE TÉRMINO PARA PERSONAL BASE
+   (3 MESES DESPUÉS DE LA FECHA DE INICIO)
+================================== */
+function calcularFechaTerminoBase(fechaInicio: string): string {
+  if (!fechaInicio) {
+    // Si no hay fecha de inicio, calcular a partir de hoy
+    const hoy = new Date();
+    hoy.setMonth(hoy.getMonth() + 3);
+    const year = hoy.getFullYear();
+    const month = String(hoy.getMonth() + 1).padStart(2, '0');
+    const day = String(hoy.getDate()).padStart(2, '0');
+    return `${year}/${month}/${day}`;
+  }
+  
+  // Parsear la fecha de inicio (puede venir en formato YYYY/MM/DD o YYYY-MM-DD)
+  let fechaInicioDate: Date;
+  
+  if (fechaInicio.includes('/')) {
+    const partes = fechaInicio.split('/');
+    fechaInicioDate = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+  } else if (fechaInicio.includes('-')) {
+    const partes = fechaInicio.split('-');
+    fechaInicioDate = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+  } else {
+    fechaInicioDate = new Date(fechaInicio);
+  }
+  
+  // Validar que la fecha sea válida
+  if (isNaN(fechaInicioDate.getTime())) {
+    const hoy = new Date();
+    hoy.setMonth(hoy.getMonth() + 3);
+    const year = hoy.getFullYear();
+    const month = String(hoy.getMonth() + 1).padStart(2, '0');
+    const day = String(hoy.getDate()).padStart(2, '0');
+    return `${year}/${month}/${day}`;
+  }
+  
+  // Sumar 3 meses
+  fechaInicioDate.setMonth(fechaInicioDate.getMonth() + 3);
+  
+  // Formatear la fecha como YYYY/MM/DD
+  const year = fechaInicioDate.getFullYear();
+  const month = String(fechaInicioDate.getMonth() + 1).padStart(2, '0');
+  const day = String(fechaInicioDate.getDate()).padStart(2, '0');
+  
+  return `${year}/${month}/${day}`;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const empleadoId = searchParams.get("empleadoId");
+  const tipo = searchParams.get("tipo"); // 'BASE' o 'PROJECT' (opcional)
   const isPreview = searchParams.get("preview") === "1";
 
   if (!empleadoId) {
@@ -215,7 +265,7 @@ export async function GET(request: NextRequest) {
       SELECT EmployeeType 
       FROM employees 
       WHERE EmployeeID = ?
-    `,
+      `,
       [empleadoId]
     );
 
@@ -229,10 +279,11 @@ export async function GET(request: NextRequest) {
     const employee = employeeInfo[0];
     let contractFileURL = "";
     let employeeData: any = {};
+    let fechaTerminoCalculada: string | null = null;
 
     // Obtener información según el tipo de empleado
     if (employee.EmployeeType === "PROJECT") {
-      // Personal de Proyecto - CON CAMPOS SEPARADOS DE DIRECCIÓN
+      // Personal de Proyecto - USA LA FECHA DE FIN DEL PROYECTO
       const [rows] = await connection.query<any[]>(
         `
         SELECT 
@@ -275,7 +326,7 @@ export async function GET(request: NextRequest) {
         LEFT JOIN projects pr 
           ON pr.ProjectID = pc.ProjectID
         WHERE pp.EmployeeID = ? AND pc.Status = 1
-      `,
+        `,
         [empleadoId]
       );
 
@@ -288,8 +339,12 @@ export async function GET(request: NextRequest) {
 
       employeeData = rows[0];
       contractFileURL = employeeData.ContractFileURL || "";
+      
+      // Para proyecto, la fecha de término es la del proyecto (EndDate)
+      fechaTerminoCalculada = employeeData.EndDate;
+      
     } else {
-      // Personal Base - CON CAMPOS SEPARADOS DE DIRECCIÓN
+      // Personal Base - CALCULAR FECHA DE TÉRMINO (3 MESES DESPUÉS DE LA FECHA DE INICIO)
       const [rows] = await connection.query<any[]>(
         `
         SELECT 
@@ -328,7 +383,7 @@ export async function GET(request: NextRequest) {
         LEFT JOIN basecontracts bc 
           ON bc.BasePersonnelID = bp.BasePersonnelID
         WHERE bp.EmployeeID = ?
-      `,
+        `,
         [empleadoId]
       );
 
@@ -345,6 +400,14 @@ export async function GET(request: NextRequest) {
       // Agregar la dirección fija de SIGERSA para personal base
       employeeData.CompanyName = "SIGERSA INNOVACIONES S.A DE C.V.";
       employeeData.CompanyAddress = "AV. EL SAUZ 7, EL DEPOSITO, 42795 TLAHUELILPAN, HGO.";
+      
+      // Calcular fecha de término: 3 meses después de la fecha de inicio
+      // Si existe EndDate en la BD, usarla; de lo contrario, calcular
+      if (employeeData.EndDate) {
+        fechaTerminoCalculada = employeeData.EndDate;
+      } else {
+        fechaTerminoCalculada = calcularFechaTerminoBase(employeeData.StartDate);
+      }
     }
 
     // Procesar los datos del empleado
@@ -422,14 +485,19 @@ export async function GET(request: NextRequest) {
 
     const template = fs.readFileSync(templatePath);
 
+    // Formatear las fechas para el documento
+    const fechaInicioFormateada = formatFecha(employeeData.StartDate) || "NO ESPECIFICADO";
+    const fechaTerminoFormateada = fechaTerminoCalculada ? formatFecha(fechaTerminoCalculada) : "NO ESPECIFICADO";
+    const fechaNacimientoFormateada = formatFecha(employeeData.Birthdate) || "NO ESPECIFICADO";
+
     // Generar el documento Word con los datos
     const report = await createReport({
       template,
       data: {
         NOMBRE_COMPLETO: nombreCompleto || "NO ESPECIFICADO",
-        FECHA_DE_INGRESO: formatFecha(employeeData.StartDate) || "NO ESPECIFICADO",
-        FECHA_DE_NACIMIENTO_DEL_EMPLEADO: formatFecha(employeeData.Birthdate) || "NO ESPECIFICADO",
-        FECHA_TERMINO: formatFecha(employeeData.EndDate) || "NO ESPECIFICADO",
+        FECHA_DE_INGRESO: fechaInicioFormateada,
+        FECHA_TERMINO: fechaTerminoFormateada,
+        FECHA_DE_NACIMIENTO_DEL_EMPLEADO: fechaNacimientoFormateada,
         PUESTO_DEL_EMPLEADO: employeeData.Position || "NO ESPECIFICADO",
         MUNICIPIO_DEL_EMPLEADO: employeeData.Municipality || "NO ESPECIFICADO",
         NACIONALIDAD_DEL_EMPLEADO: employeeData.Nationality || "NO ESPECIFICADO",
