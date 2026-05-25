@@ -122,53 +122,12 @@ const formatearFechaMySQL = (fecha: string): string | null => {
 // Función para extraer el fileKey de una URL de UploadThing
 function extractFileKeyFromUrl(url: string): string | null {
   try {
-    // Las URLs de UploadThing suelen tener el formato: https://utfs.io/f/fileKey
     const matches = url.match(/\/f\/([a-zA-Z0-9-_]+)/);
     return matches ? matches[1] : null;
   } catch {
     return null;
   }
-}
-
-// Función para subir archivo a UploadThing
-async function uploadFileToUploadThing(fileBuffer: ArrayBuffer, fileName: string, fileType: string): Promise<string> {
-  try {
-    const blob = new Blob([fileBuffer], { type: fileType });
-    const file = new File([blob], fileName, { type: fileType });
-    
-    const uploadResponse = await utapi.uploadFiles([file]);
-    
-    if (!uploadResponse || !uploadResponse[0]) {
-      throw new Error('No se recibió respuesta de UploadThing');
-    }
-    
-    const uploadedFile = uploadResponse[0];
-    
-    if (uploadedFile.error) {
-      throw new Error(uploadedFile.error.message || 'Error al subir el archivo');
-    }
-    
-    let fileUrl: string | undefined;
-    
-    if ('ufsUrl' in uploadedFile) {
-      fileUrl = (uploadedFile as any).ufsUrl;
-    } else if (uploadedFile.data?.url) {
-      fileUrl = uploadedFile.data.url;
-    } else if ('serverData' in uploadedFile) {
-      fileUrl = (uploadedFile as any).serverData?.url;
-    }
-    
-    if (!fileUrl) {
-      throw new Error('No se pudo obtener la URL del archivo subido');
-    }
-    
-    return fileUrl;
-    
-  } catch (error) {
-    console.error('Error al subir archivo a UploadThing:', error);
-    throw new Error('Error al subir el documento PDF');
-  }
-}
+};
 
 // Función para eliminar archivo de UploadThing
 async function deleteFileFromUploadThing(fileUrl: string): Promise<void> {
@@ -183,7 +142,6 @@ async function deleteFileFromUploadThing(fileUrl: string): Promise<void> {
     console.log(`Archivo eliminado de UploadThing: ${fileKey}`);
   } catch (error) {
     console.error('Error al eliminar archivo de UploadThing:', error);
-    // No lanzamos el error para no interrumpir el flujo principal
   }
 }
 
@@ -204,32 +162,32 @@ async function generateUpdatedFT_RH_21_PDF(
     os.tmpdir(),
     `FT-RH-21-EDIT-${Date.now()}-${empleadoId}.xlsx`
   );
-  const tempPdfPath = path.join(
-    os.tmpdir(),
-    `FT-RH-21-EDIT-${Date.now()}-${empleadoId}.pdf`
-  );
 
   let connection;
 
   try {
     connection = await getConnection();
 
-    // Obtener información del empleado
     let fullName = "";
     let area = "";
     let position = "";
+    let jefeDirectoNombre = "NO ESPECIFICADO";
 
     if (tipo === 'PROJECT') {
       const [rows] = await connection.execute<any[]>(
-        `SELECT 
+        `SELECT
           pp.FirstName,
           pp.LastName,
           pp.MiddleName,
           pc.Position,
-          p.NameProject
+          p.NameProject,
+          p.AdminProjectID,
+          CONCAT(bp.FirstName, ' ', bp.LastName, ' ', IFNULL(bp.MiddleName, '')) as JefeDirecto
         FROM projectpersonnel pp
         LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
         LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
+        LEFT JOIN employees e ON p.AdminProjectID = e.EmployeeID 
+        LEFT JOIN basepersonnel bp ON e.EmployeeID = bp.EmployeeID
         WHERE pp.EmployeeID = ?`,
         [empleadoId]
       );
@@ -239,6 +197,7 @@ async function generateUpdatedFT_RH_21_PDF(
         fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
         area = r.NameProject || "PROYECTO NO ESPECIFICADO";
         position = r.Position || "NO ESPECIFICADO";
+        jefeDirectoNombre = r.JefeDirecto || "NO ESPECIFICADO";
       }
     } else {
       const [rows] = await connection.execute<any[]>(
@@ -247,8 +206,12 @@ async function generateUpdatedFT_RH_21_PDF(
           bp.LastName,
           bp.MiddleName,
           bp.Position,
-          bp.Area
+          bp.Area,
+          CONCAT(bp_jefe.FirstName, ' ', bp_jefe.LastName, ' ', IFNULL(bp_jefe.MiddleName, '')) as JefeDirecto
         FROM basepersonnel bp
+        LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
+        LEFT JOIN employees je ON bc.jefeDirectoId = je.EmployeeID
+        LEFT JOIN basepersonnel bp_jefe ON je.EmployeeID = bp_jefe.EmployeeID AND je.EmployeeType = 'BASE'
         WHERE bp.EmployeeID = ?`,
         [empleadoId]
       );
@@ -258,10 +221,10 @@ async function generateUpdatedFT_RH_21_PDF(
         fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
         area = r.Area || "ÁREA NO ESPECIFICADA";
         position = r.Position || "NO ESPECIFICADO";
+        jefeDirectoNombre = r.JefeDirecto || "NO ESPECIFICADO";
       }
     }
 
-    // Cargar plantilla Excel
     const templatePath = path.join(
       process.cwd(),
       "public",
@@ -278,9 +241,9 @@ async function generateUpdatedFT_RH_21_PDF(
     await workbook.xlsx.readFile(templatePath);
     const ws = workbook.getWorksheet(1)!;
 
-    // Llenar datos en la plantilla
+    // Llenar datos en la plantilla - CELDAS CORRECTAS
     ws.getCell("G8").value = fullName || "NO ESPECIFICADO";
-    ws.getCell("C14").value = area || "NO ESPECIFICADO";
+    ws.getCell("C16").value = area || "NO ESPECIFICADO";
 
     if (loanData.Amount > 0) {
       try {
@@ -294,9 +257,9 @@ async function generateUpdatedFT_RH_21_PDF(
         const partesLetras = montoLetras.split(' PESOS ');
         const letrasSimples = partesLetras[0];
         
-        ws.getCell("C12").value = `${montoFormateado} (${letrasSimples})`;
+        ws.getCell("B13").value = `${montoFormateado} (${letrasSimples})`;
       } catch {
-        ws.getCell("C12").value = new Intl.NumberFormat('es-MX', {
+        ws.getCell("B13").value = new Intl.NumberFormat('es-MX', {
           style: 'currency',
           currency: 'MXN'
         }).format(loanData.Amount);
@@ -304,23 +267,20 @@ async function generateUpdatedFT_RH_21_PDF(
     }
 
     ws.getCell("J5").value = loanData.ApplicationDate ? new Date(loanData.ApplicationDate).toLocaleDateString('es-MX') : "";
-    ws.getCell("F25").value = loanData.NumberOfPayments || "";
-    ws.getCell("I25").value = loanData.DiscountAmount || "";
-    ws.getCell("B26").value = loanData.FirstDiscountDate ? new Date(loanData.FirstDiscountDate).toLocaleDateString('es-MX') : "";
-    ws.getCell("C35").value = loanData.Observations || "";
-    ws.getCell("I14").value = position || "NO ESPECIFICADO";
-    ws.getCell("C35").value = fullName || "NO ESPECIFICADO";
-    ws.getCell("E47").value = fullName || "NO ESPECIFICADO";
+    ws.getCell("F27").value = loanData.NumberOfPayments || "";
+    ws.getCell("I27").value = loanData.DiscountAmount || "";
+    ws.getCell("B28").value = loanData.FirstDiscountDate ? new Date(loanData.FirstDiscountDate).toLocaleDateString('es-MX') : "";
+    ws.getCell("C38").value = loanData.Observations || "SIN OBSERVACIONES";
+    ws.getCell("I16").value = position || "NO ESPECIFICADO";
+    ws.getCell("B45").value = jefeDirectoNombre || "NO ESPECIFICADO";
+    ws.getCell("E49").value = fullName || "NO ESPECIFICADO";
 
-    // Guardar Excel temporal
     await workbook.xlsx.writeFile(tempExcelPath);
 
-    // Convertir a PDF usando ConvertAPI
     const result = await convertapi.convert("pdf", {
       File: tempExcelPath,
     });
 
-    // Descargar el PDF
     const pdfResponse = await fetch(result.file.url);
     const pdfBuffer = await pdfResponse.arrayBuffer();
     
@@ -337,13 +297,9 @@ async function generateUpdatedFT_RH_21_PDF(
         console.error('Error al cerrar la conexión:', error);
       }
     }
-    // Limpiar archivos temporales
     try {
       if (fs.existsSync(tempExcelPath)) {
         fs.unlinkSync(tempExcelPath);
-      }
-      if (fs.existsSync(tempPdfPath)) {
-        fs.unlinkSync(tempPdfPath);
       }
     } catch (cleanupError) {
       console.warn("Error al limpiar archivos temporales:", cleanupError);
@@ -357,20 +313,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   let connection;
-  const tempExcelPath = path.join(
-    os.tmpdir(),
-    `FT-RH-21-EDIT-${Date.now()}.xlsx`
-  );
-  const tempPdfPath = path.join(
-    os.tmpdir(),
-    `FT-RH-21-EDIT-${Date.now()}.pdf`
-  );
   
   try {
-    // Desenvolver params con await
     const { id } = await params;
     
-    // Validar sesión
     const sessionId = request.cookies.get("session")?.value;
 
     if (!sessionId) {
@@ -380,7 +326,6 @@ export async function PUT(
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user) {
@@ -390,7 +335,6 @@ export async function PUT(
       );
     }
 
-    // Verificar permisos (solo administradores)
     if (user.UserTypeID !== 2) {
       return NextResponse.json(
         { success: false, message: 'ACCESO DENEGADO' },
@@ -410,7 +354,6 @@ export async function PUT(
       Observations 
     } = body;
 
-    // Validaciones
     if (!EmployeeID) {
       return NextResponse.json(
         { success: false, message: 'El ID del empleado es requerido' },
@@ -457,7 +400,6 @@ export async function PUT(
     await connection.beginTransaction();
 
     try {
-      // Verificar que el préstamo existe y obtener el FileURL actual
       const [loanCheck] = await connection.execute<any[]>(
         'SELECT LoanID, EmployeeID, FileURL FROM employeeloans WHERE LoanID = ?',
         [loanId]
@@ -470,7 +412,6 @@ export async function PUT(
       const currentLoan = loanCheck[0];
       const oldFileUrl = currentLoan.FileURL;
 
-      // Verificar que el empleado existe
       const [baseCheck] = await connection.execute(
         'SELECT EmployeeID FROM basepersonnel WHERE EmployeeID = ?',
         [EmployeeID]
@@ -485,22 +426,17 @@ export async function PUT(
         throw new Error('El empleado no existe');
       }
 
-      // Determinar el tipo de empleado
       let tipo: 'BASE' | 'PROJECT' = 'BASE';
       if ((projectCheck as any[]).length > 0) {
         tipo = 'PROJECT';
       }
 
-      // Formatear fechas
       const applicationDateFormatted = formatearFechaMySQL(ApplicationDate);
       const firstDiscountDateFormatted = formatearFechaMySQL(FirstDiscountDate);
 
-      // Variable para almacenar la nueva URL del archivo
       let newFileUrl: string | null = null;
-
-      // Generar nuevo PDF y subirlo a UploadThing
+      
       try {
-        // Generar el PDF actualizado
         const pdfBuffer = await generateUpdatedFT_RH_21_PDF(
           EmployeeID,
           tipo,
@@ -514,7 +450,6 @@ export async function PUT(
           }
         );
 
-        // Subir a UploadThing
         const fileName = `FT-RH-21-${tipo}-${EmployeeID}-${Date.now()}.pdf`;
         const file = new File([Buffer.from(pdfBuffer)], fileName, { type: 'application/pdf' });
         
@@ -523,20 +458,18 @@ export async function PUT(
         if (uploadResponse && uploadResponse[0] && uploadResponse[0].data && uploadResponse[0].data.url) {
           newFileUrl = uploadResponse[0].data.url;
           
-          // Eliminar el archivo anterior si existe
           if (oldFileUrl) {
             await deleteFileFromUploadThing(oldFileUrl);
           }
         } else {
-          throw new Error('Error al subir el PDF a UploadThing');
+          console.error('Error al subir el PDF');
+          newFileUrl = oldFileUrl;
         }
       } catch (pdfError) {
-        console.error('Error al generar/subir PDF durante actualización:', pdfError);
-        // Si falla la generación del PDF, mantenemos el archivo anterior
+        console.error('Error al generar/subir PDF:', pdfError);
         newFileUrl = oldFileUrl;
       }
 
-      // Actualizar préstamo con la nueva URL del archivo (o la anterior si falló)
       await connection.execute(
         `UPDATE employeeloans 
          SET EmployeeID = ?, ApplicationDate = ?, Amount = ?, 
@@ -560,7 +493,7 @@ export async function PUT(
 
       return NextResponse.json({
         success: true,
-        message: newFileUrl !== oldFileUrl ? 'Préstamo actualizado exitosamente con nuevo documento' : 'Préstamo actualizado exitosamente',
+        message: 'Préstamo actualizado exitosamente',
         fileUrl: newFileUrl
       });
 
@@ -602,17 +535,6 @@ export async function PUT(
         console.error('Error al cerrar la conexión:', error);
       }
     }
-    // Limpiar archivos temporales
-    try {
-      if (fs.existsSync(tempExcelPath)) {
-        fs.unlinkSync(tempExcelPath);
-      }
-      if (fs.existsSync(tempPdfPath)) {
-        fs.unlinkSync(tempPdfPath);
-      }
-    } catch (cleanupError) {
-      console.warn("Error al limpiar archivos temporales:", cleanupError);
-    }
   }
 }
 
@@ -624,10 +546,8 @@ export async function DELETE(
   let connection;
   
   try {
-    // Desenvolver params con await
     const { id } = await params;
     
-    // Validar sesión
     const sessionId = request.cookies.get("session")?.value;
 
     if (!sessionId) {
@@ -637,7 +557,6 @@ export async function DELETE(
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user) {
@@ -647,7 +566,6 @@ export async function DELETE(
       );
     }
 
-    // Verificar permisos (solo administradores)
     if (user.UserTypeID !== 2) {
       return NextResponse.json(
         { success: false, message: 'ACCESO DENEGADO' },
@@ -661,7 +579,6 @@ export async function DELETE(
     await connection.beginTransaction();
 
     try {
-      // Verificar que el préstamo existe y obtener el FileURL
       const [loanCheck] = await connection.execute<any[]>(
         'SELECT LoanID, FileURL FROM employeeloans WHERE LoanID = ?',
         [loanId]
@@ -673,12 +590,10 @@ export async function DELETE(
 
       const fileUrl = loanCheck[0].FileURL;
 
-      // Eliminar el archivo de UploadThing si existe
       if (fileUrl) {
         await deleteFileFromUploadThing(fileUrl);
       }
 
-      // Eliminar préstamo de la base de datos
       await connection.execute(
         'DELETE FROM employeeloans WHERE LoanID = ?',
         [loanId]
