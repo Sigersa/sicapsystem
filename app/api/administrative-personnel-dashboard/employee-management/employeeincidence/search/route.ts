@@ -81,11 +81,14 @@ export async function GET(request: NextRequest) {
       FROM projectpersonnel pp
       INNER JOIN employees e ON e.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
-      WHERE pp.EmployeeID LIKE ? 
-         OR pp.FirstName LIKE ? 
-         OR pp.LastName LIKE ?
-         OR CONCAT(pp.FirstName, ' ', pp.LastName, ' ', COALESCE(pp.MiddleName, '')) LIKE ?
-         AND e.Status = 1
+      WHERE (
+          pp.EmployeeID LIKE ? 
+          OR pp.FirstName LIKE ? 
+          OR pp.LastName LIKE ?
+          OR CONCAT(pp.FirstName, ' ', pp.LastName, ' ', COALESCE(pp.MiddleName, '')) LIKE ?
+        )
+        AND e.Status = 1 
+        AND pc.Status = 1
       LIMIT 10`,
       [`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`]
     );
