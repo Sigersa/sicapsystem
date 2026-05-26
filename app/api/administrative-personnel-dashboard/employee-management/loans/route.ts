@@ -435,7 +435,7 @@ export async function POST(request: NextRequest) {
               LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
               LEFT JOIN employees e ON p.AdminProjectID = e.EmployeeID 
               LEFT JOIN basepersonnel bp ON e.EmployeeID = bp.EmployeeID
-              WHERE pp.EmployeeID = ?`,
+              WHERE pp.EmployeeID = ? AND e.Status = 1 AND pc.Status = 1`,
               [EmployeeID]
             );
 
