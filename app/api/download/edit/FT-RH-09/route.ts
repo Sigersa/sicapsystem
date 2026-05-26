@@ -74,9 +74,9 @@ export async function GET(request: NextRequest) {
         END as tipo,
         COALESCE(bp.Area, pj.NameProject) as AreaOrProject,
         -- Jefe directo
-        COALESCE(jefe_bp.FirstName, jefe_pp.FirstName) as JefeFirstName,
-        COALESCE(jefe_bp.LastName, jefe_pp.LastName) as JefeLastName,
-        COALESCE(jefe_bp.MiddleName, jefe_pp.MiddleName) as JefeMiddleName,
+        bbpp.FirstName as JefeFirstName,
+        bbpp.LastName as JefeLastName,
+        bbpp.MiddleName as JefeMiddleName,
         -- Número total de permisos en el mes y año
         (SELECT COUNT(*) FROM employeepermission ep 
          WHERE ep.EmployeeID = p.EmployeeID 
@@ -94,10 +94,8 @@ export async function GET(request: NextRequest) {
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
       LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
       -- Jefe directo (BASE)
-      LEFT JOIN basepersonnel jefe_bp ON bc.jefeDirectoId = jefe_bp.EmployeeID
-      -- Jefe directo (PROJECT)
-      LEFT JOIN projectpersonnel jefe_pp ON pc.jefeDirectoId = jefe_pp.EmployeeID
-      WHERE p.PermissionID = ?`,
+      LEFT JOIN basepersonnel bbpp ON pj.AdminProjectID = bbpp.EmployeeID
+      WHERE p.PermissionID = ? AND pc.Status = 1`,
       [permissionId]
     );
 
