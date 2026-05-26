@@ -154,35 +154,26 @@ export async function GET(request: NextRequest) {
     let firstDiscountDate = employee.FirstDiscountDate || "";
     let observations = employee.Observations || "";
     let position = "";
-    let jefeDirectoNombre = "NO ESPECIFICADO";
+    let jefeDirectoNombre = "";
 
     // Obtener nombre completo y área según el tipo de empleado
     if (employee.EmployeeType === 'PROJECT') {
       // Personal de Proyecto - Incluir jefe directo (puede ser BASE o PROJECT)
       const [rows] = await connection.execute<any[]>(
-        `SELECT 
-          pp.FirstName,
-          pp.LastName,
-          pp.MiddleName,
-          pp.ProjectPersonnelID,
-          pc.Position,
-          p.NameProject,
-          'PROJECT' as tipo,
-          -- Intentar obtener nombre del jefe desde basepersonnel primero
-          CONCAT(bp_jefe.FirstName, ' ', bp_jefe.LastName, ' ', IFNULL(bp_jefe.MiddleName, '')) as JefeDirectoNombreBase,
-          -- Si no, obtener desde projectpersonnel
-          CONCAT(pp_jefe.FirstName, ' ', pp_jefe.LastName, ' ', IFNULL(pp_jefe.MiddleName, '')) as JefeDirectoNombreProject
-        FROM projectpersonnel pp
-        LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
-        LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
-        LEFT JOIN employees je ON pc.jefeDirectoId = je.EmployeeID
-        -- LEFT JOIN para jefe BASE
-        LEFT JOIN basepersonnel bp_jefe ON je.EmployeeID = bp_jefe.EmployeeID AND je.EmployeeType = 'BASE'
-        -- LEFT JOIN para jefe PROJECT
-        LEFT JOIN projectpersonnel pp_jefe ON je.EmployeeID = pp_jefe.EmployeeID AND je.EmployeeType = 'PROJECT'
-        WHERE pp.EmployeeID = ?
-        ORDER BY pc.ContractID DESC
-        LIMIT 1`,
+        `SELECT
+                pp.FirstName,
+                pp.LastName,
+                pp.MiddleName,
+                pc.Position,
+                p.NameProject,
+                p.AdminProjectID,
+                CONCAT(bp.FirstName, ' ', bp.LastName, ' ', IFNULL(bp.MiddleName, '')) as JefeDirecto
+              FROM projectpersonnel pp
+              LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+              LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
+              LEFT JOIN employees e ON p.AdminProjectID = e.EmployeeID 
+              LEFT JOIN basepersonnel bp ON e.EmployeeID = bp.EmployeeID
+              WHERE pp.EmployeeID = ? AND e.Status = 1 AND pc.Status = 1`,
         [empleadoId]
       );
 
@@ -195,35 +186,25 @@ export async function GET(request: NextRequest) {
       tipo = "PROYECTO";
       area = r.NameProject || "PROYECTO NO ESPECIFICADO";
       position = r.Position || "NO ESPECIFICADO";
-      
-      // Determinar el nombre del jefe (priorizar BASE, luego PROJECT)
-      jefeDirectoNombre = r.JefeDirectoNombreBase || r.JefeDirectoNombreProject || "NO ESPECIFICADO";
+      jefeDirectoNombre = r.JefeDirecto || ""; // ASIGNAR EL JEFE DIRECTO AQUÍ
       
     } else {
       // Personal Base - Incluir jefe directo (puede ser BASE o PROJECT)
       const [rows] = await connection.execute<any[]>(
         `SELECT 
-          bp.FirstName,
-          bp.LastName,
-          bp.MiddleName,
-          bp.BasePersonnelID,
-          bp.Position,
-          bp.Area,
-          'BASE' as tipo,
-          -- Intentar obtener nombre del jefe desde basepersonnel primero
-          CONCAT(bp_jefe.FirstName, ' ', bp_jefe.LastName, ' ', IFNULL(bp_jefe.MiddleName, '')) as JefeDirectoNombreBase,
-          -- Si no, obtener desde projectpersonnel
-          CONCAT(pp_jefe.FirstName, ' ', pp_jefe.LastName, ' ', IFNULL(pp_jefe.MiddleName, '')) as JefeDirectoNombreProject
-        FROM basepersonnel bp
-        LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
-        LEFT JOIN employees je ON bc.jefeDirectoId = je.EmployeeID
-        -- LEFT JOIN para jefe BASE
-        LEFT JOIN basepersonnel bp_jefe ON je.EmployeeID = bp_jefe.EmployeeID AND je.EmployeeType = 'BASE'
-        -- LEFT JOIN para jefe PROJECT
-        LEFT JOIN projectpersonnel pp_jefe ON je.EmployeeID = pp_jefe.EmployeeID AND je.EmployeeType = 'PROJECT'
-        WHERE bp.EmployeeID = ?
-        ORDER BY bc.ContractID DESC
-        LIMIT 1`,
+                bp.FirstName,
+                bp.LastName,
+                bp.MiddleName,
+                bp.Position,
+                bp.Area,
+                CONCAT(bp_jefe.FirstName, ' ', bp_jefe.LastName, ' ', IFNULL(bp_jefe.MiddleName, '')) as JefeDirecto
+              FROM basepersonnel bp
+              LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
+              LEFT JOIN employees je ON bc.jefeDirectoId = je.EmployeeID
+              LEFT JOIN basepersonnel bp_jefe ON je.EmployeeID = bp_jefe.EmployeeID AND je.EmployeeType = 'BASE'
+              WHERE bp.EmployeeID = ?
+              ORDER BY bc.ContractID DESC
+              LIMIT 1`,
         [empleadoId]
       );
 
@@ -236,9 +217,7 @@ export async function GET(request: NextRequest) {
       tipo = "BASE";
       area = r.Area || "ÁREA NO ESPECIFICADA";
       position = r.Position || "NO ESPECIFICADO";
-      
-      // Determinar el nombre del jefe (priorizar BASE, luego PROJECT)
-      jefeDirectoNombre = r.JefeDirectoNombreBase || r.JefeDirectoNombreProject || "NO ESPECIFICADO";
+      jefeDirectoNombre = r.JefeDirecto || ""; // ASIGNAR EL JEFE DIRECTO AQUÍ
     }
 
     // Cargar plantilla Excel
@@ -255,16 +234,12 @@ export async function GET(request: NextRequest) {
     const ws = workbook.getWorksheet(1)!;
 
     // Llenar datos en la plantilla
-    // Nombre del empleado en celda G8
     ws.getCell("G8").value = fullName || "NO ESPECIFICADO";
-
-    // ÁREA/PROYECTO del empleado en celda C14
     ws.getCell("B16").value = area || "NO ESPECIFICADO";
 
-    // MONTO DEL PRÉSTAMO en celda C12 con formato "$300.00 (TRESCIENTOS)"
+    // MONTO DEL PRÉSTAMO
     if (amount > 0) {
       try {
-        // Formatear el monto como moneda
         const montoFormateado = new Intl.NumberFormat('es-MX', {
           style: 'currency',
           currency: 'MXN',
@@ -272,18 +247,13 @@ export async function GET(request: NextRequest) {
           maximumFractionDigits: 2
         }).format(amount);
         
-        // Obtener el monto en letras
         const montoLetras = salarioIMSSALetras(amount);
-        
-        // Extraer solo la parte del texto sin "PESOS CON XX/100 M.N." o similar
         const partesLetras = montoLetras.split(' PESOS ');
         const letrasSimples = partesLetras[0];
         
-        // Combinar el monto formateado con las letras entre paréntesis
         ws.getCell("B13").value = `${montoFormateado} (${letrasSimples})`;
       } catch (error) {
         console.error("Error al convertir el monto a letras:", error);
-        // Fallback en caso de error
         ws.getCell("B13").value = new Intl.NumberFormat('es-MX', {
           style: 'currency',
           currency: 'MXN'
@@ -297,15 +267,9 @@ export async function GET(request: NextRequest) {
     ws.getCell("F27").value = numberOfPayments || "";
     ws.getCell("I27").value = discountAmount || "";
     ws.getCell("B28").value = firstDiscountDate ? new Date(firstDiscountDate).toLocaleDateString('es-MX') : "";
-    
-    // **CORRECCIÓN IMPORTANTE**: Usar observations en lugar de fullName
     ws.getCell("B38").value = observations || "SIN OBSERVACIONES";
-    
     ws.getCell("I16").value = position || "NO ESPECIFICADO";
-    
-    // **CORRECCIÓN**: Asegurar que el nombre del jefe directo se asigna correctamente
-    ws.getCell("B45").value = jefeDirectoNombre || "NO ESPECIFICADO";
-    
+    ws.getCell("B45").value = jefeDirectoNombre || "NO ESPECIFICADO"; // AHORA SÍ TENDRÁ EL VALOR CORRECTO
     ws.getCell("E49").value = fullName || "NO ESPECIFICADO";
     
     const buffer = await workbook.xlsx.writeBuffer();
