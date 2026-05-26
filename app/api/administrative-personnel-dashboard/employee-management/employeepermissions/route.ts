@@ -44,7 +44,7 @@ async function generatePermissionPDF(
   try {
     connection = await getConnection();
 
-    // Obtener información del permiso y del empleado
+       // Obtener información del permiso y del empleado
     const [rows] = await connection.execute<any[]>(
       `SELECT 
         p.PermissionID,
@@ -70,9 +70,9 @@ async function generatePermissionPDF(
         END as tipo,
         COALESCE(bp.Area, pj.NameProject) as AreaOrProject,
         -- Jefe directo
-        COALESCE(jefe_bp.FirstName, jefe_pp.FirstName) as JefeFirstName,
-        COALESCE(jefe_bp.LastName, jefe_pp.LastName) as JefeLastName,
-        COALESCE(jefe_bp.MiddleName, jefe_pp.MiddleName) as JefeMiddleName,
+        bbpp.FirstName as JefeFirstName,
+        bbpp.LastName as JefeLastName,
+        bbpp.MiddleName as JefeMiddleName,
         -- Número total de permisos en el mes y año
         (SELECT COUNT(*) FROM employeepermission ep 
          WHERE ep.EmployeeID = p.EmployeeID 
@@ -90,13 +90,10 @@ async function generatePermissionPDF(
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
       LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
       -- Jefe directo (BASE)
-      LEFT JOIN basepersonnel jefe_bp ON bc.jefeDirectoId = jefe_bp.EmployeeID
-      -- Jefe directo (PROJECT)
-      LEFT JOIN projectpersonnel jefe_pp ON pc.jefeDirectoId = jefe_pp.EmployeeID
-      WHERE p.PermissionID = ?`,
+      LEFT JOIN basepersonnel bbpp ON pj.AdminProjectID = bbpp.EmployeeID
+      WHERE p.PermissionID = ? AND pc.Status = 1`,
       [permissionId]
     );
-
     if (!rows || rows.length === 0) {
       throw new Error(`Registro de permiso con ID ${permissionId} no encontrado`);
     }
@@ -401,7 +398,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN basepersonnel bp ON p.EmployeeID = bp.EmployeeID
       LEFT JOIN projectpersonnel pp ON p.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
-      WHERE e.Status = 1
+      WHERE e.Status = 1 AND pc.Status = 1
       ORDER BY p.ApplicationDate DESC, p.PermissionID DESC
     `);
 
