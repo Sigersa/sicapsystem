@@ -1,4 +1,3 @@
-// app/api/administrative-personnel-dashboard/employee-management/employeeincidence/search/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -55,10 +54,16 @@ export async function GET(request: NextRequest) {
         bp.LastName,
         bp.MiddleName,
         bp.Position,
+        bp.Salary,
+        bp.WorkSchedule,
+        bp.Area,
+        bc.SalaryIMSS,
+        bc.StartDate as ContractStartDate,
         e.Status,
         'BASE' as tipo
       FROM basepersonnel bp
       INNER JOIN employees e ON e.EmployeeID = bp.EmployeeID
+      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
       WHERE bp.EmployeeID LIKE ? 
          OR bp.FirstName LIKE ? 
          OR bp.LastName LIKE ?
@@ -68,20 +73,27 @@ export async function GET(request: NextRequest) {
       [`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`]
     );
 
-    // Buscar en projectpersonnel (PROJECT)
     const [projectResults] = await connection.execute(
-      `SELECT 
-        pp.EmployeeID,
-        pp.FirstName,
-        pp.LastName,
-        pp.MiddleName,
-        pc.Position,
-        e.Status,
-        'PROJECT' as tipo
-      FROM projectpersonnel pp
-      INNER JOIN employees e ON e.EmployeeID = pp.EmployeeID
-      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
-      WHERE (
+        `SELECT 
+          pp.EmployeeID,
+          pp.FirstName,
+          pp.LastName,
+          pp.MiddleName,
+          pc.Position,
+          pc.Salary,
+          pc.WorkSchedule,
+          pc.SalaryIMSS,
+          p.StartDate as ContractStartDate,
+          p.EndDate as ContractEndDate,
+          p.NameProject,
+          p.ProjectID,
+          e.Status,
+          'PROJECT' as tipo
+        FROM projectpersonnel pp
+        INNER JOIN employees e ON e.EmployeeID = pp.EmployeeID
+        LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+        LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
+        WHERE (
           pp.EmployeeID LIKE ? 
           OR pp.FirstName LIKE ? 
           OR pp.LastName LIKE ?
@@ -89,9 +101,9 @@ export async function GET(request: NextRequest) {
         )
         AND e.Status = 1 
         AND pc.Status = 1
-      LIMIT 10`,
-      [`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`]
-    );
+        LIMIT 10`,
+        [`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`]
+      );
 
     const employees = [...(baseResults as any[]), ...(projectResults as any[])];
 
