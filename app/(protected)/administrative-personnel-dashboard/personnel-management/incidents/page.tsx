@@ -110,6 +110,19 @@ const formatDate = (dateString: string | null): string => {
   }
 };
 
+// Función para formatear moneda
+const formatCurrency = (amount: number): string => {
+  try {
+    return new Intl.NumberFormat('es-MX', {
+      style: 'currency',
+      currency: 'MXN',
+      minimumFractionDigits: 2
+    }).format(amount);
+  } catch {
+    return `$${amount.toFixed(2)}`;
+  }
+};
+
 // Función para descargar documento
 const downloadDocument = (url: string, fileName: string) => {
   fetch(url)
@@ -906,7 +919,7 @@ export default function EmployeeIncidencePage() {
                           INFORMACIÓN DEL EMPLEADO
                         </h3>
                       
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           <div>
                             <span className="block text-xs font-bold text-gray-500 uppercase">Nombre completo</span>
                             <span className="text-sm text-gray-900">
@@ -929,16 +942,42 @@ export default function EmployeeIncidencePage() {
                             <span className="text-sm text-gray-900">{selectedEmployeeData.Position || 'N/A'}</span>
                           </div>
 
+                          <div>
+                            <span className="block text-xs font-bold text-gray-500 uppercase">Horario</span>
+                            <span className="text-sm text-gray-900">{selectedEmployeeData.WorkSchedule || 'N/A'}</span>
+                          </div>
+
+                          <div>
+                            <span className="block text-xs font-bold text-gray-500 uppercase">Salario base</span>
+                            <span className="text-sm text-gray-900">{selectedEmployeeData.Salary ? formatCurrency(selectedEmployeeData.Salary) : 'N/A'}</span>
+                          </div>
+
+                          <div>
+                            <span className="block text-xs font-bold text-gray-500 uppercase">Salario IMSS</span>
+                            <span className="text-sm text-gray-900">{selectedEmployeeData.SalaryIMSS ? formatCurrency(selectedEmployeeData.SalaryIMSS) : 'N/A'}</span>
+                          </div>
+
+                          <div>
+                            <span className="block text-xs font-bold text-gray-500 uppercase">Inicio de contrato</span>
+                            <span className="text-sm text-gray-900">{selectedEmployeeData.ContractStartDate ? formatDate(selectedEmployeeData.ContractStartDate) : 'N/A'}</span>
+                          </div>
+
                           {selectedEmployeeData.tipo === 'BASE' ? (
                             <div>
                               <span className="block text-xs font-bold text-gray-500 uppercase">Área</span>
                               <span className="text-sm text-gray-900">{selectedEmployeeData.Area || 'N/A'}</span>
                             </div>
                           ) : (
-                            <div>
-                              <span className="block text-xs font-bold text-gray-500 uppercase">Proyecto</span>
-                              <span className="text-sm text-gray-900">{selectedEmployeeData.NameProject || 'N/A'}</span>
-                            </div>
+                            <>
+                              <div>
+                                <span className="block text-xs font-bold text-gray-500 uppercase">Proyecto</span>
+                                <span className="text-sm text-gray-900">{selectedEmployeeData.NameProject || 'N/A'}</span>
+                              </div>
+                              <div>
+                                <span className="block text-xs font-bold text-gray-500 uppercase">Fin de contrato</span>
+                                <span className="text-sm text-gray-900">{selectedEmployeeData.ContractEndDate ? formatDate(selectedEmployeeData.ContractEndDate) : 'N/A'}</span>
+                              </div>
+                            </>
                           )}
                         </div>
                       </div>
