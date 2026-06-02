@@ -1,4 +1,5 @@
 // app/api/administrative-personnel-dashboard/employee-management/employeepermissions/[id]/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -49,7 +50,6 @@ async function deleteFileFromUploadThing(fileUrl: string): Promise<void> {
     console.log(`Archivo eliminado de UploadThing: ${fileKey}`);
   } catch (error) {
     console.error('Error al eliminar archivo de UploadThing:', error);
-    // No lanzamos el error para no interrumpir el flujo principal
   }
 }
 
@@ -71,58 +71,155 @@ async function generateUpdatedPermissionPDF(
   try {
     connection = await getConnection();
 
-    // Obtener información del permiso y del empleado
-    const [rows] = await connection.execute<any[]>(
-      `SELECT 
-        p.PermissionID,
-        p.EmployeeID,
-        p.ApplicationDate,
-        p.DepartureTime,
-        p.CheckInTime,
-        p.DaysOfLeave,
-        p.PermitDate,
-        p.PermitEndDate,
-        p.Reason,
-        p.AutorizationType,
-        p.Observations,
-        p.TypeOfPermission,
-        -- Datos del empleado
-        COALESCE(bp.FirstName, pp.FirstName) as FirstName,
-        COALESCE(bp.LastName, pp.LastName) as LastName,
-        COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
-        COALESCE(bp.Position, pc.Position) as Position,
-        CASE 
-          WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
-          ELSE 'PROJECT'
-        END as tipo,
-        COALESCE(bp.Area, pj.NameProject) as AreaOrProject,
-        -- Jefe directo
-        COALESCE(jefe_bp.FirstName, jefe_pp.FirstName) as JefeFirstName,
-        COALESCE(jefe_bp.LastName, jefe_pp.LastName) as JefeLastName,
-        COALESCE(jefe_bp.MiddleName, jefe_pp.MiddleName) as JefeMiddleName,
-        -- Número total de permisos en el mes y año
-        (SELECT COUNT(*) FROM employeepermission ep 
-         WHERE ep.EmployeeID = p.EmployeeID 
-         AND MONTH(ep.ApplicationDate) = MONTH(CURRENT_DATE())
-         AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosMes,
-        (SELECT COUNT(*) FROM employeepermission ep 
-         WHERE ep.EmployeeID = p.EmployeeID 
-         AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosAnio
-      FROM employeepermission p
-      -- Datos del empleado (BASE)
-      LEFT JOIN basepersonnel bp ON p.EmployeeID = bp.EmployeeID
-      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
-      -- Datos del empleado (PROJECT)
-      LEFT JOIN projectpersonnel pp ON p.EmployeeID = pp.EmployeeID
-      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
-      LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
-      -- Jefe directo (BASE)
-      LEFT JOIN basepersonnel jefe_bp ON bc.jefeDirectoId = jefe_bp.EmployeeID
-      -- Jefe directo (PROJECT)
-      LEFT JOIN projectpersonnel jefe_pp ON pc.jefeDirectoId = jefe_pp.EmployeeID
-      WHERE p.PermissionID = ?`,
+    // Primero obtener el tipo de empleado
+    const [employeeTypeRows] = await connection.execute<any[]>(
+      `SELECT e.EmployeeType, p.EmployeeID
+       FROM employeepermission p
+       JOIN employees e ON p.EmployeeID = e.EmployeeID
+       WHERE p.PermissionID = ?`,
       [permissionId]
     );
+
+    if (!employeeTypeRows || employeeTypeRows.length === 0) {
+      throw new Error(`Registro de permiso con ID ${permissionId} no encontrado`);
+    }
+
+    const employeeType = employeeTypeRows[0].EmployeeType;
+    let rows;
+
+    // Consulta separada según el tipo de empleado
+    if (employeeType === 'BASE') {
+      // Consulta para personal BASE
+      [rows] = await connection.execute<any[]>(
+        `SELECT 
+          p.PermissionID,
+          p.EmployeeID,
+          p.ApplicationDate,
+          p.DepartureTime,
+          p.CheckInTime,
+          p.DaysOfLeave,
+          p.PermitDate,
+          p.PermitEndDate,
+          p.Reason,
+          p.AutorizationType,
+          p.Observations,
+          p.TypeOfPermission,
+          -- Datos del empleado BASE
+          bp.FirstName,
+          bp.LastName,
+          bp.MiddleName,
+          bp.Position,
+          bp.Area,
+          'BASE' as tipo,
+          bp.Area as AreaOrProject,
+          -- Jefe directo (puede ser BASE o PROJECT)
+          CASE 
+            WHEN je.EmployeeType = 'BASE' THEN 
+              CONCAT(bp_jefe.FirstName, ' ', bp_jefe.LastName, ' ', IFNULL(bp_jefe.MiddleName, ''))
+            WHEN je.EmployeeType = 'PROJECT' THEN 
+              CONCAT(pp_jefe.FirstName, ' ', pp_jefe.LastName, ' ', IFNULL(pp_jefe.MiddleName, ''))
+            ELSE 'NO ESPECIFICADO'
+          END as JefeFirstName,
+          CASE 
+            WHEN je.EmployeeType = 'BASE' THEN 
+              bp_jefe.LastName
+            WHEN je.EmployeeType = 'PROJECT' THEN 
+              pp_jefe.LastName
+            ELSE ''
+          END as JefeLastName,
+          CASE 
+            WHEN je.EmployeeType = 'BASE' THEN 
+              bp_jefe.MiddleName
+            WHEN je.EmployeeType = 'PROJECT' THEN 
+              pp_jefe.MiddleName
+            ELSE ''
+          END as JefeMiddleName,
+          -- Número total de permisos en el mes y año
+          (SELECT COUNT(*) FROM employeepermission ep 
+           WHERE ep.EmployeeID = p.EmployeeID 
+           AND MONTH(ep.ApplicationDate) = MONTH(CURRENT_DATE())
+           AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosMes,
+          (SELECT COUNT(*) FROM employeepermission ep 
+           WHERE ep.EmployeeID = p.EmployeeID 
+           AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosAnio
+        FROM employeepermission p
+        -- Datos del empleado BASE
+        JOIN basepersonnel bp ON p.EmployeeID = bp.EmployeeID
+        LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
+        -- Jefe directo
+        LEFT JOIN employees je ON bc.jefeDirectoId = je.EmployeeID
+        LEFT JOIN basepersonnel bp_jefe ON je.EmployeeID = bp_jefe.EmployeeID AND je.EmployeeType = 'BASE'
+        LEFT JOIN projectpersonnel pp_jefe ON je.EmployeeID = pp_jefe.EmployeeID AND je.EmployeeType = 'PROJECT'
+        WHERE p.PermissionID = ?`,
+        [permissionId]
+      );
+    } else {
+      // Consulta para personal PROJECT
+      [rows] = await connection.execute<any[]>(
+        `SELECT 
+          p.PermissionID,
+          p.EmployeeID,
+          p.ApplicationDate,
+          p.DepartureTime,
+          p.CheckInTime,
+          p.DaysOfLeave,
+          p.PermitDate,
+          p.PermitEndDate,
+          p.Reason,
+          p.AutorizationType,
+          p.Observations,
+          p.TypeOfPermission,
+          -- Datos del empleado PROJECT
+          pp.FirstName,
+          pp.LastName,
+          pp.MiddleName,
+          pc.Position,
+          pj.NameProject,
+          'PROJECT' as tipo,
+          pj.NameProject as AreaOrProject,
+          -- Jefe directo (AdminProjectID puede ser BASE o PROJECT)
+          CASE 
+            WHEN je.AdminEmployeeType = 'BASE' THEN 
+              CONCAT(bp_jefe.FirstName, ' ', bp_jefe.LastName, ' ', IFNULL(bp_jefe.MiddleName, ''))
+            WHEN je.AdminEmployeeType = 'PROJECT' THEN 
+              CONCAT(pp_jefe.FirstName, ' ', pp_jefe.LastName, ' ', IFNULL(pp_jefe.MiddleName, ''))
+            ELSE 'NO ESPECIFICADO'
+          END as JefeFirstName,
+          CASE 
+            WHEN je.AdminEmployeeType = 'BASE' THEN 
+              bp_jefe.LastName
+            WHEN je.AdminEmployeeType = 'PROJECT' THEN 
+              pp_jefe.LastName
+            ELSE ''
+          END as JefeLastName,
+          CASE 
+            WHEN je.AdminEmployeeType = 'BASE' THEN 
+              bp_jefe.MiddleName
+            WHEN je.AdminEmployeeType = 'PROJECT' THEN 
+              pp_jefe.MiddleName
+            ELSE ''
+          END as JefeMiddleName,
+          -- Número total de permisos en el mes y año
+          (SELECT COUNT(*) FROM employeepermission ep 
+           WHERE ep.EmployeeID = p.EmployeeID 
+           AND MONTH(ep.ApplicationDate) = MONTH(CURRENT_DATE())
+           AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosMes,
+          (SELECT COUNT(*) FROM employeepermission ep 
+           WHERE ep.EmployeeID = p.EmployeeID 
+           AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosAnio
+        FROM employeepermission p
+        -- Datos del empleado PROJECT
+        JOIN projectpersonnel pp ON p.EmployeeID = pp.EmployeeID
+        LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID AND pc.Status = 1
+        LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
+        -- Jefe directo (AdminProjectID)
+        LEFT JOIN employees je ON pj.AdminProjectID = je.EmployeeID
+        LEFT JOIN basepersonnel bp_jefe ON je.EmployeeID = bp_jefe.EmployeeID AND je.EmployeeType = 'BASE'
+        LEFT JOIN projectpersonnel pp_jefe ON je.EmployeeID = pp_jefe.EmployeeID AND je.EmployeeType = 'PROJECT'
+        WHERE p.PermissionID = ?`,
+        [permissionId]
+      );
+    }
 
     if (!rows || rows.length === 0) {
       throw new Error(`Registro de permiso con ID ${permissionId} no encontrado`);
@@ -581,7 +678,7 @@ export async function PUT(
       const currentPermission = permissionCheck[0];
       const oldFileUrl = currentPermission.DocumentURL;
 
-      // Verificar que el empleado existe
+      // Verificar que el empleado existe y obtener su tipo
       const [baseCheck] = await connection.execute(
         'SELECT EmployeeID FROM basepersonnel WHERE EmployeeID = ?',
         [EmployeeID]
@@ -592,8 +689,26 @@ export async function PUT(
         [EmployeeID]
       );
 
-      if ((baseCheck as any[]).length === 0 && (projectCheck as any[]).length === 0) {
+      let employeeType = null;
+      if ((baseCheck as any[]).length > 0) {
+        employeeType = 'BASE';
+      } else if ((projectCheck as any[]).length > 0) {
+        employeeType = 'PROJECT';
+      } else {
         throw new Error('El empleado no existe');
+      }
+
+      // Actualizar o insertar en employees si es necesario
+      const [existingEmployee] = await connection.execute(
+        'SELECT EmployeeID FROM employees WHERE EmployeeID = ?',
+        [EmployeeID]
+      );
+
+      if ((existingEmployee as any[]).length === 0) {
+        await connection.execute(
+          'INSERT INTO employees (EmployeeID, EmployeeType, Status) VALUES (?, ?, 1)',
+          [EmployeeID, employeeType]
+        );
       }
 
       // Formatear fechas
@@ -603,7 +718,7 @@ export async function PUT(
       // PRIMERO: Actualizar registro de permiso
       await connection.execute(
         `UPDATE employeepermission 
-         SET EmployeeID = ?, ApplicationDate = NOW(), DepartureTime = ?, 
+         SET EmployeeID = ?, DepartureTime = ?, 
              CheckInTime = ?, DaysOfLeave = ?, PermitDate = ?, PermitEndDate = ?,
              Reason = ?, AutorizationType = ?, Observations = ?, TypeOfPermission = ?, DocumentURL = ?
          WHERE PermissionID = ?`,
@@ -635,7 +750,7 @@ export async function PUT(
         const pdfBuffer = await generateUpdatedPermissionPDF(permissionId);
 
         // Subir a UploadThing
-        const tipoEmpleado = (baseCheck as any[]).length > 0 ? 'BASE' : 'PROJECT';
+        const tipoEmpleado = employeeType;
         const fileName = `FT-RH-09-${tipoEmpleado}-${EmployeeID}-${Date.now()}.pdf`;
         const file = new File([Buffer.from(pdfBuffer)], fileName, { type: 'application/pdf' });
         
@@ -645,7 +760,7 @@ export async function PUT(
           newFileUrl = uploadResponse[0].data.url;
           pdfGenerationSuccess = true;
           
-          // CUARTO: Actualizar el campo DocumentURL con la nueva URL (usando nueva conexión)
+          // CUARTO: Actualizar el campo DocumentURL con la nueva URL
           const updateConnection = await getConnection();
           try {
             await updateConnection.execute(
