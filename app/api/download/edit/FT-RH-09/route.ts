@@ -48,56 +48,159 @@ export async function GET(request: NextRequest) {
 
     connection = await getConnection();
 
-    // Obtener información del permiso y del empleado
-    const [rows] = await connection.execute<any[]>(
-      `SELECT 
-        p.PermissionID,
-        p.EmployeeID,
-        p.ApplicationDate,
-        p.DepartureTime,
-        p.CheckInTime,
-        p.DaysOfLeave,
-        p.PermitDate,
-        p.PermitEndDate,
-        p.Reason,
-        p.AutorizationType,
-        p.Observations,
-        p.TypeOfPermission,
-        -- Datos del empleado
-        COALESCE(bp.FirstName, pp.FirstName) as FirstName,
-        COALESCE(bp.LastName, pp.LastName) as LastName,
-        COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
-        COALESCE(bp.Position, pc.Position) as Position,
-        CASE 
-          WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
-          ELSE 'PROJECT'
-        END as tipo,
-        COALESCE(bp.Area, pj.NameProject) as AreaOrProject,
-        -- Jefe directo
-        bbpp.FirstName as JefeFirstName,
-        bbpp.LastName as JefeLastName,
-        bbpp.MiddleName as JefeMiddleName,
-        -- Número total de permisos en el mes y año
-        (SELECT COUNT(*) FROM employeepermission ep 
-         WHERE ep.EmployeeID = p.EmployeeID 
-         AND MONTH(ep.ApplicationDate) = MONTH(CURRENT_DATE())
-         AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosMes,
-        (SELECT COUNT(*) FROM employeepermission ep 
-         WHERE ep.EmployeeID = p.EmployeeID 
-         AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosAnio
-      FROM employeepermission p
-      -- Datos del empleado (BASE)
-      LEFT JOIN basepersonnel bp ON p.EmployeeID = bp.EmployeeID
-      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
-      -- Datos del empleado (PROJECT)
-      LEFT JOIN projectpersonnel pp ON p.EmployeeID = pp.EmployeeID
-      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
-      LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
-      -- Jefe directo (BASE)
-      LEFT JOIN basepersonnel bbpp ON pj.AdminProjectID = bbpp.EmployeeID
-      WHERE p.PermissionID = ? AND pc.Status = 1`,
+    // Primero obtener el tipo de empleado
+    const [employeeTypeRows] = await connection.execute<any[]>(
+      `SELECT e.EmployeeType, p.EmployeeID
+       FROM employeepermission p
+       JOIN employees e ON p.EmployeeID = e.EmployeeID
+       WHERE p.PermissionID = ?`,
       [permissionId]
     );
+
+    if (!employeeTypeRows || employeeTypeRows.length === 0) {
+      return NextResponse.json(
+        { success: false, message: 'Permiso no encontrado' },
+        { status: 404 }
+      );
+    }
+
+    const employeeType = employeeTypeRows[0].EmployeeType;
+    const employeeId = employeeTypeRows[0].EmployeeID;
+    let rows;
+
+    // Consulta separada según el tipo de empleado
+    if (employeeType === 'BASE') {
+      // Consulta para personal BASE
+      [rows] = await connection.execute<any[]>(
+        `SELECT 
+          p.PermissionID,
+          p.EmployeeID,
+          p.ApplicationDate,
+          p.DepartureTime,
+          p.CheckInTime,
+          p.DaysOfLeave,
+          p.PermitDate,
+          p.PermitEndDate,
+          p.Reason,
+          p.AutorizationType,
+          p.Observations,
+          p.TypeOfPermission,
+          -- Datos del empleado BASE
+          bp.FirstName,
+          bp.LastName,
+          bp.MiddleName,
+          bp.Position,
+          bp.Area,
+          'BASE' as tipo,
+          bp.Area as AreaOrProject,
+          -- Jefe directo (puede ser BASE o PROJECT)
+          CASE 
+            WHEN je.EmployeeType = 'BASE' THEN 
+              CONCAT(bp_jefe.FirstName, ' ', bp_jefe.LastName, ' ', IFNULL(bp_jefe.MiddleName, ''))
+            WHEN je.EmployeeType = 'PROJECT' THEN 
+              CONCAT(pp_jefe.FirstName, ' ', pp_jefe.LastName, ' ', IFNULL(pp_jefe.MiddleName, ''))
+            ELSE 'NO ESPECIFICADO'
+          END as JefeFirstName,
+          CASE 
+            WHEN je.EmployeeType = 'BASE' THEN 
+              bp_jefe.LastName
+            WHEN je.EmployeeType = 'PROJECT' THEN 
+              pp_jefe.LastName
+            ELSE ''
+          END as JefeLastName,
+          CASE 
+            WHEN je.EmployeeType = 'BASE' THEN 
+              bp_jefe.MiddleName
+            WHEN je.EmployeeType = 'PROJECT' THEN 
+              pp_jefe.MiddleName
+            ELSE ''
+          END as JefeMiddleName,
+          -- Número total de permisos en el mes y año
+          (SELECT COUNT(*) FROM employeepermission ep 
+           WHERE ep.EmployeeID = p.EmployeeID 
+           AND MONTH(ep.ApplicationDate) = MONTH(CURRENT_DATE())
+           AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosMes,
+          (SELECT COUNT(*) FROM employeepermission ep 
+           WHERE ep.EmployeeID = p.EmployeeID 
+           AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosAnio
+        FROM employeepermission p
+        -- Datos del empleado BASE
+        JOIN basepersonnel bp ON p.EmployeeID = bp.EmployeeID
+        LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
+        -- Jefe directo
+        LEFT JOIN employees je ON bc.jefeDirectoId = je.EmployeeID
+        LEFT JOIN basepersonnel bp_jefe ON je.EmployeeID = bp_jefe.EmployeeID AND je.EmployeeType = 'BASE'
+        LEFT JOIN projectpersonnel pp_jefe ON je.EmployeeID = pp_jefe.EmployeeID AND je.EmployeeType = 'PROJECT'
+        WHERE p.PermissionID = ?`,
+        [permissionId]
+      );
+    } else {
+      // Consulta para personal PROJECT
+      [rows] = await connection.execute<any[]>(
+        `SELECT 
+          p.PermissionID,
+          p.EmployeeID,
+          p.ApplicationDate,
+          p.DepartureTime,
+          p.CheckInTime,
+          p.DaysOfLeave,
+          p.PermitDate,
+          p.PermitEndDate,
+          p.Reason,
+          p.AutorizationType,
+          p.Observations,
+          p.TypeOfPermission,
+          -- Datos del empleado PROJECT
+          pp.FirstName,
+          pp.LastName,
+          pp.MiddleName,
+          pc.Position,
+          pj.NameProject,
+          'PROJECT' as tipo,
+          pj.NameProject as AreaOrProject,
+          -- Jefe directo (AdminProjectID puede ser BASE o PROJECT)
+          CASE 
+            WHEN je.AdminEmployeeType = 'BASE' THEN 
+              CONCAT(bp_jefe.FirstName, ' ', bp_jefe.LastName, ' ', IFNULL(bp_jefe.MiddleName, ''))
+            WHEN je.AdminEmployeeType = 'PROJECT' THEN 
+              CONCAT(pp_jefe.FirstName, ' ', pp_jefe.LastName, ' ', IFNULL(pp_jefe.MiddleName, ''))
+            ELSE 'NO ESPECIFICADO'
+          END as JefeFirstName,
+          CASE 
+            WHEN je.AdminEmployeeType = 'BASE' THEN 
+              bp_jefe.LastName
+            WHEN je.AdminEmployeeType = 'PROJECT' THEN 
+              pp_jefe.LastName
+            ELSE ''
+          END as JefeLastName,
+          CASE 
+            WHEN je.AdminEmployeeType = 'BASE' THEN 
+              bp_jefe.MiddleName
+            WHEN je.AdminEmployeeType = 'PROJECT' THEN 
+              pp_jefe.MiddleName
+            ELSE ''
+          END as JefeMiddleName,
+          -- Número total de permisos en el mes y año
+          (SELECT COUNT(*) FROM employeepermission ep 
+           WHERE ep.EmployeeID = p.EmployeeID 
+           AND MONTH(ep.ApplicationDate) = MONTH(CURRENT_DATE())
+           AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosMes,
+          (SELECT COUNT(*) FROM employeepermission ep 
+           WHERE ep.EmployeeID = p.EmployeeID 
+           AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosAnio
+        FROM employeepermission p
+        -- Datos del empleado PROJECT
+        JOIN projectpersonnel pp ON p.EmployeeID = pp.EmployeeID
+        LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+        LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
+        -- Jefe directo (AdminProjectID)
+        LEFT JOIN employees je ON pj.AdminProjectID = je.EmployeeID
+        LEFT JOIN basepersonnel bp_jefe ON je.EmployeeID = bp_jefe.EmployeeID AND je.EmployeeType = 'BASE'
+        LEFT JOIN projectpersonnel pp_jefe ON je.EmployeeID = pp_jefe.EmployeeID AND je.EmployeeType = 'PROJECT'
+        WHERE p.PermissionID = ? AND pc.Status = 1`,
+        [permissionId]
+      );
+    }
 
     if (!rows || rows.length === 0) {
       return NextResponse.json(
