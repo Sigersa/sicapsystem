@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
-import { Bell, LogOut, User, ChevronDown, Home } from 'lucide-react';
+import { LogOut, User, ChevronDown, Home } from 'lucide-react';
 
 type AppHeaderProps = {
   title: string;
@@ -26,10 +26,8 @@ export default function AppHeader({
   title,
   subtitle,
   onLogout,
-  notificationCount = 0,
 }: AppHeaderProps) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -64,23 +62,11 @@ export default function AppHeader({
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setIsUserMenuOpen(false);
       }
-      if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
-        setIsNotificationsOpen(false);
-      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const notifications = [
-    { id: 1, text: 'Tienes un nuevo mensaje', time: 'Hace 5 min', read: false },
-    { id: 2, text: 'Tu reporte está listo', time: 'Hace 1 hora', read: false },
-    { id: 3, text: 'Recordatorio: Reunión a las 3 PM', time: 'Hace 2 horas', read: true },
-    { id: 4, text: 'Actualización del sistema completada', time: 'Ayer', read: true },
-  ];
-
-  const unreadCount = notifications.filter(n => !n.read).length;
 
   // Función para manejar logout
   const handleLogout = async () => {
@@ -143,15 +129,11 @@ export default function AppHeader({
 
         {/* Botón Principal, Notificaciones y usuario */}
         <div className="flex items-center space-x-4">
-          
-
-
           {/* Usuario */}
           <div className="relative" ref={userMenuRef}>
             <button
               onClick={() => {
                 setIsUserMenuOpen(!isUserMenuOpen);
-                setIsNotificationsOpen(false);
               }}
               className="flex items-center space-x-3 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg border border-white transition-colors"
               disabled={loading}
