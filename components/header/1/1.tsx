@@ -141,60 +141,7 @@ export default function AppHeader({
 
         {/* Botón Principal, Notificaciones y usuario */}
         <div className="flex items-center space-x-4">
-          {/* Notificaciones */}
-          <div className="relative" ref={notificationsRef}>
-            <button
-              onClick={() => {
-                setIsNotificationsOpen(!isNotificationsOpen);
-                setIsUserMenuOpen(false);
-              }}
-              className="relative p-2 text-white hover:bg-white/20 rounded-lg border border-white transition-colors"
-              aria-label="Notificaciones"
-            >
-              <Bell className="w-5 h-5" />
-              
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 border border-white">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-
-            {/* Panel de notificaciones */}
-            {isNotificationsOpen && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                <div className="p-3 border-b border-gray-200 bg-gray-50">
-                  <h3 className="text-sm font-semibold text-gray-900">NOTIFICACIONES</h3>
-                  <p className="text-xs text-gray-600">{unreadCount} sin leer</p>
-                </div>
-                
-                <div className="max-h-80 overflow-y-auto">
-                  {notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`p-3 border-b border-gray-100 hover:bg-gray-50 ${
-                        !notification.read ? 'bg-blue-50' : ''
-                      }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <p className="text-sm text-gray-900">{notification.text}</p>
-                        {!notification.read && (
-                          <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">{notification.time}</p>
-                    </div>
-                  ))}
-                </div>
-                
-                <div className="p-2 border-t border-gray-200 bg-gray-50">
-                  <button className="w-full text-center text-xs text-[#3a6ea5] hover:text-[#2a4a75] py-1">
-                    Ver todas las notificaciones
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          
 
           {/* Separador */}
           <div className="h-6 w-px bg-white/50" />
