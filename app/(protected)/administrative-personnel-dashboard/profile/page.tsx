@@ -350,7 +350,7 @@ export default function UserProfilePage() {
                       <div className="p-3 bg-gray-50 border border-gray-300 rounded-lg flex items-start">
                         <Lock className="h-4 w-4 text-[#3a6ea5] mr-2 mt-0.5 flex-shrink-0" />
                         <p className="text-sm text-gray-700">
-                          Mantenga su contraseña en secreto y cámbiela periódicamente
+                          Mantenga su contraseña en secreto
                         </p>
                       </div>
                       
