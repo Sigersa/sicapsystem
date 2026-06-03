@@ -5,7 +5,7 @@ import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
-import { Search, ChevronLeft, ChevronRight, UserX, UserMinus, X, RefreshCw, Trash2, CheckCircle, AlertCircle, Eye, Download, FileText, FolderOpen } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, UserX, UserMinus, X, RefreshCw, Trash2, CheckCircle, AlertCircle, Eye, Download, FileText } from 'lucide-react';
 import JSZip from 'jszip';
 
 type EmployeeType = 'BASE' | 'PROJECT';
@@ -227,6 +227,8 @@ export default function EmployeesListPage() {
       const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?action=getDocumentUrls&employeeId=${empleadoId}`);
       const data = await response.json();
       
+      console.log('[getSavedDocumentUrls] Respuesta:', data);
+      
       if (data.success && data.urls) {
         return data.urls;
       }
@@ -317,56 +319,53 @@ export default function EmployeesListPage() {
   };
 
   const toggleEmployeeStatus = async (employee: Employee) => {
-    const currentStatus = employee.Status ?? 1;
-    const newStatus = currentStatus === 1 ? 0 : 1;
-    const actionText = newStatus === 0 ? 'dar de baja' : 'reactivar';
+  const currentStatus = employee.Status ?? 1;
+  const newStatus = currentStatus === 1 ? 0 : 1;
+  const actionText = newStatus === 0 ? 'dar de baja' : 'reactivar';
 
-    try {
-      setActionLoading(employee.EmployeeID);
-      setError('');
-      setSuccessMessage('');
+  try {
+    setActionLoading(employee.EmployeeID);
+    setError('');
+    setSuccessMessage('');
 
-      const response = await fetch('/api/administrative-personnel-dashboard/job-termination', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          EmployeeID: employee.EmployeeID,
-          Status: newStatus
-        }),
-      });
+    console.log(`[FRONTEND] Enviando petición para ${actionText}:`, {
+      EmployeeID: employee.EmployeeID,
+      Status: newStatus
+    });
 
-      const data = await response.json();
+    const response = await fetch('/api/administrative-personnel-dashboard/job-termination', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        EmployeeID: employee.EmployeeID,
+        Status: newStatus
+      }),
+    });
 
-      if (response.ok && data.success) {
-        if (newStatus === 0) {
-          const employeeInfo = await fetchEmployeeInfo(employee.EmployeeID);
-          
-          const details = await generateDownloadUrls(
-            employee.EmployeeID.toString(), 
-            employeeInfo.tipoPersonal,
-            employeeInfo.nombre,
-            employeeInfo.puesto
-          );
-          
-          setTerminationDetails(details);
-          setShowSuccessModal(true);
-        }
-        
-        setSuccessMessage(data.message || `Empleado ${actionText} exitosamente`);
-        await fetchEmployees();
+    const data = await response.json();
+    console.log(`[FRONTEND] Respuesta del servidor:`, data);
+
+    if (response.ok && data.success) {
+      if (newStatus === 0) {
+        // ... código para mostrar modal de éxito ...
       } else {
-        setError(data.message || `Error al ${actionText} al empleado`);
+        // Para reactivación, solo mostrar mensaje de éxito
+        setSuccessMessage(data.message || `Empleado ${actionText} exitosamente`);
       }
-    } catch (error) {
-      console.error('Error:', error);
-      setError(`Error de conexión al ${actionText} al empleado`);
-    } finally {
-      setActionLoading(null);
-      setConfirmTermination({ show: false, employee: null });
+      await fetchEmployees(); // Recargar la lista
+    } else {
+      setError(data.message || `Error al ${actionText} al empleado`);
     }
-  };
+  } catch (error) {
+    console.error('Error:', error);
+    setError(`Error de conexión al ${actionText} al empleado`);
+  } finally {
+    setActionLoading(null);
+    setConfirmTermination({ show: false, employee: null });
+  }
+};
 
   const openDeleteConfirmation = (employee: Employee) => {
     if ((employee.Status ?? 1) !== 0) {
@@ -463,30 +462,63 @@ export default function EmployeesListPage() {
     try {
       setDownloadingZip(true);
       
+      // Hacer una consulta fresca para obtener las URLs actuales
+      const savedUrls = await getSavedDocumentUrls(terminationDetails.empleadoId);
+      
+      console.log('[handleDownloadAllPDFs] URLs para ZIP:', savedUrls);
+      
+      if (!savedUrls || (!savedUrls.ftRh12PdfUrl && !savedUrls.ftRh13PdfUrl && !savedUrls.ftRh14PdfUrl)) {
+        setError('No se encontraron documentos para descargar');
+        setDownloadingZip(false);
+        return;
+      }
+      
       const zip = new JSZip();
+      let hasFiles = false;
       
-      if (terminationDetails.ftRh12PdfDownloadUrl) {
-        const response = await fetch(terminationDetails.ftRh12PdfDownloadUrl);
-        if (response.ok) {
-          const blob = await response.blob();
-          zip.file(`FT-RH-12_${terminationDetails.empleadoId}.pdf`, blob);
+      if (savedUrls.ftRh12PdfUrl) {
+        try {
+          const response = await fetch(savedUrls.ftRh12PdfUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            zip.file(`FT-RH-12_${terminationDetails.empleadoId}.pdf`, blob);
+            hasFiles = true;
+          }
+        } catch (err) {
+          console.error('Error fetching FT-RH-12:', err);
         }
       }
       
-      if (terminationDetails.ftRh13PdfDownloadUrl) {
-        const response = await fetch(terminationDetails.ftRh13PdfDownloadUrl);
-        if (response.ok) {
-          const blob = await response.blob();
-          zip.file(`FT-RH-13_${terminationDetails.empleadoId}.pdf`, blob);
+      if (savedUrls.ftRh13PdfUrl) {
+        try {
+          const response = await fetch(savedUrls.ftRh13PdfUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            zip.file(`FT-RH-13_${terminationDetails.empleadoId}.pdf`, blob);
+            hasFiles = true;
+          }
+        } catch (err) {
+          console.error('Error fetching FT-RH-13:', err);
         }
       }
       
-      if (terminationDetails.ftRh14PdfDownloadUrl) {
-        const response = await fetch(terminationDetails.ftRh14PdfDownloadUrl);
-        if (response.ok) {
-          const blob = await response.blob();
-          zip.file(`FT-RH-14_${terminationDetails.empleadoId}.pdf`, blob);
+      if (savedUrls.ftRh14PdfUrl) {
+        try {
+          const response = await fetch(savedUrls.ftRh14PdfUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            zip.file(`FT-RH-14_${terminationDetails.empleadoId}.pdf`, blob);
+            hasFiles = true;
+          }
+        } catch (err) {
+          console.error('Error fetching FT-RH-14:', err);
         }
+      }
+      
+      if (!hasFiles) {
+        setError('No se pudieron descargar los documentos. Intente nuevamente.');
+        setDownloadingZip(false);
+        return;
       }
       
       const content = await zip.generateAsync({ type: "blob" });
@@ -514,29 +546,51 @@ export default function EmployeesListPage() {
       setDownloadingZip(true);
       
       const zip = new JSZip();
+      let hasFiles = false;
       
       if (terminationDetails.ftRh12WordUrl) {
-        const response = await fetch(terminationDetails.ftRh12WordUrl);
-        if (response.ok) {
-          const blob = await response.blob();
-          zip.file(`FT-RH-12_${terminationDetails.empleadoId}.docx`, blob);
+        try {
+          const response = await fetch(terminationDetails.ftRh12WordUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            zip.file(`FT-RH-12_${terminationDetails.empleadoId}.docx`, blob);
+            hasFiles = true;
+          }
+        } catch (err) {
+          console.error('Error fetching FT-RH-12 editable:', err);
         }
       }
       
       if (terminationDetails.ftRh13WordUrl) {
-        const response = await fetch(terminationDetails.ftRh13WordUrl);
-        if (response.ok) {
-          const blob = await response.blob();
-          zip.file(`FT-RH-13_${terminationDetails.empleadoId}.docx`, blob);
+        try {
+          const response = await fetch(terminationDetails.ftRh13WordUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            zip.file(`FT-RH-13_${terminationDetails.empleadoId}.docx`, blob);
+            hasFiles = true;
+          }
+        } catch (err) {
+          console.error('Error fetching FT-RH-13 editable:', err);
         }
       }
       
       if (terminationDetails.ftRh14WordUrl) {
-        const response = await fetch(terminationDetails.ftRh14WordUrl);
-        if (response.ok) {
-          const blob = await response.blob();
-          zip.file(`FT-RH-14_${terminationDetails.empleadoId}.docx`, blob);
+        try {
+          const response = await fetch(terminationDetails.ftRh14WordUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            zip.file(`FT-RH-14_${terminationDetails.empleadoId}.docx`, blob);
+            hasFiles = true;
+          }
+        } catch (err) {
+          console.error('Error fetching FT-RH-14 editable:', err);
         }
+      }
+      
+      if (!hasFiles) {
+        setError('No se pudieron descargar los documentos editables. Intente nuevamente.');
+        setDownloadingZip(false);
+        return;
       }
       
       const content = await zip.generateAsync({ type: "blob" });
@@ -1237,7 +1291,6 @@ export default function EmployeesListPage() {
                               : 'No hay empleados registrados en el sistema'}
                           </p>
                         </div>
-                      
                       </td>
                     </tr>
                   ) : (
@@ -1252,9 +1305,8 @@ export default function EmployeesListPage() {
                               </div>
                             </div>
                           </td>
-                                                  <td className="py-3 px-4"><div className="text-sm font-medium text-gray-800">{employee.tipo === 'BASE' ? 'BASE' : 'PROYECTO'}</div></td>
-
-                           <td className="py-3 px-4">
+                          <td className="py-3 px-4"><div className="text-sm font-medium text-gray-800">{employee.tipo === 'BASE' ? 'BASE' : 'PROYECTO'}</div></td>
+                          <td className="py-3 px-4">
                             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                               (employee.Status ?? 1) === 1 
                                 ? 'bg-green-100 text-green-800' 
@@ -1262,7 +1314,7 @@ export default function EmployeesListPage() {
                             }`}>
                               {(employee.Status ?? 1) === 1 ? 'ACTIVO' : 'INACTIVO'}
                             </span>
-                           </td>
+                          </td>
                           <td className="py-3 px-4">
                             <div className="text-sm text-gray-800">{employee.Position || 'N/A'}</div>
                             {employee.tipo === 'PROJECT' && employee.ProjectName && (
@@ -1275,11 +1327,11 @@ export default function EmployeesListPage() {
                                 {employee.Area}
                               </div>
                             )}
-                           </td>
+                          </td>
                           <td className="py-3 px-4">
                             <div className="text-sm text-gray-800">{employee.Email}</div>
                             <div className="text-xs text-gray-500">{employee.Phone}</div>
-                           </td>
+                          </td>
                           <td className="py-3 px-4">
                             {employee.tipo === 'BASE' && (employee.Status ?? 1) === 0 ? (
                               <div className="flex items-center gap-2">
@@ -1320,16 +1372,15 @@ export default function EmployeesListPage() {
                               <div className="space-y-2">
                                 <button
                                   onClick={() => toggleContractExpand(employee.EmployeeID)}
-                                  className="flex items-center gap-1 text-xs text-[#3a6ea5] hover:text-[#2d5582]"
+                                  className="flex items-center text-xs text-gray-700 hover:underline"
                                 >
-                                  <FolderOpen className="h-3 w-3" />
-                                  {expandedContract === employee.EmployeeID ? 'OCULTAR' : `VER ${employee.Contracts.length} CONTRATO${employee.Contracts.length !== 1 ? 'S' : ''}`}
+                                  {expandedContract === employee.EmployeeID ? 'Ocultar' : `Ver ${employee.Contracts.length} contrato${employee.Contracts.length !== 1 ? 's' : ''}`}
                                 </button>
                               </div>
                             ) : (
                               <span className="text-xs text-gray-400">-</span>
                             )}
-                           </td>
+                          </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center justify-center gap-2">
                               <button
@@ -1361,7 +1412,7 @@ export default function EmployeesListPage() {
                                 <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
-                           </td>
+                          </td>
                         </tr>
                         
                         {/* Fila expandida de contratos para PROJECT inactivos */}
@@ -1384,7 +1435,7 @@ export default function EmployeesListPage() {
                                         </div>
                                         {contract.ProjectName && (
                                           <span className="text-xs text-gray-600">
-                                             {contract.ProjectName}
+                                            {contract.ProjectName}
                                           </span>
                                         )}
                                       </div>
@@ -1442,7 +1493,7 @@ export default function EmployeesListPage() {
                     ))
                   )}
                 </tbody>
-               </table>
+              </table>
             </div>
 
             {filteredEmployees.length > 0 && totalPages > 1 && (
