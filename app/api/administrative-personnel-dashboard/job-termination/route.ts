@@ -230,45 +230,45 @@ export async function GET(request: NextRequest) {
     // 2. Obtener personal de proyecto - CON TODOS SUS CONTRATOS HISTÓRICOS
     const [projectEmployees] = await connection.execute(`
       SELECT 
-    e.EmployeeID,
-    e.Status as EmployeeStatus,
-    pp.ProjectPersonnelID,
-    pp.FirstName,
-    pp.LastName,
-    pp.MiddleName,
-    COALESCE(p.NameProject, '') as ProjectName,
-    pc.ProjectID,
-    pc.Position,
-    pc.Salary,
-    pc.WorkSchedule,
-    COALESCE(ppi.RFC, '') as RFC,
-    COALESCE(ppi.CURP, '') as CURP,
-    COALESCE(ppi.NSS, '') as NSS,
-    COALESCE(ppi.Email, '') as Email,
-    COALESCE(ppi.Phone, '') as Phone,
-    pc.ContractFileURL,
-    pc.WarningFileURL,
-    pc.LetterFileURL,
-    pc.AgreementFileURL,
-    pc.ContractID
-FROM projectpersonnel pp
-INNER JOIN employees e ON pp.EmployeeID = e.EmployeeID
-LEFT JOIN projectpersonnelpersonalinfo ppi 
-    ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
-LEFT JOIN (
-    SELECT 
-        pc1.*,
-        ROW_NUMBER() OVER (
+        e.EmployeeID,
+        e.Status as EmployeeStatus,
+        pp.ProjectPersonnelID,
+        pp.FirstName,
+        pp.LastName,
+        pp.MiddleName,
+        COALESCE(p.NameProject, '') as ProjectName,
+        pc.ProjectID,
+        pc.Position,
+        pc.Salary,
+        pc.WorkSchedule,
+        COALESCE(ppi.RFC, '') as RFC,
+        COALESCE(ppi.CURP, '') as CURP,
+        COALESCE(ppi.NSS, '') as NSS,
+        COALESCE(ppi.Email, '') as Email,
+        COALESCE(ppi.Phone, '') as Phone,
+        pc.ContractFileURL,
+        pc.WarningFileURL,
+        pc.LetterFileURL,
+        pc.AgreementFileURL,
+        pc.ContractID
+      FROM projectpersonnel pp
+      INNER JOIN employees e ON pp.EmployeeID = e.EmployeeID
+      LEFT JOIN projectpersonnelpersonalinfo ppi 
+        ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
+      LEFT JOIN (
+        SELECT 
+          pc1.*,
+          ROW_NUMBER() OVER (
             PARTITION BY pc1.ProjectPersonnelID 
             ORDER BY pc1.ContractID DESC
-        ) as rn
-    FROM projectcontracts pc1
-) pc 
-    ON pp.ProjectPersonnelID = pc.ProjectPersonnelID 
-    AND pc.rn = 1
-LEFT JOIN projects p 
-    ON pc.ProjectID = p.ProjectID
-ORDER BY e.EmployeeID;
+          ) as rn
+        FROM projectcontracts pc1
+      ) pc 
+        ON pp.ProjectPersonnelID = pc.ProjectPersonnelID 
+        AND pc.rn = 1
+      LEFT JOIN projects p 
+        ON pc.ProjectID = p.ProjectID
+      ORDER BY e.EmployeeID;
     `);
 
     // 3. Obtener todos los contratos históricos para personal de proyecto
@@ -409,11 +409,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: false, message: 'Faltan datos' }, { status: 400 });
     }
 
+    connection = await getConnection();
+
     // Para dar de baja (Status = 0)
     if (Status === 0) {
-      // 1. Obtener información ANTES de hacer cualquier cambio
-      connection = await getConnection();
-      
       const [employeeType] = await connection.execute(
         `SELECT 
           CASE 
@@ -427,7 +426,23 @@ export async function PUT(request: NextRequest) {
       let contractID: number | null = null;
       let projectPersonnelID: number | null = null;
 
-      // 2. Obtener el contractID del contrato activo (Status = 1)
+      // PASO 1: Crear/asegurar el registro en jobtermination ANTES de generar PDFs para BASE
+      if (type === 'BASE') {
+        const [existing] = await connection.execute(
+          `SELECT JobTerminationID FROM jobtermination WHERE EmployeeID = ?`,
+          [EmployeeID]
+        );
+
+        if ((existing as any[]).length === 0) {
+          await connection.execute(
+            `INSERT INTO jobtermination (EmployeeID) VALUES (?)`,
+            [EmployeeID]
+          );
+          console.log(`[JOB-TERMINATION] Registro creado en jobtermination para EmployeeID: ${EmployeeID}`);
+        }
+      }
+
+      // PASO 2: Obtener contractID para proyectos
       if (type === 'PROJECT') {
         const [pp] = await connection.execute(
           `SELECT ProjectPersonnelID FROM projectpersonnel WHERE EmployeeID = ?`,
@@ -446,57 +461,47 @@ export async function PUT(request: NextRequest) {
           
           if ((contract as any[]).length > 0) {
             contractID = (contract as any[])[0].ContractID;
+            console.log(`[JOB-TERMINATION] ContractID encontrado: ${contractID} para ProjectPersonnelID: ${projectPersonnelID}`);
           }
         }
       }
 
-      // 3. Generar PDFs ANTES de actualizar el status (mientras el contrato está activo)
+      // PASO 3: Generar PDFs
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
       const cookies = request.headers.get('cookie') || '';
       
-      // IMPORTANTE: Pasar el contractID para que sepa qué contrato actualizar
+      console.log(`[JOB-TERMINATION] Generando PDFs para EmployeeID: ${EmployeeID}, Tipo: ${type}`);
+      
       const pdfUrls = await generateAndSaveAllPDFsFixed(
         EmployeeID,
         baseUrl,
         cookies,
         type,
         contractID,
-        projectPersonnelID  // Pasamos también el ProjectPersonnelID por si acaso
+        projectPersonnelID
       );
 
-      // 4. Ahora sí, actualizar los status (después de generar PDFs)
+      // PASO 4: Actualizar status (después de generar PDFs)
       await connection.beginTransaction();
       
       try {
-        // Actualizar status del empleado
         await connection.execute(
           `UPDATE employees SET Status = ? WHERE EmployeeID = ?`,
           [Status, EmployeeID]
         );
+        console.log(`[JOB-TERMINATION] Status de empleado ${EmployeeID} actualizado a ${Status}`);
 
         if (type === 'PROJECT' && contractID) {
-          // Actualizar el contrato específico a Status = 0
           await connection.execute(
             `UPDATE projectcontracts SET Status = 0 WHERE ContractID = ?`,
             [contractID]
           );
-        }
-
-        if (type === 'BASE') {
-          const [existing] = await connection.execute(
-            `SELECT JobTerminationID FROM jobtermination WHERE EmployeeID = ?`,
-            [EmployeeID]
-          );
-
-          if ((existing as any[]).length === 0) {
-            await connection.execute(
-              `INSERT INTO jobtermination (EmployeeID) VALUES (?)`,
-              [EmployeeID]
-            );
-          }
+          console.log(`[JOB-TERMINATION] ContractID ${contractID} actualizado a Status 0`);
         }
 
         await connection.commit();
+        
+        console.log(`[JOB-TERMINATION] Baja completada para EmployeeID: ${EmployeeID}`);
         
         return NextResponse.json({
           success: true,
@@ -508,53 +513,107 @@ export async function PUT(request: NextRequest) {
         await connection.rollback();
         throw dbError;
       }
+    } 
+    // Para reactivación (Status = 1)
+    else if (Status === 1) {
+      console.log(`[REACTIVACIÓN] Iniciando reactivación para EmployeeID: ${EmployeeID}`);
       
-    } else {
-      // Reactivación (Status = 1)
-      connection = await getConnection();
+      // Verificar si el empleado existe
+      const [checkEmployee] = await connection.execute(
+        `SELECT EmployeeID, Status FROM employees WHERE EmployeeID = ?`,
+        [EmployeeID]
+      );
       
+      if ((checkEmployee as any[]).length === 0) {
+        return NextResponse.json({
+          success: false,
+          message: 'Empleado no encontrado'
+        }, { status: 404 });
+      }
+      
+      // Verificar el tipo de empleado
       const [employeeType] = await connection.execute(
         `SELECT 
           CASE 
             WHEN EXISTS (SELECT 1 FROM basepersonnel WHERE EmployeeID = ?) THEN 'BASE'
             WHEN EXISTS (SELECT 1 FROM projectpersonnel WHERE EmployeeID = ?) THEN 'PROJECT'
+            ELSE 'UNKNOWN'
           END as EmployeeType`,
         [EmployeeID, EmployeeID]
       );
 
       const type = (employeeType as any[])[0]?.EmployeeType;
+      console.log(`[REACTIVACIÓN] Tipo de empleado: ${type}`);
 
       if (type === 'PROJECT') {
-        await connection.rollback();
         return NextResponse.json({
           success: false,
           message: 'Para reactivar personal de proyecto, debe ir al módulo de EDICIÓN DE USUARIO y asignar un nuevo contrato y proyecto.',
           requiresManualReactivation: true,
           employeeType: 'PROJECT'
         }, { status: 400 });
-      } else if (type === 'BASE') {
-        await connection.execute(
-          `DELETE FROM jobtermination WHERE EmployeeID = ?`,
-          [EmployeeID]
-        );
-        await connection.commit();
-        return NextResponse.json({
-          success: true,
-          message: 'EMPLEADO REACTIVADO EXITOSAMENTE'
-        });
+      } 
+      else if (type === 'BASE') {
+        // INICIAR TRANSACCIÓN PARA REACTIVACIÓN DE PERSONAL BASE
+        await connection.beginTransaction();
+        
+        try {
+          // PASO 1: Actualizar el status del empleado a ACTIVO (1)
+          console.log(`[REACTIVACIÓN] Actualizando employees.Status a 1 para EmployeeID: ${EmployeeID}`);
+          await connection.execute(
+            `UPDATE employees SET Status = 1 WHERE EmployeeID = ?`,
+            [EmployeeID]
+          );
+          
+          // PASO 2: Eliminar el registro de jobtermination
+          console.log(`[REACTIVACIÓN] Eliminando registro de jobtermination para EmployeeID: ${EmployeeID}`);
+          await connection.execute(
+            `DELETE FROM jobtermination WHERE EmployeeID = ?`,
+            [EmployeeID]
+          );
+          
+          // PASO 3: COMMIT de la transacción
+          await connection.commit();
+          
+          console.log(`[REACTIVACIÓN] ✅ Empleado BASE ${EmployeeID} reactivado exitosamente`);
+          
+          return NextResponse.json({
+            success: true,
+            message: 'EMPLEADO REACTIVADO EXITOSAMENTE'
+          });
+          
+        } catch (dbError) {
+          await connection.rollback();
+          console.error('[REACTIVACIÓN] ❌ Error en transacción:', dbError);
+          return NextResponse.json({
+            success: false,
+            message: 'Error al reactivar el empleado',
+            error: dbError instanceof Error ? dbError.message : String(dbError)
+          }, { status: 500 });
+        }
       }
-      
-      await connection.rollback();
+      else {
+        return NextResponse.json({
+          success: false,
+          message: 'Tipo de empleado no reconocido o no encontrado'
+        }, { status: 404 });
+      }
+    }
+    else {
       return NextResponse.json({
         success: false,
-        message: 'Tipo de empleado no reconocido'
+        message: 'Status no válido'
       }, { status: 400 });
     }
 
   } catch (error) {
     if (connection) await connection.rollback();
-    console.error(error);
-    return NextResponse.json({ success: false, message: 'Error interno del servidor' }, { status: 500 });
+    console.error('[JOB-TERMINATION] Error general:', error);
+    return NextResponse.json({ 
+      success: false, 
+      message: 'Error interno del servidor',
+      error: error instanceof Error ? error.message : String(error)
+    }, { status: 500 });
   } finally {
     if (connection) {
       try {
@@ -730,7 +789,7 @@ async function getEmployeeInfo(connection: any, employeeId: number) {
         pp.LastName,
         pp.MiddleName,
         pc.Position,
-        pc.StartDate,
+        pr.StartDate,
         pr.EndDate,
         TIMESTAMPDIFF(MONTH, pr.StartDate, CURDATE()) AS meses_trabajados,
         pr.ProjectAddress
@@ -792,7 +851,7 @@ async function generateAndSaveAllPDFsFixed(
   cookies: string,
   employeeType: string,
   contractID: number | null,
-  projectPersonnelID?: number | null  // Nuevo parámetro opcional
+  projectPersonnelID?: number | null
 ) {
   const formatos: FormatoPDF[] = ['FT-RH-12', 'FT-RH-13', 'FT-RH-14'];
   const result: any = {};
@@ -800,7 +859,7 @@ async function generateAndSaveAllPDFsFixed(
   for (const formato of formatos) {
     const url = `${baseUrl}/api/download/pdf/${formato}?empleadoId=${employeeId}&save=1`;
     
-    console.log(`Generando ${formato} para empleado ${employeeId} (Status aún activo)`);
+    console.log(`[PDF-GEN] Generando ${formato} para empleado ${employeeId} (Tipo: ${employeeType})`);
 
     const response = await fetch(url, {
       headers: { Cookie: cookies }
@@ -816,30 +875,43 @@ async function generateAndSaveAllPDFsFixed(
         updateConnection = await getConnection();
         
         if (employeeType === 'PROJECT' && contractID) {
-          // Actualizar el contrato específico (que aún tiene Status = 1 en este momento)
           await updateConnection.execute(
             `UPDATE projectcontracts SET ${fieldName} = ? WHERE ContractID = ?`,
             [data.fileUrl, contractID]
           );
-          console.log(`${formato} guardado para ContractID: ${contractID}`);
+          console.log(`[PDF-GEN] ${formato} guardado en projectcontracts para ContractID: ${contractID}`);
         } else if (employeeType === 'BASE') {
+          // Asegurar que el registro existe antes de actualizar
+          const [existing] = await updateConnection.execute(
+            `SELECT JobTerminationID FROM jobtermination WHERE EmployeeID = ?`,
+            [employeeId]
+          );
+          
+          if ((existing as any[]).length === 0) {
+            await updateConnection.execute(
+              `INSERT INTO jobtermination (EmployeeID) VALUES (?)`,
+              [employeeId]
+            );
+            console.log(`[PDF-GEN] Registro creado en jobtermination para EmployeeID: ${employeeId}`);
+          }
+          
           await updateConnection.execute(
             `UPDATE jobtermination SET ${fieldName} = ? WHERE EmployeeID = ?`,
             [data.fileUrl, employeeId]
           );
-          console.log(`${formato} guardado para EmployeeID: ${employeeId}`);
+          console.log(`[PDF-GEN] ${formato} guardado en jobtermination para EmployeeID: ${employeeId}`);
         }
         
         result[fieldName] = data.fileUrl;
       } catch (error) {
-        console.error(`Error guardando ${formato}:`, error);
+        console.error(`[PDF-GEN] Error guardando ${formato}:`, error);
       } finally {
         if (updateConnection) {
           await updateConnection.release();
         }
       }
     } else {
-      console.warn(`No se pudo generar ${formato}:`, data.message || 'Error desconocido');
+      console.warn(`[PDF-GEN] No se pudo generar ${formato}:`, data.message || 'Error desconocido');
     }
   }
 
