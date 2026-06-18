@@ -234,7 +234,11 @@ export async function GET(request: NextRequest) {
       LEFT JOIN projectpersonnel pp ON ei.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
       WHERE e.Status = 1
-      ORDER BY ei.IncidenceID DESC
+      AND (
+          bp.EmployeeID IS NOT NULL
+          OR pc.Status = 1
+      )
+          ORDER BY ei.IncidenceID DESC
     `);
 
     const incidenceRecords = rows as any[];
