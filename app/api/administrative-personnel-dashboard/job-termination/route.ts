@@ -11,6 +11,42 @@ const fieldMap: Record<FormatoPDF, string> = {
   'FT-RH-14': 'OFFileURL'
 };
 
+// Función para eliminar archivos de UploadThing
+async function deleteFilesFromUploadThing(fileUrls: string[]) {
+  const validUrls = fileUrls.filter(url => url && url.trim() !== '');
+  
+  if (validUrls.length === 0) return true;
+  
+  try {
+    const fileKeys = validUrls.map(url => {
+      const match = url.match(/https:\/\/utfs\.io\/f\/([^?]+)/);
+      return match ? match[1] : null;
+    }).filter(key => key !== null);
+    
+    if (fileKeys.length === 0) return true;
+    
+    const response = await fetch('https://uploadthing.com/api/deleteFiles', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-UploadThing-Secret': process.env.UPLOADTHING_SECRET!,
+      },
+      body: JSON.stringify({ fileKeys }),
+    });
+    
+    if (!response.ok) {
+      console.error('Error eliminando archivos de UploadThing:', await response.text());
+      return false;
+    }
+    
+    console.log(`Eliminados ${fileKeys.length} archivos de UploadThing`);
+    return true;
+  } catch (error) {
+    console.error('Error al eliminar archivos de UploadThing:', error);
+    return false;
+  }
+}
+
 export async function GET(request: NextRequest) {
   let connection;
   
@@ -47,8 +83,9 @@ export async function GET(request: NextRequest) {
     const search = url.searchParams.get('search');
     const employeeId = url.searchParams.get('employeeId');
     const action = url.searchParams.get('action');
+    const contractId = url.searchParams.get('contractId');
     
-    // Obtener URLs de documentos guardados
+    // Obtener URLs de documentos guardados (todos los formatos)
     if (action === 'getDocumentUrls' && employeeId) {
       const [employeeType] = await connection.execute(
         `SELECT 
@@ -118,7 +155,7 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    // Nueva acción para obtener URLs de documentos específicos por formato
+    // Obtener URL de documento específico por formato
     if (action === 'getDocumentUrl' && employeeId) {
       const formato = url.searchParams.get('formato') as FormatoPDF;
       const [employeeType] = await connection.execute(
@@ -183,6 +220,33 @@ export async function GET(request: NextRequest) {
       });
     }
     
+    // Obtener URLs de documentos por ContractID (para contratos históricos de PROJECT)
+    if (action === 'getContractDocumentUrls' && contractId) {
+      const [rows] = await connection.execute(
+        `SELECT CDFileURL, CRFileURL, OFFileURL 
+         FROM projectcontracts 
+         WHERE ContractID = ?`,
+        [parseInt(contractId)]
+      );
+      
+      if ((rows as any[]).length > 0) {
+        const urls = (rows as any[])[0];
+        return NextResponse.json({
+          success: true,
+          urls: {
+            ftRh12PdfUrl: urls.CDFileURL,
+            ftRh13PdfUrl: urls.CRFileURL,
+            ftRh14PdfUrl: urls.OFFileURL
+          }
+        });
+      }
+      
+      return NextResponse.json({
+        success: true,
+        urls: null
+      });
+    }
+    
     // Obtener información específica de un empleado
     if (employeeId) {
       try {
@@ -199,7 +263,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 1. Obtener personal base - UN SOLO REGISTRO POR EMPLEADO
+    // 1. Obtener personal base
     const [baseEmployees] = await connection.execute(`
       SELECT 
         e.EmployeeID,
@@ -227,7 +291,7 @@ export async function GET(request: NextRequest) {
       ORDER BY e.EmployeeID
     `);
 
-    // 2. Obtener personal de proyecto - CON TODOS SUS CONTRATOS HISTÓRICOS
+    // 2. Obtener personal de proyecto
     const [projectEmployees] = await connection.execute(`
       SELECT 
         e.EmployeeID,
@@ -246,10 +310,6 @@ export async function GET(request: NextRequest) {
         COALESCE(ppi.NSS, '') as NSS,
         COALESCE(ppi.Email, '') as Email,
         COALESCE(ppi.Phone, '') as Phone,
-        pc.ContractFileURL,
-        pc.WarningFileURL,
-        pc.LetterFileURL,
-        pc.AgreementFileURL,
         pc.ContractID
       FROM projectpersonnel pp
       INNER JOIN employees e ON pp.EmployeeID = e.EmployeeID
@@ -299,7 +359,7 @@ export async function GET(request: NextRequest) {
       contractsByPersonnel[contract.ProjectPersonnelID].push(contract);
     }
 
-    // Construir arrays de empleados con claves únicas
+    // Construir arrays de empleados
     const baseEmployeesFormatted = (baseEmployees as any[]).map(emp => ({ 
       ...emp, 
       tipo: 'BASE' as const,
@@ -322,45 +382,32 @@ export async function GET(request: NextRequest) {
       Contracts: contractsByPersonnel[emp.ProjectPersonnelID] || []
     }));
 
-    // Combinar todos los empleados
     let allEmployees = [...baseEmployeesFormatted, ...projectEmployeesFormatted];
 
-    // DEDUPLICAR POR EMPLOYEEID (un empleado no puede aparecer dos veces)
+    // Deduplicar
     const uniqueByEmployeeId = new Map<number, (typeof allEmployees)[0]>();
-    
     for (const emp of allEmployees) {
       const existing = uniqueByEmployeeId.get(emp.EmployeeID);
       if (!existing) {
         uniqueByEmployeeId.set(emp.EmployeeID, emp);
-      } else {
-        console.warn(` Empleado duplicado encontrado: ID=${emp.EmployeeID}, tipos: ${existing.tipo} y ${emp.tipo}`);
       }
     }
     
     let finalEmployees = Array.from(uniqueByEmployeeId.values());
 
-    // Filtrar por tipo
     if (tipo && tipo !== 'TODOS') {
       finalEmployees = finalEmployees.filter(emp => emp.tipo === tipo);
     }
 
-    // Filtrar por búsqueda
     if (search && search.trim()) {
       const searchLower = search.toLowerCase().trim();
       finalEmployees = finalEmployees.filter(emp => 
         emp.FirstName.toLowerCase().includes(searchLower) ||
         emp.LastName.toLowerCase().includes(searchLower) ||
-        (emp.MiddleName?.toLowerCase() || '').includes(searchLower) ||
-        `${emp.FirstName} ${emp.LastName}`.toLowerCase().includes(searchLower) ||
-        (emp.RFC?.toLowerCase() || '').includes(searchLower) ||
-        (emp.CURP?.toLowerCase() || '').includes(searchLower) ||
-        (emp.Email?.toLowerCase() || '').includes(searchLower) ||
-        (emp.NSS?.toLowerCase() || '').includes(searchLower) ||
         emp.EmployeeID.toString().includes(searchLower)
       );
     }
 
-    // Ordenar por ID de empleado de menor a mayor
     finalEmployees.sort((a, b) => a.EmployeeID - b.EmployeeID);
 
     return NextResponse.json({
@@ -411,7 +458,6 @@ export async function PUT(request: NextRequest) {
 
     connection = await getConnection();
 
-    // Para dar de baja (Status = 0)
     if (Status === 0) {
       const [employeeType] = await connection.execute(
         `SELECT 
@@ -426,7 +472,6 @@ export async function PUT(request: NextRequest) {
       let contractID: number | null = null;
       let projectPersonnelID: number | null = null;
 
-      // PASO 1: Crear/asegurar el registro en jobtermination ANTES de generar PDFs para BASE
       if (type === 'BASE') {
         const [existing] = await connection.execute(
           `SELECT JobTerminationID FROM jobtermination WHERE EmployeeID = ?`,
@@ -438,11 +483,9 @@ export async function PUT(request: NextRequest) {
             `INSERT INTO jobtermination (EmployeeID) VALUES (?)`,
             [EmployeeID]
           );
-          console.log(`[JOB-TERMINATION] Registro creado en jobtermination para EmployeeID: ${EmployeeID}`);
         }
       }
 
-      // PASO 2: Obtener contractID para proyectos
       if (type === 'PROJECT') {
         const [pp] = await connection.execute(
           `SELECT ProjectPersonnelID FROM projectpersonnel WHERE EmployeeID = ?`,
@@ -461,18 +504,14 @@ export async function PUT(request: NextRequest) {
           
           if ((contract as any[]).length > 0) {
             contractID = (contract as any[])[0].ContractID;
-            console.log(`[JOB-TERMINATION] ContractID encontrado: ${contractID} para ProjectPersonnelID: ${projectPersonnelID}`);
           }
         }
       }
 
-      // PASO 3: Generar PDFs
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
       const cookies = request.headers.get('cookie') || '';
       
-      console.log(`[JOB-TERMINATION] Generando PDFs para EmployeeID: ${EmployeeID}, Tipo: ${type}`);
-      
-      const pdfUrls = await generateAndSaveAllPDFsFixed(
+      await generateAndSaveAllPDFsFixed(
         EmployeeID,
         baseUrl,
         cookies,
@@ -481,7 +520,6 @@ export async function PUT(request: NextRequest) {
         projectPersonnelID
       );
 
-      // PASO 4: Actualizar status (después de generar PDFs)
       await connection.beginTransaction();
       
       try {
@@ -489,24 +527,22 @@ export async function PUT(request: NextRequest) {
           `UPDATE employees SET Status = ? WHERE EmployeeID = ?`,
           [Status, EmployeeID]
         );
-        console.log(`[JOB-TERMINATION] Status de empleado ${EmployeeID} actualizado a ${Status}`);
 
         if (type === 'PROJECT' && contractID) {
           await connection.execute(
             `UPDATE projectcontracts SET Status = 0 WHERE ContractID = ?`,
             [contractID]
           );
-          console.log(`[JOB-TERMINATION] ContractID ${contractID} actualizado a Status 0`);
         }
 
         await connection.commit();
         
-        console.log(`[JOB-TERMINATION] Baja completada para EmployeeID: ${EmployeeID}`);
+        const savedUrls = await getSavedDocumentUrlsFromDB(connection, EmployeeID, type, contractID);
         
         return NextResponse.json({
           success: true,
           message: 'EMPLEADO DADO DE BAJA',
-          ...pdfUrls
+          urls: savedUrls
         });
         
       } catch (dbError) {
@@ -514,24 +550,7 @@ export async function PUT(request: NextRequest) {
         throw dbError;
       }
     } 
-    // Para reactivación (Status = 1)
     else if (Status === 1) {
-      console.log(`[REACTIVACIÓN] Iniciando reactivación para EmployeeID: ${EmployeeID}`);
-      
-      // Verificar si el empleado existe
-      const [checkEmployee] = await connection.execute(
-        `SELECT EmployeeID, Status FROM employees WHERE EmployeeID = ?`,
-        [EmployeeID]
-      );
-      
-      if ((checkEmployee as any[]).length === 0) {
-        return NextResponse.json({
-          success: false,
-          message: 'Empleado no encontrado'
-        }, { status: 404 });
-      }
-      
-      // Verificar el tipo de empleado
       const [employeeType] = await connection.execute(
         `SELECT 
           CASE 
@@ -543,7 +562,6 @@ export async function PUT(request: NextRequest) {
       );
 
       const type = (employeeType as any[])[0]?.EmployeeType;
-      console.log(`[REACTIVACIÓN] Tipo de empleado: ${type}`);
 
       if (type === 'PROJECT') {
         return NextResponse.json({
@@ -554,48 +572,63 @@ export async function PUT(request: NextRequest) {
         }, { status: 400 });
       } 
       else if (type === 'BASE') {
-        // INICIAR TRANSACCIÓN PARA REACTIVACIÓN DE PERSONAL BASE
         await connection.beginTransaction();
         
         try {
-          // PASO 1: Actualizar el status del empleado a ACTIVO (1)
-          console.log(`[REACTIVACIÓN] Actualizando employees.Status a 1 para EmployeeID: ${EmployeeID}`);
+          // Obtener las URLs de los documentos antes de eliminar el registro
+          const urlsToDelete: string[] = [];
+          const [rows] = await connection.execute(
+            `SELECT CDFileURL, CRFileURL, OFFileURL 
+             FROM jobtermination 
+             WHERE EmployeeID = ?`,
+            [EmployeeID]
+          );
+          
+          if ((rows as any[]).length > 0) {
+            const urls = (rows as any[])[0];
+            if (urls.CDFileURL) urlsToDelete.push(urls.CDFileURL);
+            if (urls.CRFileURL) urlsToDelete.push(urls.CRFileURL);
+            if (urls.OFFileURL) urlsToDelete.push(urls.OFFileURL);
+          }
+          
+          // Eliminar archivos de UploadThing
+          if (urlsToDelete.length > 0) {
+            console.log(`Eliminando ${urlsToDelete.length} archivos de UploadThing para empleado ${EmployeeID}`);
+            await deleteFilesFromUploadThing(urlsToDelete);
+          }
+          
+          // Actualizar el estado del empleado
           await connection.execute(
             `UPDATE employees SET Status = 1 WHERE EmployeeID = ?`,
             [EmployeeID]
           );
           
-          // PASO 2: Eliminar el registro de jobtermination
-          console.log(`[REACTIVACIÓN] Eliminando registro de jobtermination para EmployeeID: ${EmployeeID}`);
+          // Eliminar el registro de jobtermination
           await connection.execute(
             `DELETE FROM jobtermination WHERE EmployeeID = ?`,
             [EmployeeID]
           );
           
-          // PASO 3: COMMIT de la transacción
           await connection.commit();
-          
-          console.log(`[REACTIVACIÓN] ✅ Empleado BASE ${EmployeeID} reactivado exitosamente`);
           
           return NextResponse.json({
             success: true,
-            message: 'EMPLEADO REACTIVADO EXITOSAMENTE'
+            message: 'EMPLEADO REACTIVADO EXITOSAMENTE Y DOCUMENTOS ELIMINADOS'
           });
           
         } catch (dbError) {
           await connection.rollback();
-          console.error('[REACTIVACIÓN] ❌ Error en transacción:', dbError);
+          console.error('Error al reactivar empleado:', dbError);
           return NextResponse.json({
             success: false,
-            message: 'Error al reactivar el empleado',
-            error: dbError instanceof Error ? dbError.message : String(dbError)
+            message: 'Error al reactivar el empleado'
           }, { status: 500 });
         }
       }
       else {
         return NextResponse.json({
           success: false,
-          message: 'Tipo de empleado no reconocido o no encontrado'
+          message: 'Tipo de empleado no reconocido'
         }, { status: 404 });
       }
     }
@@ -608,11 +641,10 @@ export async function PUT(request: NextRequest) {
 
   } catch (error) {
     if (connection) await connection.rollback();
-    console.error('[JOB-TERMINATION] Error general:', error);
+    console.error('[JOB-TERMINATION] Error:', error);
     return NextResponse.json({ 
       success: false, 
-      message: 'Error interno del servidor',
-      error: error instanceof Error ? error.message : String(error)
+      message: 'Error interno del servidor'
     }, { status: 500 });
   } finally {
     if (connection) {
@@ -675,7 +707,7 @@ export async function DELETE(request: NextRequest) {
     
     if (employee.Status !== 0) {
       return NextResponse.json(
-        { success: false, message: 'Solo se pueden eliminar empleados que están dados de baja (Status = 0)' },
+        { success: false, message: 'Solo se pueden eliminar empleados dados de baja' },
         { status: 400 }
       );
     }
@@ -694,8 +726,24 @@ export async function DELETE(request: NextRequest) {
       );
 
       const type = (employeeType as any[])[0]?.EmployeeType;
+      let urlsToDelete: string[] = [];
 
       if (type === 'BASE') {
+        // Obtener URLs antes de eliminar
+        const [rows] = await connection.execute(
+          `SELECT CDFileURL, CRFileURL, OFFileURL 
+           FROM jobtermination 
+           WHERE EmployeeID = ?`,
+          [EmployeeID]
+        );
+        
+        if ((rows as any[]).length > 0) {
+          const urls = (rows as any[])[0];
+          if (urls.CDFileURL) urlsToDelete.push(urls.CDFileURL);
+          if (urls.CRFileURL) urlsToDelete.push(urls.CRFileURL);
+          if (urls.OFFileURL) urlsToDelete.push(urls.OFFileURL);
+        }
+        
         await connection.execute('DELETE FROM jobtermination WHERE EmployeeID = ?', [EmployeeID]);
         
         const [basePersonnel] = await connection.execute(
@@ -717,6 +765,20 @@ export async function DELETE(request: NextRequest) {
         if ((projectPersonnel as any[]).length > 0) {
           const projectPersonnelID = (projectPersonnel as any[])[0].ProjectPersonnelID;
           
+          // Obtener URLs de los contratos antes de eliminarlos
+          const [contracts] = await connection.execute(
+            `SELECT CDFileURL, CRFileURL, OFFileURL 
+             FROM projectcontracts 
+             WHERE ProjectPersonnelID = ?`,
+            [projectPersonnelID]
+          );
+          
+          for (const contract of contracts as any[]) {
+            if (contract.CDFileURL) urlsToDelete.push(contract.CDFileURL);
+            if (contract.CRFileURL) urlsToDelete.push(contract.CRFileURL);
+            if (contract.OFFileURL) urlsToDelete.push(contract.OFFileURL);
+          }
+          
           await connection.execute(
             `UPDATE projectcontracts 
              SET CDFileURL = NULL, CRFileURL = NULL, OFFileURL = NULL
@@ -729,12 +791,18 @@ export async function DELETE(request: NextRequest) {
         }
       }
 
+      // Eliminar archivos de UploadThing
+      if (urlsToDelete.length > 0) {
+        console.log(`Eliminando ${urlsToDelete.length} archivos de UploadThing para empleado ${EmployeeID}`);
+        await deleteFilesFromUploadThing(urlsToDelete);
+      }
+
       await connection.execute('DELETE FROM employees WHERE EmployeeID = ?', [EmployeeID]);
       await connection.commit();
 
       return NextResponse.json({
         success: true,
-        message: 'EMPLEADO ELIMINADO PERMANENTEMENTE'
+        message: 'EMPLEADO ELIMINADO PERMANENTEMENTE JUNTO CON SUS DOCUMENTOS'
       });
 
     } catch (error) {
@@ -777,10 +845,6 @@ async function getEmployeeInfo(connection: any, employeeId: number) {
   let nombre = "";
   let puesto = "";
   let tipoPersonal = employee.EmployeeType === 'PROJECT' ? 'PERSONAL DE PROYECTO' : 'PERSONAL BASE';
-  let mesesTrabajados = 0;
-  let fechaInicio = "";
-  let fechaTermino = "";
-  let direccion = "";
 
   if (employee.EmployeeType === 'PROJECT') {
     const [rows] = await connection.query(
@@ -788,14 +852,9 @@ async function getEmployeeInfo(connection: any, employeeId: number) {
         pp.FirstName,
         pp.LastName,
         pp.MiddleName,
-        pc.Position,
-        pr.StartDate,
-        pr.EndDate,
-        TIMESTAMPDIFF(MONTH, pr.StartDate, CURDATE()) AS meses_trabajados,
-        pr.ProjectAddress
+        pc.Position
       FROM projectpersonnel pp
       LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID AND pc.Status = 1
-      LEFT JOIN projects pr ON pr.ProjectID = pc.ProjectID
       WHERE pp.EmployeeID = ?`,
       [employeeId]
     );
@@ -804,10 +863,6 @@ async function getEmployeeInfo(connection: any, employeeId: number) {
       const r = (rows as any[])[0];
       nombre = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
       puesto = r.Position || "No especificado";
-      mesesTrabajados = r.meses_trabajados || 0;
-      fechaInicio = r.StartDate || "";
-      fechaTermino = r.EndDate || "";
-      direccion = r.ProjectAddress || "";
     }
   } else {
     const [rows] = await connection.query(
@@ -815,11 +870,8 @@ async function getEmployeeInfo(connection: any, employeeId: number) {
         bp.FirstName,
         bp.LastName,
         bp.MiddleName,
-        bp.Position,
-        bc.StartDate,
-        TIMESTAMPDIFF(MONTH, bc.StartDate, CURDATE()) AS meses_trabajados
+        bp.Position
       FROM basepersonnel bp
-      LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
       WHERE bp.EmployeeID = ?`,
       [employeeId]
     );
@@ -828,20 +880,13 @@ async function getEmployeeInfo(connection: any, employeeId: number) {
       const r = (rows as any[])[0];
       nombre = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
       puesto = r.Position || "No especificado";
-      mesesTrabajados = r.meses_trabajados || 0;
-      fechaInicio = r.StartDate || "";
-      direccion = "AV. EL SAUZ 7, EL DEPOSITO, 42795 TLAHUELILPAN, HGO";
     }
   }
 
   return {
     nombre: nombre || "No especificado",
     puesto: puesto,
-    tipoPersonal: tipoPersonal,
-    mesesTrabajados: mesesTrabajados,
-    fechaInicio: fechaInicio,
-    fechaTermino: fechaTermino,
-    direccion: direccion
+    tipoPersonal: tipoPersonal
   };
 }
 
@@ -854,13 +899,13 @@ async function generateAndSaveAllPDFsFixed(
   projectPersonnelID?: number | null
 ) {
   const formatos: FormatoPDF[] = ['FT-RH-12', 'FT-RH-13', 'FT-RH-14'];
-  const result: any = {};
 
   for (const formato of formatos) {
+    // SIEMPRE usar employeeId para generar el PDF
     const url = `${baseUrl}/api/download/pdf/${formato}?empleadoId=${employeeId}&save=1`;
     
-    console.log(`[PDF-GEN] Generando ${formato} para empleado ${employeeId} (Tipo: ${employeeType})`);
-
+    console.log(`[PDF-GEN] Generando ${formato} para empleado ${employeeId} (${employeeType})`);
+    
     const response = await fetch(url, {
       headers: { Cookie: cookies }
     });
@@ -875,13 +920,14 @@ async function generateAndSaveAllPDFsFixed(
         updateConnection = await getConnection();
         
         if (employeeType === 'PROJECT' && contractID) {
+          // Guardar en el contrato específico
+          console.log(`[PDF-GEN] Guardando ${formato} en contrato ${contractID}`);
           await updateConnection.execute(
             `UPDATE projectcontracts SET ${fieldName} = ? WHERE ContractID = ?`,
             [data.fileUrl, contractID]
           );
-          console.log(`[PDF-GEN] ${formato} guardado en projectcontracts para ContractID: ${contractID}`);
         } else if (employeeType === 'BASE') {
-          // Asegurar que el registro existe antes de actualizar
+          // Guardar en jobtermination
           const [existing] = await updateConnection.execute(
             `SELECT JobTerminationID FROM jobtermination WHERE EmployeeID = ?`,
             [employeeId]
@@ -892,28 +938,60 @@ async function generateAndSaveAllPDFsFixed(
               `INSERT INTO jobtermination (EmployeeID) VALUES (?)`,
               [employeeId]
             );
-            console.log(`[PDF-GEN] Registro creado en jobtermination para EmployeeID: ${employeeId}`);
           }
           
           await updateConnection.execute(
             `UPDATE jobtermination SET ${fieldName} = ? WHERE EmployeeID = ?`,
             [data.fileUrl, employeeId]
           );
-          console.log(`[PDF-GEN] ${formato} guardado en jobtermination para EmployeeID: ${employeeId}`);
         }
         
-        result[fieldName] = data.fileUrl;
+        console.log(`[PDF-GEN] ✅ ${formato} guardado exitosamente`);
       } catch (error) {
-        console.error(`[PDF-GEN] Error guardando ${formato}:`, error);
+        console.error(`[PDF-GEN] ❌ Error guardando ${formato}:`, error);
       } finally {
         if (updateConnection) {
           await updateConnection.release();
         }
       }
     } else {
-      console.warn(`[PDF-GEN] No se pudo generar ${formato}:`, data.message || 'Error desconocido');
+      console.error(`[PDF-GEN] ❌ Error generando ${formato}:`, data);
     }
   }
+}
 
+async function getSavedDocumentUrlsFromDB(connection: any, employeeId: number, employeeType: string, contractID: number | null) {
+  const result: any = {};
+  
+  if (employeeType === 'BASE') {
+    const [rows] = await connection.execute(
+      `SELECT CDFileURL, CRFileURL, OFFileURL 
+       FROM jobtermination 
+       WHERE EmployeeID = ?`,
+      [employeeId]
+    );
+    
+    if ((rows as any[]).length > 0) {
+      const urls = (rows as any[])[0];
+      result.ftRh12PdfUrl = urls.CDFileURL;
+      result.ftRh13PdfUrl = urls.CRFileURL;
+      result.ftRh14PdfUrl = urls.OFFileURL;
+    }
+  } else if (employeeType === 'PROJECT' && contractID) {
+    const [rows] = await connection.execute(
+      `SELECT CDFileURL, CRFileURL, OFFileURL 
+       FROM projectcontracts 
+       WHERE ContractID = ?`,
+      [contractID]
+    );
+    
+    if ((rows as any[]).length > 0) {
+      const urls = (rows as any[])[0];
+      result.ftRh12PdfUrl = urls.CDFileURL;
+      result.ftRh13PdfUrl = urls.CRFileURL;
+      result.ftRh14PdfUrl = urls.OFFileURL;
+    }
+  }
+  
   return result;
 }
