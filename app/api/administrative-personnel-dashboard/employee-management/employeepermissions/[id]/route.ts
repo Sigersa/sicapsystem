@@ -157,66 +157,42 @@ async function generateUpdatedPermissionPDF(
       // Consulta para personal PROJECT
       [rows] = await connection.execute<any[]>(
         `SELECT 
-          p.PermissionID,
-          p.EmployeeID,
-          p.ApplicationDate,
-          p.DepartureTime,
-          p.CheckInTime,
-          p.DaysOfLeave,
-          p.PermitDate,
-          p.PermitEndDate,
-          p.Reason,
-          p.AutorizationType,
-          p.Observations,
-          p.TypeOfPermission,
-          -- Datos del empleado PROJECT
+          ep.PermissionID,
+          ep.EmployeeID,
+          ep.ApplicationDate,
+          ep.DepartureTime,
+          ep.CheckInTime,
+          ep.DaysOfLeave,
+          ep.PermitDate,
+          ep.PermitEndDate,
+          ep.Reason,
+          ep.AutorizationType,
+          ep.Observations,
+          ep.TypeOfPermission,
           pp.FirstName,
           pp.LastName,
           pp.MiddleName,
           pc.Position,
-          pj.NameProject,
-          'PROJECT' as tipo,
-          pj.NameProject as AreaOrProject,
-          -- Jefe directo (AdminProjectID puede ser BASE o PROJECT)
-          CASE 
-            WHEN je.AdminEmployeeType = 'BASE' THEN 
-              CONCAT(bp_jefe.FirstName, ' ', bp_jefe.LastName, ' ', IFNULL(bp_jefe.MiddleName, ''))
-            WHEN je.AdminEmployeeType = 'PROJECT' THEN 
-              CONCAT(pp_jefe.FirstName, ' ', pp_jefe.LastName, ' ', IFNULL(pp_jefe.MiddleName, ''))
-            ELSE 'NO ESPECIFICADO'
-          END as JefeFirstName,
-          CASE 
-            WHEN je.AdminEmployeeType = 'BASE' THEN 
-              bp_jefe.LastName
-            WHEN je.AdminEmployeeType = 'PROJECT' THEN 
-              pp_jefe.LastName
-            ELSE ''
-          END as JefeLastName,
-          CASE 
-            WHEN je.AdminEmployeeType = 'BASE' THEN 
-              bp_jefe.MiddleName
-            WHEN je.AdminEmployeeType = 'PROJECT' THEN 
-              pp_jefe.MiddleName
-            ELSE ''
-          END as JefeMiddleName,
+          p.NameProject as AreaOrProject,
+          p.AdminProjectID,
+          bp.FirstName as JefeFirstName,
+          bp.LastName as JefeLastName,
+          bp.MiddleName as JefeMiddleName,
           -- Número total de permisos en el mes y año
-          (SELECT COUNT(*) FROM employeepermission ep 
-           WHERE ep.EmployeeID = p.EmployeeID 
+          (SELECT COUNT(*) FROM employeepermission p 
+           WHERE p.EmployeeID = ep.EmployeeID 
            AND MONTH(ep.ApplicationDate) = MONTH(CURRENT_DATE())
            AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosMes,
-          (SELECT COUNT(*) FROM employeepermission ep 
-           WHERE ep.EmployeeID = p.EmployeeID 
+          (SELECT COUNT(*) FROM employeepermission p 
+           WHERE p.EmployeeID = ep.EmployeeID 
            AND YEAR(ep.ApplicationDate) = YEAR(CURRENT_DATE())) as totalPermisosAnio
-        FROM employeepermission p
-        -- Datos del empleado PROJECT
-        JOIN projectpersonnel pp ON p.EmployeeID = pp.EmployeeID
-        LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID AND pc.Status = 1
-        LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
-        -- Jefe directo (AdminProjectID)
-        LEFT JOIN employees je ON pj.AdminProjectID = je.EmployeeID
-        LEFT JOIN basepersonnel bp_jefe ON je.EmployeeID = bp_jefe.EmployeeID AND je.EmployeeType = 'BASE'
-        LEFT JOIN projectpersonnel pp_jefe ON je.EmployeeID = pp_jefe.EmployeeID AND je.EmployeeType = 'PROJECT'
-        WHERE p.PermissionID = ?`,
+          FROM employeepermission ep
+          INNER JOIN projectpersonnel pp ON pp.EmployeeID = ep.EmployeeID
+          LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
+          LEFT JOIN projects p ON p.ProjectID = pc.ProjectID
+          LEFT JOIN employees e ON e.EmployeeID = p.AdminProjectID
+          LEFT JOIN basepersonnel bp ON bp.EmployeeID = e.EmployeeID
+        WHERE ep.PermissionID = ? AND pc.Status = 1`,
         [permissionId]
       );
     }
