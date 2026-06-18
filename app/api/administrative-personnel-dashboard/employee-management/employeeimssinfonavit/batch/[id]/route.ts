@@ -60,46 +60,129 @@ export async function GET(
       );
     }
 
-    // Obtener empleados del lote
+    // Obtener empleados del lote con sus datos específicos según el tipo
     const [employeeRows] = await connection.execute<any[]>(
       `SELECT 
+        em.MovementID,
         em.EmployeeID,
+        em.BaseContractID,
         em.ProjectContractID,
-        -- Datos del empleado
-        COALESCE(bp.FirstName, pp.FirstName) as FirstName,
-        COALESCE(bp.LastName, pp.LastName) as LastName,
-        COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
-        COALESCE(bp.Position, pc.Position) as Position,
-        COALESCE(bc.SalaryIMSS, pc.SalaryIMSS) as SalaryIMSS,
-        COALESCE(bpi.CURP, ppi.CURP) as CURP,
-        COALESCE(bpi.NSS, ppi.NSS) as NSS,
-        COALESCE(bpi.NCI, ppi.NCI) as NCI,
-        COALESCE(bpi.UMF, ppi.UMF) as UMF,
-        COALESCE(bp.Area, pj.NameProject) as AreaOrProject,
+        -- Datos del empleado (BASE)
+        bp.FirstName as BaseFirstName,
+        bp.LastName as BaseLastName,
+        bp.MiddleName as BaseMiddleName,
+        bp.Position as BasePosition,
+        bp.Area as BaseArea,
+        bc.SalaryIMSS as BaseSalaryIMSS,
+        bpi.CURP as BaseCURP,
+        bpi.NSS as BaseNSS,
+        bpi.NCI as BaseNCI,
+        bpi.UMF as BaseUMF,
+        -- Datos del empleado (PROJECT)
+        pp.FirstName as ProjectFirstName,
+        pp.LastName as ProjectLastName,
+        pp.MiddleName as ProjectMiddleName,
+        pc.Position as ProjectPosition,
+        pc.SalaryIMSS as ProjectSalaryIMSS,
+        ppi.CURP as ProjectCURP,
+        ppi.NSS as ProjectNSS,
+        ppi.NCI as ProjectNCI,
+        ppi.UMF as ProjectUMF,
+        -- Datos del proyecto
+        pj.NameProject,
+        -- Determinar el tipo basado en qué contrato tiene
         CASE 
-          WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
-          ELSE 'PROYECTO'
+          WHEN em.BaseContractID IS NOT NULL THEN 'BASE'
+          WHEN em.ProjectContractID IS NOT NULL THEN 'PROYECTO'
+          ELSE 'NO ESPECIFICADO'
         END as tipo
       FROM employeeimssinfonavitmovements em
-      -- Datos del empleado (BASE)
-      LEFT JOIN basepersonnel bp ON em.EmployeeID = bp.EmployeeID
-      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
+      -- Datos del empleado (BASE) - Solo si tiene BaseContractID
+      LEFT JOIN basepersonnel bp ON em.EmployeeID = bp.EmployeeID AND em.BaseContractID IS NOT NULL
+      LEFT JOIN basecontracts bc ON em.BaseContractID = bc.ContractID AND em.BaseContractID IS NOT NULL
       LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
-      -- Datos del empleado (PROJECT)
-      LEFT JOIN projectpersonnel pp ON em.EmployeeID = pp.EmployeeID
-      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+      -- Datos del empleado (PROJECT) - Solo si tiene ProjectContractID
+      LEFT JOIN projectpersonnel pp ON em.EmployeeID = pp.EmployeeID AND em.ProjectContractID IS NOT NULL
+      LEFT JOIN projectcontracts pc ON em.ProjectContractID = pc.ContractID AND em.ProjectContractID IS NOT NULL
       LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
+      -- Datos del proyecto - Solo para PROJECT
       LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
       WHERE em.BatchID = ?
       ORDER BY em.MovementID`,
       [batchId]
     );
 
+    // Formatear los datos para el frontend
+    const formattedEmployees = employeeRows.map((row) => {
+      // Obtener los datos según el tipo
+      let firstName, lastName, middleName, position, salaryIMSS, curp, nss, nci, umf, areaOrProject;
+      
+      if (row.tipo === 'BASE') {
+        firstName = row.BaseFirstName || 'NO ESPECIFICADO';
+        lastName = row.BaseLastName || '';
+        middleName = row.BaseMiddleName || '';
+        position = row.BasePosition || 'NO ESPECIFICADO';
+        salaryIMSS = row.BaseSalaryIMSS || 'NO ESPECIFICADO';
+        curp = row.BaseCURP || 'NO ESPECIFICADO';
+        nss = row.BaseNSS || 'NO ESPECIFICADO';
+        nci = row.BaseNCI || 'NO ESPECIFICADO';
+        umf = row.BaseUMF || 'NO ESPECIFICADO';
+        areaOrProject = row.BaseArea || 'NO ESPECIFICADO';
+      } else if (row.tipo === 'PROYECTO') {
+        firstName = row.ProjectFirstName || 'NO ESPECIFICADO';
+        lastName = row.ProjectLastName || '';
+        middleName = row.ProjectMiddleName || '';
+        position = row.ProjectPosition || 'NO ESPECIFICADO';
+        salaryIMSS = row.ProjectSalaryIMSS || 'NO ESPECIFICADO';
+        curp = row.ProjectCURP || 'NO ESPECIFICADO';
+        nss = row.ProjectNSS || 'NO ESPECIFICADO';
+        nci = row.ProjectNCI || 'NO ESPECIFICADO';
+        umf = row.ProjectUMF || 'NO ESPECIFICADO';
+        areaOrProject = row.NameProject || 'NO ESPECIFICADO';
+      } else {
+        firstName = 'NO ESPECIFICADO';
+        lastName = '';
+        middleName = '';
+        position = 'NO ESPECIFICADO';
+        salaryIMSS = null;
+        curp = 'NO ESPECIFICADO';
+        nss = 'NO ESPECIFICADO';
+        nci = 'NO ESPECIFICADO';
+        umf = null;
+        areaOrProject = 'NO ESPECIFICADO';
+      }
+
+      const fullName = [
+        firstName || '',
+        lastName || '',
+        middleName || ''
+      ].filter(part => part && part.trim() !== '').join(' ').trim() || 'NO ESPECIFICADO';
+
+      return {
+        EmployeeID: row.EmployeeID,
+        BaseContractID: row.BaseContractID,
+        ProjectContractID: row.ProjectContractID,
+        FullName: fullName,
+        FirstName: firstName,
+        LastName: lastName || '',
+        MiddleName: middleName || '',
+        Position: position,
+        SalaryIMSS: salaryIMSS,
+        CURP: curp,
+        NSS: nss,
+        NCI: nci,
+        UMF: umf,
+        AreaOrProject: areaOrProject,
+        tipo: row.tipo,
+        MovementID: row.MovementID
+      };
+    });
+
     return NextResponse.json({
       success: true,
       batch: batchRows[0],
-      employees: employeeRows,
-      employeeCount: employeeRows.length
+      employees: formattedEmployees,
+      employeeCount: formattedEmployees.length
     });
 
   } catch (error) {
