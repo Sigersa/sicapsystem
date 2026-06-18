@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
         e.Status,
         'PROJECT' as tipo
       FROM projectpersonnel pp
-      INNER JOIN employee e ON e.EmployeeID = pp.EmployeeID
+      INNER JOIN employees e ON e.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
       LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
       WHERE pp.EmployeeID LIKE ? 
