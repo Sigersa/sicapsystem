@@ -52,10 +52,11 @@ async function deleteFileFromUploadThing(fileUrl: string): Promise<void> {
   }
 }
 
-// Función para obtener ProjectContractID de un empleado
-async function getProjectContractID(connection: any, employeeId: number): Promise<number | null> {
+// Función para obtener los ContractIDs de un empleado (tanto BASE como PROJECT)
+async function getEmployeeContractIDs(connection: any, employeeId: number): Promise<{ baseContractId: number | null, projectContractId: number | null }> {
+  // Verificar si es empleado BASE
   const [baseResult] = await connection.execute(
-    `SELECT bc.ContractID as ProjectContractID
+    `SELECT bc.ContractID as BaseContractID
      FROM basepersonnel bp 
      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID 
      WHERE bp.EmployeeID = ? 
@@ -64,10 +65,12 @@ async function getProjectContractID(connection: any, employeeId: number): Promis
   );
   
   const baseContracts = baseResult as any[];
-  if (baseContracts.length > 0 && baseContracts[0].ProjectContractID) {
-    return baseContracts[0].ProjectContractID;
+  let baseContractId = null;
+  if (baseContracts.length > 0 && baseContracts[0].BaseContractID) {
+    baseContractId = baseContracts[0].BaseContractID;
   }
   
+  // Verificar si es empleado PROJECT
   const [projectResult] = await connection.execute(
     `SELECT pc.ContractID as ProjectContractID
      FROM projectpersonnel pp 
@@ -78,11 +81,12 @@ async function getProjectContractID(connection: any, employeeId: number): Promis
   );
   
   const projectContracts = projectResult as any[];
+  let projectContractId = null;
   if (projectContracts.length > 0 && projectContracts[0].ProjectContractID) {
-    return projectContracts[0].ProjectContractID;
+    projectContractId = projectContracts[0].ProjectContractID;
   }
   
-  return null;
+  return { baseContractId, projectContractId };
 }
 
 // Función para generar el PDF FT-RH-05 actualizado
@@ -133,6 +137,8 @@ async function generateUpdatedMovementPDF(
     const [employeeRows] = await connection.execute<any[]>(
       `SELECT 
         em.EmployeeID,
+        em.BaseContractID,
+        em.ProjectContractID,
         -- Datos del empleado
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
@@ -144,17 +150,18 @@ async function generateUpdatedMovementPDF(
         COALESCE(bpi.NCI, ppi.NCI) as NCI,
         COALESCE(bpi.UMF, ppi.UMF) as UMF,    
         CASE 
-          WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
-          ELSE 'PROYECTO'
+          WHEN bp.EmployeeID IS NOT NULL AND em.BaseContractID IS NOT NULL THEN 'BASE'
+          WHEN pp.EmployeeID IS NOT NULL AND em.ProjectContractID IS NOT NULL THEN 'PROYECTO'
+          ELSE 'NO ESPECIFICADO'
         END as tipo
       FROM employeeimssinfonavitmovements em
       -- Datos del empleado (BASE)
       LEFT JOIN basepersonnel bp ON em.EmployeeID = bp.EmployeeID
-      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
+      LEFT JOIN basecontracts bc ON em.BaseContractID = bc.ContractID
       LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
       -- Datos del empleado (PROJECT)
       LEFT JOIN projectpersonnel pp ON em.EmployeeID = pp.EmployeeID
-      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+      LEFT JOIN projectcontracts pc ON em.ProjectContractID = pc.ContractID
       LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
       WHERE em.BatchID = ?
       ORDER BY em.MovementID`,
@@ -343,6 +350,7 @@ export async function GET(
     const [employeeRows] = await connection.execute<any[]>(
       `SELECT 
         em.EmployeeID,
+        em.BaseContractID,
         em.ProjectContractID,
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
@@ -350,8 +358,9 @@ export async function GET(
         COALESCE(bp.Position, pc.Position) as Position,
         COALESCE(bp.Area, pj.NameProject) as AreaOrProject,
         CASE 
-          WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
-          ELSE 'PROYECTO'
+          WHEN bp.EmployeeID IS NOT NULL AND em.BaseContractID IS NOT NULL THEN 'BASE'
+          WHEN pp.EmployeeID IS NOT NULL AND em.ProjectContractID IS NOT NULL THEN 'PROYECTO'
+          ELSE 'NO ESPECIFICADO'
         END as tipo
       FROM employeeimssinfonavitmovements em
       LEFT JOIN basepersonnel bp ON em.EmployeeID = bp.EmployeeID
@@ -464,9 +473,10 @@ export async function PUT(
       );
     }
 
-    if (!ReasonForWithdrawal) {
+    // SOLO validar ReasonForWithdrawal si el movimiento es BAJA
+    if (MovementType.toUpperCase() === 'BAJA' && !ReasonForWithdrawal) {
       return NextResponse.json(
-        { success: false, message: 'El motivo de baja es requerido' },
+        { success: false, message: 'El motivo de baja es requerido para movimientos de BAJA' },
         { status: 400 }
       );
     }
@@ -488,21 +498,20 @@ export async function PUT(
       const currentBatch = batchCheck[0];
       const oldFileUrl = currentBatch.FileURL;
 
-      // Validar que todos los empleados existen
+      // Validar que todos los empleados existen y tienen contrato
+      const employeesToSave = [];
       for (const employeeId of Employees) {
-        const [baseCheck] = await connection.execute(
-          'SELECT EmployeeID FROM basepersonnel WHERE EmployeeID = ?',
-          [employeeId]
-        );
-
-        const [projectCheck] = await connection.execute(
-          'SELECT EmployeeID FROM projectpersonnel WHERE EmployeeID = ?',
-          [employeeId]
-        );
-
-        if ((baseCheck as any[]).length === 0 && (projectCheck as any[]).length === 0) {
-          throw new Error(`El empleado con ID ${employeeId} no existe`);
+        const { baseContractId, projectContractId } = await getEmployeeContractIDs(connection, employeeId);
+        
+        if (!baseContractId && !projectContractId) {
+          throw new Error(`El empleado ${employeeId} no tiene un contrato activo.`);
         }
+        
+        employeesToSave.push({ 
+          EmployeeID: employeeId, 
+          BaseContractID: baseContractId, 
+          ProjectContractID: projectContractId 
+        });
       }
 
       // Formatear fecha
@@ -527,18 +536,17 @@ export async function PUT(
         [BatchID]
       );
 
-      // 3. Insertar los nuevos empleados
-      for (const employeeId of Employees) {
-        const projectContractId = await getProjectContractID(connection, employeeId);
-        
+      // 3. Insertar los nuevos empleados con ambos IDs de contrato
+      for (const emp of employeesToSave) {
         await connection.execute(
           `INSERT INTO employeeimssinfonavitmovements 
-           (BatchID, EmployeeID, ProjectContractID) 
-           VALUES (?, ?, ?)`,
+           (BatchID, EmployeeID, BaseContractID, ProjectContractID) 
+           VALUES (?, ?, ?, ?)`,
           [
             BatchID,
-            employeeId,
-            projectContractId
+            emp.EmployeeID,
+            emp.BaseContractID,
+            emp.ProjectContractID
           ]
         );
       }
@@ -615,9 +623,11 @@ export async function PUT(
     
     if (error instanceof Error) {
       if (error.message.includes('foreign key constraint')) {
-        errorMessage = 'ERROR: Uno o más empleados no existen';
+        errorMessage = 'ERROR: Uno o más empleados no existen o no tienen contrato activo';
       } else if (error.message.includes('date value')) {
         errorMessage = 'ERROR: Formato de fecha incorrecto';
+      } else if (error.message.includes('no tiene un contrato activo')) {
+        errorMessage = error.message;
       } else {
         errorMessage = error.message;
       }
