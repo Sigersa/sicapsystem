@@ -62,23 +62,23 @@ export async function GET(request: NextRequest) {
     let address = "";
     let endDate = "";
 
-    // Obtener nombre según el tipo de empleado
     if (employee.EmployeeType === 'PROJECT') {
-      // Personal de Proyecto
+      // Personal de Proyecto - Obtener datos del proyecto directamente
       const [rows] = await connection.query<any[]>(`
         SELECT 
           pp.FirstName,
           pp.LastName,
           pp.MiddleName,
           pc.Position,
-          pr.StartDate,
-          TIMESTAMPDIFF(MONTH, pr.StartDate, CURDATE()) AS meses_trabajados,
-          pr.EndDate,
-	      pr.ProjectAddress
+          p.StartDate,
+          p.EndDate,
+          TIMESTAMPDIFF(MONTH, p.StartDate, CURDATE()) AS meses_trabajados,
+          p.ProjectAddress
         FROM projectpersonnel pp
         INNER JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
-        LEFT JOIN projects pr ON pr.ProjectID = pc.ProjectID
-        WHERE pp.EmployeeID = ?
+        INNER JOIN projects p ON p.ProjectID = pc.ProjectID
+        WHERE pp.EmployeeID = ? AND pc.Status = 1
+        LIMIT 1
       `, [empleadoId]);
 
       if (!rows.length) {
@@ -87,11 +87,12 @@ export async function GET(request: NextRequest) {
 
       const r = rows[0];
       fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
-      position = r.Position;
-      monthw = r.meses_trabajados;
+      position = r.Position || "NO ESPECIFICADO";
+      monthw = r.meses_trabajados || 0;
+      // Fechas del proyecto desde la tabla projects
       startDate = r.StartDate;
-      address = r.ProjectAddress;
       endDate = r.EndDate;
+      address = r.ProjectAddress || "AV. EL SAUZ 7, EL DEPOSITO, 42795 TLAHUELILPAN, HGO";
     } else {
       // Personal Base
       const [rows] = await connection.query<any[]>(`
@@ -115,8 +116,8 @@ export async function GET(request: NextRequest) {
 
       const r = rows[0];
       fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
-      position = r.Position;
-      monthw = r.meses_trabajados;
+      position = r.Position || "NO ESPECIFICADO";
+      monthw = r.meses_trabajados || 0;
       startDate = r.StartDate;
       address = "AV. EL SAUZ 7, EL DEPOSITO, 42795 TLAHUELILPAN, HGO";
       endDate = r.EndDate;
