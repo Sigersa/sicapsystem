@@ -26,11 +26,11 @@ const formatearFechaMySQL = (fecha: string): string | null => {
   }
 };
 
-// Función para obtener ProjectContractID de un empleado
-async function getProjectContractID(connection: any, employeeId: number): Promise<number | null> {
-  // Primero buscar en basepersonnel
+// Función para obtener los ContractIDs de un empleado (tanto BASE como PROJECT)
+async function getEmployeeContractIDs(connection: any, employeeId: number): Promise<{ baseContractId: number | null, projectContractId: number | null }> {
+  // Verificar si es empleado BASE
   const [baseResult] = await connection.execute(
-    `SELECT bc.ContractID as ProjectContractID
+    `SELECT bc.ContractID as BaseContractID
      FROM basepersonnel bp 
      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID 
      WHERE bp.EmployeeID = ? 
@@ -39,11 +39,12 @@ async function getProjectContractID(connection: any, employeeId: number): Promis
   );
   
   const baseContracts = baseResult as any[];
-  if (baseContracts.length > 0 && baseContracts[0].ProjectContractID) {
-    return baseContracts[0].ProjectContractID;
+  let baseContractId = null;
+  if (baseContracts.length > 0 && baseContracts[0].BaseContractID) {
+    baseContractId = baseContracts[0].BaseContractID;
   }
   
-  // Si no se encuentra en base, buscar en projectpersonnel
+  // Verificar si es empleado PROJECT
   const [projectResult] = await connection.execute(
     `SELECT pc.ContractID as ProjectContractID
      FROM projectpersonnel pp 
@@ -54,11 +55,12 @@ async function getProjectContractID(connection: any, employeeId: number): Promis
   );
   
   const projectContracts = projectResult as any[];
+  let projectContractId = null;
   if (projectContracts.length > 0 && projectContracts[0].ProjectContractID) {
-    return projectContracts[0].ProjectContractID;
+    projectContractId = projectContracts[0].ProjectContractID;
   }
   
-  return null;
+  return { baseContractId, projectContractId };
 }
 
 // Función para generar el PDF FT-RH-05
@@ -113,6 +115,8 @@ async function generateMovementPDF(
       const [empRows] = await connection.execute<any[]>(
         `SELECT 
           em.EmployeeID,
+          em.BaseContractID,
+          em.ProjectContractID,
           -- Datos del empleado
           COALESCE(bp.FirstName, pp.FirstName) as FirstName,
           COALESCE(bp.LastName, pp.LastName) as LastName,
@@ -124,17 +128,18 @@ async function generateMovementPDF(
           COALESCE(bpi.NCI, ppi.NCI) as NCI,
           COALESCE(bpi.UMF, ppi.UMF) as UMF,    
           CASE 
-            WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
-            ELSE 'PROYECTO'
+            WHEN bp.EmployeeID IS NOT NULL AND em.BaseContractID IS NOT NULL THEN 'BASE'
+            WHEN pp.EmployeeID IS NOT NULL AND em.ProjectContractID IS NOT NULL THEN 'PROYECTO'
+            ELSE 'NO ESPECIFICADO'
           END as tipo
         FROM employeeimssinfonavitmovements em
         -- Datos del empleado (BASE)
         LEFT JOIN basepersonnel bp ON em.EmployeeID = bp.EmployeeID
-        LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
+        LEFT JOIN basecontracts bc ON em.BaseContractID = bc.ContractID
         LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
         -- Datos del empleado (PROJECT)
         LEFT JOIN projectpersonnel pp ON em.EmployeeID = pp.EmployeeID
-        LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+        LEFT JOIN projectcontracts pc ON em.ProjectContractID = pc.ContractID
         LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
         WHERE em.BatchID = ? AND em.EmployeeID = ?`,
         [batchId, emp.EmployeeID]
@@ -435,16 +440,22 @@ export async function POST(request: NextRequest) {
       const employeesToSave = [];
       
       for (const employeeId of Employees) {
-        // Obtener ProjectContractID del empleado
-        const projectContractId = await getProjectContractID(connection, employeeId);
+        // Obtener ambos IDs de contrato
+        const { baseContractId, projectContractId } = await getEmployeeContractIDs(connection, employeeId);
+        
+        // Validar que tenga al menos un contrato
+        if (!baseContractId && !projectContractId) {
+          throw new Error(`El empleado ${employeeId} no tiene un contrato activo.`);
+        }
         
         await connection.execute(
           `INSERT INTO employeeimssinfonavitmovements 
-           (BatchID, EmployeeID, ProjectContractID) 
-           VALUES (?, ?, ?)`,
+           (BatchID, EmployeeID, BaseContractID, ProjectContractID) 
+           VALUES (?, ?, ?, ?)`,
           [
             BatchID,
             employeeId,
+            baseContractId,
             projectContractId
           ]
         );
@@ -502,9 +513,11 @@ export async function POST(request: NextRequest) {
     
     if (error instanceof Error) {
       if (error.message.includes('foreign key constraint')) {
-        errorMessage = 'ERROR: Uno o más empleados no existen';
+        errorMessage = 'ERROR: Uno o más empleados no existen o no tienen contrato activo';
       } else if (error.message.includes('date value')) {
         errorMessage = 'ERROR: Formato de fecha incorrecto';
+      } else if (error.message.includes('no tiene un contrato activo')) {
+        errorMessage = error.message;
       } else {
         errorMessage = error.message;
       }
