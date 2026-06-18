@@ -206,28 +206,11 @@ export default function EmployeesListPage() {
     }
   };
 
-  // Función para obtener la URL guardada de un formato específico
-  const getDocumentUrl = async (empleadoId: string, formato: FormatoActivo): Promise<string | null> => {
-    try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?action=getDocumentUrl&employeeId=${empleadoId}&formato=${formato}`);
-      const data = await response.json();
-      
-      if (data.success && data.fileUrl) {
-        return data.fileUrl;
-      }
-      return null;
-    } catch (error) {
-      console.error('Error al obtener URL del documento:', error);
-      return null;
-    }
-  };
-
+  // Obtener URLs guardadas de la BD
   const getSavedDocumentUrls = async (empleadoId: string): Promise<any> => {
     try {
       const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?action=getDocumentUrls&employeeId=${empleadoId}`);
       const data = await response.json();
-      
-      console.log('[getSavedDocumentUrls] Respuesta:', data);
       
       if (data.success && data.urls) {
         return data.urls;
@@ -239,6 +222,35 @@ export default function EmployeesListPage() {
     }
   };
 
+  // Obtener información del empleado
+  const fetchEmployeeInfo = async (employeeId: number): Promise<any> => {
+    try {
+      const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?employeeId=${employeeId}`);
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        return {
+          nombre: data.nombre,
+          puesto: data.puesto,
+          tipoPersonal: data.tipoPersonal
+        };
+      }
+      return {
+        nombre: 'Empleado',
+        puesto: 'No especificado',
+        tipoPersonal: 'BASE'
+      };
+    } catch (error) {
+      console.error('Error al obtener información del empleado:', error);
+      return {
+        nombre: 'Empleado',
+        puesto: 'No especificado',
+        tipoPersonal: 'BASE'
+      };
+    }
+  };
+
+  // Generar URLs de descarga
   const generateDownloadUrls = async (empleadoId: string, tipoPersonal: string, nombre: string, puesto: string): Promise<TerminationDetails> => {
     const savedUrls = await getSavedDocumentUrls(empleadoId);
     
@@ -258,45 +270,6 @@ export default function EmployeesListPage() {
       ftRh13WordUrl: `/api/download/edit/FT-RH-13?empleadoId=${empleadoId}`,
       ftRh14WordUrl: `/api/download/edit/FT-RH-14?empleadoId=${empleadoId}`
     };
-  };
-
-  const fetchEmployeeInfo = async (employeeId: number): Promise<any> => {
-    try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?employeeId=${employeeId}`);
-      const data = await response.json();
-      
-      if (response.ok && data.success) {
-        return {
-          nombre: data.nombre,
-          puesto: data.puesto,
-          tipoPersonal: data.tipoPersonal,
-          mesesTrabajados: data.mesesTrabajados,
-          fechaInicio: data.fechaInicio,
-          fechaTermino: data.fechaTermino,
-          direccion: data.direccion
-        };
-      }
-      return {
-        nombre: 'Empleado',
-        puesto: 'No especificado',
-        tipoPersonal: 'BASE',
-        mesesTrabajados: 0,
-        fechaInicio: '',
-        fechaTermino: '',
-        direccion: ''
-      };
-    } catch (error) {
-      console.error('Error al obtener información del empleado:', error);
-      return {
-        nombre: 'Empleado',
-        puesto: 'No especificado',
-        tipoPersonal: 'BASE',
-        mesesTrabajados: 0,
-        fechaInicio: '',
-        fechaTermino: '',
-        direccion: ''
-      };
-    }
   };
 
   const confirmToggleStatus = (employee: Employee) => {
@@ -319,53 +292,59 @@ export default function EmployeesListPage() {
   };
 
   const toggleEmployeeStatus = async (employee: Employee) => {
-  const currentStatus = employee.Status ?? 1;
-  const newStatus = currentStatus === 1 ? 0 : 1;
-  const actionText = newStatus === 0 ? 'dar de baja' : 'reactivar';
+    const currentStatus = employee.Status ?? 1;
+    const newStatus = currentStatus === 1 ? 0 : 1;
+    const actionText = newStatus === 0 ? 'dar de baja' : 'reactivar';
 
-  try {
-    setActionLoading(employee.EmployeeID);
-    setError('');
-    setSuccessMessage('');
+    try {
+      setActionLoading(employee.EmployeeID);
+      setError('');
+      setSuccessMessage('');
 
-    console.log(`[FRONTEND] Enviando petición para ${actionText}:`, {
-      EmployeeID: employee.EmployeeID,
-      Status: newStatus
-    });
+      const response = await fetch('/api/administrative-personnel-dashboard/job-termination', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          EmployeeID: employee.EmployeeID,
+          Status: newStatus
+        }),
+      });
 
-    const response = await fetch('/api/administrative-personnel-dashboard/job-termination', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        EmployeeID: employee.EmployeeID,
-        Status: newStatus
-      }),
-    });
+      const data = await response.json();
 
-    const data = await response.json();
-    console.log(`[FRONTEND] Respuesta del servidor:`, data);
-
-    if (response.ok && data.success) {
-      if (newStatus === 0) {
-        // ... código para mostrar modal de éxito ...
+      if (response.ok && data.success) {
+        if (newStatus === 0) {
+          // Obtener información del empleado
+          const employeeInfo = await fetchEmployeeInfo(employee.EmployeeID);
+          
+          // Generar detalles con URLs de los documentos guardados
+          const details = await generateDownloadUrls(
+            employee.EmployeeID.toString(),
+            employee.tipo === 'BASE' ? 'PERSONAL BASE' : 'PERSONAL DE PROYECTO',
+            `${employee.FirstName} ${employee.LastName} ${employee.MiddleName || ''}`,
+            employee.Position
+          );
+          
+          setTerminationDetails(details);
+          setShowSuccessModal(true);
+          setSuccessMessage(data.message || `Empleado ${actionText} exitosamente`);
+        } else {
+          setSuccessMessage(data.message || `Empleado ${actionText} exitosamente`);
+        }
+        await fetchEmployees();
       } else {
-        // Para reactivación, solo mostrar mensaje de éxito
-        setSuccessMessage(data.message || `Empleado ${actionText} exitosamente`);
+        setError(data.message || `Error al ${actionText} al empleado`);
       }
-      await fetchEmployees(); // Recargar la lista
-    } else {
-      setError(data.message || `Error al ${actionText} al empleado`);
+    } catch (error) {
+      console.error('Error:', error);
+      setError(`Error de conexión al ${actionText} al empleado`);
+    } finally {
+      setActionLoading(null);
+      setConfirmTermination({ show: false, employee: null });
     }
-  } catch (error) {
-    console.error('Error:', error);
-    setError(`Error de conexión al ${actionText} al empleado`);
-  } finally {
-    setActionLoading(null);
-    setConfirmTermination({ show: false, employee: null });
-  }
-};
+  };
 
   const openDeleteConfirmation = (employee: Employee) => {
     if ((employee.Status ?? 1) !== 0) {
@@ -456,16 +435,14 @@ export default function EmployeesListPage() {
     }
   };
 
+  // Descargar todos los PDFs en ZIP
   const handleDownloadAllPDFs = async () => {
     if (!terminationDetails) return;
     
     try {
       setDownloadingZip(true);
       
-      // Hacer una consulta fresca para obtener las URLs actuales
       const savedUrls = await getSavedDocumentUrls(terminationDetails.empleadoId);
-      
-      console.log('[handleDownloadAllPDFs] URLs para ZIP:', savedUrls);
       
       if (!savedUrls || (!savedUrls.ftRh12PdfUrl && !savedUrls.ftRh13PdfUrl && !savedUrls.ftRh14PdfUrl)) {
         setError('No se encontraron documentos para descargar');
@@ -539,6 +516,7 @@ export default function EmployeesListPage() {
     }
   };
 
+  // Descargar todos los editables en ZIP
   const handleDownloadAllEditables = async () => {
     if (!terminationDetails) return;
     
@@ -848,10 +826,11 @@ export default function EmployeesListPage() {
         </div>
       )}
 
-      {/* Modal de éxito con documentos */}
+      {/* MODAL DE ÉXITO CON VISTA PREVIA DE DOCUMENTOS */}
       {showSuccessModal && terminationDetails && (
         <div className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70" style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}>
           <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full h-[90vh] flex flex-col animate-fade-in relative z-[10000]">
+            {/* Encabezado */}
             <div className="p-6 pb-4 border-b flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
@@ -859,7 +838,7 @@ export default function EmployeesListPage() {
                   ¡REGISTRO EXITOSO!
                 </h2>
                 <p className="text-gray-600 mt-1 text-sm">
-                  El movimiento ha sido registrado correctamente en el sistema.
+                  La baja ha sido registrada correctamente en el sistema.
                 </p>
               </div>
               <button
@@ -871,37 +850,43 @@ export default function EmployeesListPage() {
               </button>
             </div>
             
+            {/* Contenido - dos columnas */}
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+              {/* Columna izquierda - Detalles y documentos */}
               <div className="w-full md:w-1/3 p-6 border-r border-gray-200 overflow-y-auto">
                 <div className="space-y-4">
+                  {/* Detalles del empleado */}
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DETALLES DEL REGISTRO</h3>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center">
                         <span className="block text-xs font-bold text-gray-700 uppercase">ID EMPLEADO:</span>
-                        <span className="text-gray-600 mt-1 text-sm">{terminationDetails.empleadoId}</span>
+                        <span className="text-gray-600 text-sm">{terminationDetails.empleadoId}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="block text-xs font-bold text-gray-700 uppercase">NOMBRE:</span>
-                        <span className="text-gray-600 mt-1 text-sm">{terminationDetails.nombre}</span>
+                        <span className="text-gray-600 text-sm">{terminationDetails.nombre}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="block text-xs font-bold text-gray-700 uppercase">PUESTO:</span>
-                        <span className="text-gray-600 mt-1 text-sm">{terminationDetails.puesto}</span>
+                        <span className="text-gray-600 text-sm">{terminationDetails.puesto}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="block text-xs font-bold text-gray-700 uppercase">TIPO:</span>
-                        <span className="text-gray-600 mt-1 text-sm">{terminationDetails.tipoPersonal}</span>
+                        <span className="text-gray-600 text-sm">{terminationDetails.tipoPersonal}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="block text-xs font-bold text-gray-700 uppercase">FECHA DE BAJA:</span>
-                        <span className="text-gray-600 mt-1 text-sm">{terminationDetails.fechaTerminacion}</span>
+                        <span className="text-gray-600 text-sm">{terminationDetails.fechaTerminacion}</span>
                       </div>
                     </div>
                   </div>
                   
+                  {/* Documentos generados */}
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DOCUMENTOS GENERADOS</h3>
+                    
+                    {/* Navegación entre formatos */}
                     <div className="flex items-center justify-between mb-4">
                       <button
                         onClick={anteriorFormato}
@@ -926,13 +911,14 @@ export default function EmployeesListPage() {
                       </button>
                     </div>
                     
+                    {/* Opciones de descarga según formato activo */}
                     <div className="space-y-3">
                       {formatoActivo === 'FT-RH-12' ? (
                         <>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center">
                               <FileText className="h-5 w-5 text-gray-600 mr-2" />
-                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-12 (PDF)</span>
+                              <span className="text-xs font-bold text-gray-700 uppercase">FT-RH-12 (PDF)</span>
                             </div>
                             <div className="flex gap-2">
                               {terminationDetails.ftRh12PdfUrl && (
@@ -962,12 +948,13 @@ export default function EmployeesListPage() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center">
                               <FileText className="h-5 w-5 text-gray-600 mr-2" />
-                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-12 (EDITABLE)</span>
+                              <span className="text-xs font-bold text-gray-700 uppercase">FT-RH-12 (EDITABLE)</span>
                             </div>
                             <a
                               href={terminationDetails.ftRh12WordUrl}
                               download={`FT-RH-12_${terminationDetails.empleadoId}.docx`}
                               className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                              title="Descargar editable"
                             >
                               <Download className="h-4 w-4 text-gray-700" />
                             </a>
@@ -978,7 +965,7 @@ export default function EmployeesListPage() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center">
                               <FileText className="h-5 w-5 text-gray-600 mr-2" />
-                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-13 (PDF)</span>
+                              <span className="text-xs font-bold text-gray-700 uppercase">FT-RH-13 (PDF)</span>
                             </div>
                             <div className="flex gap-2">
                               {terminationDetails.ftRh13PdfUrl && (
@@ -1008,12 +995,13 @@ export default function EmployeesListPage() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center">
                               <FileText className="h-5 w-5 text-gray-600 mr-2" />
-                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-13 (EDITABLE)</span>
+                              <span className="text-xs font-bold text-gray-700 uppercase">FT-RH-13 (EDITABLE)</span>
                             </div>
                             <a
                               href={terminationDetails.ftRh13WordUrl}
                               download={`FT-RH-13_${terminationDetails.empleadoId}.docx`}
                               className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                              title="Descargar editable"
                             >
                               <Download className="h-4 w-4 text-gray-700" />
                             </a>
@@ -1024,7 +1012,7 @@ export default function EmployeesListPage() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center">
                               <FileText className="h-5 w-5 text-gray-600 mr-2" />
-                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-14 (PDF)</span>
+                              <span className="text-xs font-bold text-gray-700 uppercase">FT-RH-14 (PDF)</span>
                             </div>
                             <div className="flex gap-2">
                               {terminationDetails.ftRh14PdfUrl && (
@@ -1054,12 +1042,13 @@ export default function EmployeesListPage() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center">
                               <FileText className="h-5 w-5 text-gray-600 mr-2" />
-                              <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-14 (EDITABLE)</span>
+                              <span className="text-xs font-bold text-gray-700 uppercase">FT-RH-14 (EDITABLE)</span>
                             </div>
                             <a
                               href={terminationDetails.ftRh14WordUrl}
                               download={`FT-RH-14_${terminationDetails.empleadoId}.docx`}
                               className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                              title="Descargar editable"
                             >
                               <Download className="h-4 w-4 text-gray-700" />
                             </a>
@@ -1069,17 +1058,19 @@ export default function EmployeesListPage() {
                     </div>
                   </div>
                   
+                  {/* Descargas masivas */}
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DESCARGAS MASIVAS</h3>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="block text-xs font-bold text-gray-700 uppercase">
+                        <span className="text-xs font-bold text-gray-700 uppercase">
                           DESCARGAR TODOS LOS PDF
                         </span>
                         <button
                           onClick={handleDownloadAllPDFs}
                           disabled={downloadingZip}
                           className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+                          title="Descargar todos los PDF en ZIP"
                         >
                           {downloadingZip ? (
                             <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
@@ -1089,13 +1080,14 @@ export default function EmployeesListPage() {
                         </button>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="block text-xs font-bold text-gray-700 uppercase">
+                        <span className="text-xs font-bold text-gray-700 uppercase">
                           DESCARGAR TODOS LOS EDITABLES
                         </span>
                         <button
                           onClick={handleDownloadAllEditables}
                           disabled={downloadingZip}
                           className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+                          title="Descargar todos los editables en ZIP"
                         >
                           {downloadingZip ? (
                             <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
@@ -1109,6 +1101,7 @@ export default function EmployeesListPage() {
                 </div>
               </div>
               
+              {/* Columna derecha - Vista previa del PDF */}
               <div className="flex-1 flex flex-col p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-gray-800 text-sm uppercase">
@@ -1128,6 +1121,15 @@ export default function EmployeesListPage() {
                 </div>
                 
                 <div className="flex-1 border border-gray-300 rounded-lg overflow-hidden relative bg-gray-50">
+                  {pdfLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                      <div className="flex flex-col items-center">
+                        <div className="w-12 h-12 border-4 border-gray-300 border-t-[#3a6ea5] animate-spin rounded-full mb-3"></div>
+                        <p className="text-sm text-gray-600">Cargando vista previa...</p>
+                      </div>
+                    </div>
+                  )}
+                  
                   {(() => {
                     let currentUrl = '';
                     if (formatoActivo === 'FT-RH-12') {
@@ -1192,6 +1194,7 @@ export default function EmployeesListPage() {
             </div>
           )}
 
+          {/* Filtros */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="flex-1">
               <div className="relative">
@@ -1255,6 +1258,7 @@ export default function EmployeesListPage() {
             </button>
           </div>
 
+          {/* Tabla de empleados */}
           <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -1285,7 +1289,7 @@ export default function EmployeesListPage() {
                       <td colSpan={8} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
-                          <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
+                          <p className="text-sm font-medium text-gray-600">
                             {filters.search || filters.tipo !== 'TODOS' || filters.projectId
                               ? 'No se encontraron empleados que coincidan con la búsqueda'
                               : 'No hay empleados registrados en el sistema'}
@@ -1299,13 +1303,13 @@ export default function EmployeesListPage() {
                         <tr className="hover:bg-gray-50 transition-colors border-b border-gray-300">
                           <td className="py-3 px-4 text-sm text-gray-800 font-medium">{employee.EmployeeID}</td>
                           <td className="py-3 px-4">
-                            <div>
-                              <div className="text-sm font-medium text-gray-800">
-                                {employee.FirstName} {employee.LastName} {employee.MiddleName}
-                              </div>
+                            <div className="text-sm font-medium text-gray-800">
+                              {employee.FirstName} {employee.LastName} {employee.MiddleName}
                             </div>
                           </td>
-                          <td className="py-3 px-4"><div className="text-sm font-medium text-gray-800">{employee.tipo === 'BASE' ? 'BASE' : 'PROYECTO'}</div></td>
+                          <td className="py-3 px-4">
+                            <div className="text-sm font-medium text-gray-800">{employee.tipo === 'BASE' ? 'BASE' : 'PROYECTO'}</div>
+                          </td>
                           <td className="py-3 px-4">
                             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                               (employee.Status ?? 1) === 1 
@@ -1318,56 +1322,49 @@ export default function EmployeesListPage() {
                           <td className="py-3 px-4">
                             <div className="text-sm text-gray-800">{employee.Position || 'N/A'}</div>
                             {employee.tipo === 'PROJECT' && employee.ProjectName && (
-                              <div className="text-xs text-gray-500">
-                                {employee.ProjectName}
-                              </div>
+                              <div className="text-xs text-gray-500">{employee.ProjectName}</div>
                             )}
                             {employee.tipo === 'BASE' && employee.Area && (
-                              <div className="text-xs text-gray-500">
-                                {employee.Area}
-                              </div>
+                              <div className="text-xs text-gray-500">{employee.Area}</div>
                             )}
                           </td>
                           <td className="py-3 px-4">
                             <div className="text-sm text-gray-800">{employee.Email}</div>
                             <div className="text-xs text-gray-500">{employee.Phone}</div>
                           </td>
-                          <td className="py-3 px-4">
+                          <td className='py-3 px-4 text-center'>
                             {employee.tipo === 'BASE' && (employee.Status ?? 1) === 0 ? (
-                              <div className="flex items-center gap-2">
+                            <div className="relative inline-block">
+                              <div className="flex flex-col space-y-1">
                                 {employee.TerminationDocuments?.CDFileURL && (
                                   <button
-                                    onClick={() => window.open(`/api/download/pdf/FT-RH-12?empleadoId=${employee.EmployeeID}&preview=1`, '_blank')}
-                                    className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                                    title="FT-RH-12"
+                                    onClick={() => window.open(employee.TerminationDocuments!.CDFileURL!, '_blank')}
+                                    className="text-xs text-gray-700 hover:underline"
+                                    title="Oficio Finiquito"
                                   >
-                                    <FileText className="h-4 w-4 text-gray-700" />
+                                    Ver Oficio Finiquito
                                   </button>
                                 )}
                                 {employee.TerminationDocuments?.CRFileURL && (
                                   <button
-                                    onClick={() => window.open(`/api/download/pdf/FT-RH-13?empleadoId=${employee.EmployeeID}&preview=1`, '_blank')}
-                                    className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                                    title="FT-RH-13"
+                                    onClick={() => window.open(employee.TerminationDocuments!.CRFileURL!, '_blank')}
+                                    className="text-xs text-gray-700 hover:underline"
+                                    title="Carta de Deslinde"
                                   >
-                                    <FileText className="h-4 w-4 text-gray-700" />
+                                    Ver Carta de Deslinde
                                   </button>
                                 )}
                                 {employee.TerminationDocuments?.OFFileURL && (
                                   <button
-                                    onClick={() => window.open(`/api/download/pdf/FT-RH-14?empleadoId=${employee.EmployeeID}&preview=1`, '_blank')}
-                                    className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                                    title="FT-RH-14"
+                                    onClick={() => window.open(employee.TerminationDocuments!.OFFileURL!, '_blank')}
+                                    className="text-xs text-gray-700 hover:underline"
+                                    title="Carta de Recomendación"
                                   >
-                                    <FileText className="h-4 w-4 text-gray-700" />
+                                    Ver Carta de Recomendación
                                   </button>
                                 )}
-                                {(!employee.TerminationDocuments?.CDFileURL && 
-                                  !employee.TerminationDocuments?.CRFileURL && 
-                                  !employee.TerminationDocuments?.OFFileURL) && (
-                                  <span className="text-xs text-gray-400">Sin documentos</span>
-                                )}
                               </div>
+                            </div>
                             ) : employee.tipo === 'PROJECT' && (employee.Status ?? 1) === 0 && employee.Contracts && employee.Contracts.length > 0 ? (
                               <div className="space-y-2">
                                 <button
@@ -1420,24 +1417,14 @@ export default function EmployeesListPage() {
                           <tr className="bg-gray-50">
                             <td colSpan={8} className="py-3 px-4">
                               <div className="border-l-4 border-[#3a6ea5] pl-4">
-                                <p className="text-xs font-bold text-gray-700 mb-2 uppercase">CONTRATOS HISTÓRICOS</p>
+                                <p className="text-xs font-bold text-gray-700 mb-2 uppercase">HISTORIAL</p>
                                 <div className="space-y-3">
                                   {employee.Contracts.map((contract, idx) => (
                                     <div key={contract.ContractID} className="bg-white rounded-lg p-3 border border-gray-200">
                                       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                                         <div className="flex items-center gap-2">
-                                          <span className="text-xs font-bold text-gray-700">CONTRATO #{idx + 1}</span>
-                                          <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
-                                            contract.Status === 1 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                          }`}>
-                                            {contract.Status === 1 ? 'ACTIVO' : 'FINALIZADO'}
-                                          </span>
+                                          <span className="text-xs font-bold text-gray-700">{contract.ProjectName}</span>
                                         </div>
-                                        {contract.ProjectName && (
-                                          <span className="text-xs text-gray-600">
-                                            {contract.ProjectName}
-                                          </span>
-                                        )}
                                       </div>
                                       
                                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-600 mb-3">
@@ -1447,39 +1434,36 @@ export default function EmployeesListPage() {
                                       </div>
                                       
                                       <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
-                                        <span className="text-xs font-bold text-gray-600">Formatos de terminación:</span>
+                                        <span className="text-xs font-bold text-gray-600">Documentos de terminación laboral:</span>
                                         {contract.CDFileURL && (
                                           <button
-                                            onClick={() => window.open(`/api/download/pdf/FT-RH-12?contractId=${contract.ContractID}&preview=1`, '_blank')}
-                                            className="flex items-center gap-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors text-xs"
+                                            onClick={() => window.open(contract.CDFileURL!, '_blank')}
+                                    className="text-xs text-gray-700 hover:underline"
                                             title="FT-RH-12"
                                           >
-                                            <FileText className="h-3 w-3" />
-                                            FT-RH-12
+                                            Ver Oficio Finiquito
                                           </button>
                                         )}
                                         {contract.CRFileURL && (
                                           <button
-                                            onClick={() => window.open(`/api/download/pdf/FT-RH-13?contractId=${contract.ContractID}&preview=1`, '_blank')}
-                                            className="flex items-center gap-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors text-xs"
+                                            onClick={() => window.open(contract.CRFileURL!, '_blank')}
+                                    className="text-xs text-gray-700 hover:underline"
                                             title="FT-RH-13"
                                           >
-                                            <FileText className="h-3 w-3" />
-                                            FT-RH-13
+                                            Ver Carta de Deslinde
                                           </button>
                                         )}
                                         {contract.OFFileURL && (
                                           <button
-                                            onClick={() => window.open(`/api/download/pdf/FT-RH-14?contractId=${contract.ContractID}&preview=1`, '_blank')}
-                                            className="flex items-center gap-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors text-xs"
+                                            onClick={() => window.open(contract.OFFileURL!, '_blank')}
+                                    className="text-xs text-gray-700 hover:underline"
                                             title="FT-RH-14"
                                           >
-                                            <FileText className="h-3 w-3" />
-                                            FT-RH-14
+                                            Ver Carta de Recomendación
                                           </button>
                                         )}
-                                        {(!contract.CDFileURL && !contract.CRFileURL && !contract.OFFileURL) && (
-                                          <span className="text-xs text-gray-400">Sin documentos generados</span>
+                                        {!contract.CDFileURL && !contract.CRFileURL && !contract.OFFileURL && (
+                                          <span className="text-xs text-gray-400">No hay documentos disponibles</span>
                                         )}
                                       </div>
                                     </div>
@@ -1496,6 +1480,7 @@ export default function EmployeesListPage() {
               </table>
             </div>
 
+            {/* Paginación */}
             {filteredEmployees.length > 0 && totalPages > 1 && (
               <div className="px-4 py-3 bg-gray-50 border-t border-gray-300 flex items-center justify-between">
                 <div className="text-sm text-gray-700">
@@ -1570,14 +1555,6 @@ export default function EmployeesListPage() {
         
         header, footer {
           z-index: 50 !important;
-        }
-        
-        body.modal-open {
-          overflow: hidden;
-        }
-        
-        textarea {
-          resize: none;
         }
       `}</style>
     </div>
