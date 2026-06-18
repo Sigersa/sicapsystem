@@ -105,7 +105,10 @@ async function generateDC3PDF(
       -- Datos del instructor (Trainer)
       LEFT JOIN basepersonnel trainer_bp ON dc.TrainerID = trainer_bp.EmployeeID
       LEFT JOIN projectpersonnel trainer_pp ON dc.TrainerID = trainer_pp.EmployeeID
-      WHERE dc.DC3ID = ? AND e.Status = 1`,
+      WHERE dc.DC3ID = ? AND e.Status = 1 AND (
+          bp.EmployeeID IS NOT NULL
+          OR pc.Status = 1
+      )`,
       [dc3Id]
     );
 
@@ -297,7 +300,10 @@ export async function GET(request: NextRequest) {
       LEFT JOIN basepersonnel bp ON dc.EmployeeID = bp.EmployeeID
       LEFT JOIN projectpersonnel pp ON dc.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
-      WHERE e.Status = 1
+      WHERE e.Status = 1 AND (
+          bp.EmployeeID IS NOT NULL
+          OR pc.Status = 1
+      )
       ORDER BY dc.StartDate DESC, dc.DC3ID DESC
     `);
 
