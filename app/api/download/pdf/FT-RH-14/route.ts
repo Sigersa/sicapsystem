@@ -1,4 +1,3 @@
-// app/api/download/pdf/FT-RH-14/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
@@ -165,19 +164,22 @@ export async function GET(request: NextRequest) {
     }
 
     if (employee.EmployeeType === 'PROJECT') {
+      // Personal de Proyecto - Obtener datos del proyecto directamente
       const [rows] = await connection.query<any[]>(`
         SELECT 
           pp.FirstName,
           pp.LastName,
           pp.MiddleName,
           pc.Position,
-          pr.StartDate,
-          TIMESTAMPDIFF(MONTH, pr.StartDate, ?) AS meses_trabajados,
-          pr.ProjectAddress
+          p.StartDate,
+          p.EndDate,
+          TIMESTAMPDIFF(MONTH, p.StartDate, ?) AS meses_trabajados,
+          p.ProjectAddress
         FROM projectpersonnel pp
-        LEFT JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
-        LEFT JOIN projects pr ON pr.ProjectID = pc.ProjectID
+        INNER JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
+        INNER JOIN projects p ON p.ProjectID = pc.ProjectID
         WHERE pp.EmployeeID = ? AND pc.Status = 1
+        LIMIT 1
       `, [terminationDate, empleadoId]);
 
       if (rows.length) {
@@ -185,10 +187,14 @@ export async function GET(request: NextRequest) {
         fullName = `${r.FirstName || ""} ${r.LastName || ""} ${r.MiddleName || ""}`.trim();
         position = r.Position || "NO ESPECIFICADO";
         mesesTrabajados = r.meses_trabajados || 0;
-        startDate = r.StartDate;
+        startDate = r.StartDate;        // Fecha de inicio del proyecto
+        terminationDate = r.EndDate;    // Fecha de fin del proyecto
         address = r.ProjectAddress || "AV. EL SAUZ 7, EL DEPOSITO, 42795 TLAHUELILPAN, HGO";
+        
+        console.log(`FT-RH-14 PROYECTO: StartDate=${startDate}, EndDate=${r.EndDate}`);
       }
     } else {
+      // Personal Base
       const [rows] = await connection.query<any[]>(`
         SELECT 
           bp.FirstName,
@@ -209,6 +215,16 @@ export async function GET(request: NextRequest) {
         mesesTrabajados = r.meses_trabajados || 0;
         startDate = r.StartDate;
         address = "AV. EL SAUZ 7, EL DEPOSITO, 42795 TLAHUELILPAN, HGO";
+        // Para personal base, la fecha de terminación se obtiene de jobtermination
+        const [terminationRow] = await connection.query<any[]>(`
+          SELECT EndDate FROM jobtermination WHERE EmployeeID = ?
+        `, [empleadoId]);
+        
+        if (terminationRow && terminationRow.length > 0) {
+          terminationDate = terminationRow[0].EndDate || terminationDate;
+        }
+        
+        console.log(`FT-RH-14 BASE: StartDate=${startDate}, EndDate=${terminationDate}`);
       }
     }
 
@@ -218,13 +234,8 @@ export async function GET(request: NextRequest) {
 
     // Formatear las fechas correctamente
     const startDateObj = startDate ? new Date(startDate) : null;
-    const terminationDateObj = new Date(terminationDate);
+    const terminationDateObj = terminationDate ? new Date(terminationDate) : new Date();
     const currentDateObj = new Date();
-    
-    // Para el documento FT-RH-14, se necesita:
-    // - Fecha de inicio del contrato (formato: DD DE MES DEL AÑO)
-    // - Fecha de terminación (formato: DD DE MES DEL AÑO)
-    // - Fecha de aplicación (formato: DÍA DE LA SEMANA DD DE MES DEL AÑO)
     
     const startDateFormatted = startDateObj ? formatSimpleDateToSpanish(startDateObj) : "NO ESPECIFICADO";
     const terminationDateFormatted = formatSimpleDateToSpanish(terminationDateObj);
@@ -292,7 +303,7 @@ export async function GET(request: NextRequest) {
       NOMBRE_COMPLETO: fullName.toUpperCase(),
       PUESTO: position.toUpperCase(),
       ANTIGUEDAD: antiguedadTexto,
-      MESES: mesesTrabajados,  
+      MESES: mesesTrabajados,
       FECHA_INICIO: startDateFormatted,
       DIRECCION: address.toUpperCase(),
       FECHA_TERMINO: terminationDateFormatted,
