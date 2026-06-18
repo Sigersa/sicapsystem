@@ -75,51 +75,52 @@ async function generateUpdatedMovementPDF(
     // Obtener información del permiso y del empleado
     const [rows] = await connection.execute<any[]>(
       `SELECT 
-        em.MovementID,
-        em.EmployeeID,
-        em.MovementType,
-        em.Specification,
-        em.ApplicationDate,
-        em.Duration,
-        em.Former,
-        em.New,
-        em.StartDate,
-        em.EndDate,
-        em.Observations,
-        bp.Area,
-        pj.NameProject,
-        -- Datos del empleado
-        COALESCE(bp.FirstName, pp.FirstName) as FirstName,
-        COALESCE(bp.LastName, pp.LastName) as LastName,
-        COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
-        COALESCE(bp.Position, pc.Position) as Position,
-        COALESCE(bc.StartDate, pc.StartDate) as StartDatee,
-        COALESCE(bpi.CURP, ppi.CURP) as CURP,
-        COALESCE(bpi.RFC, ppi.RFC) as RFC,
-        COALESCE(bpi.NSS, ppi.NSS) as NSS,
-        -- Jefe directo
-        COALESCE(jefe_bp.FirstName, jefe_pp.FirstName) as JefeFirstName,
-        COALESCE(jefe_bp.LastName, jefe_pp.LastName) as JefeLastName,
-        COALESCE(jefe_bp.MiddleName, jefe_pp.MiddleName) as JefeMiddleName,
-        CASE 
+	em.MovementID,
+    em.EmployeeID,
+    em.MovementType,
+    em.Specification,
+    em.ApplicationDate,
+    em.Duration,
+    em.Former,
+    em.New,
+    em.StartDate,
+    em.EndDate,
+    em.Observations,
+	bp.Area,
+    pj.NameProject,
+	COALESCE(bp.FirstName, pp.FirstName) as FirstName,
+	COALESCE(bp.LastName, pp.LastName) as LastName,
+	COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
+	COALESCE(bp.Position, pc.Position) as Position,
+    COALESCE(bc.StartDate, pj.StartDate) as StartDatee,
+	COALESCE(bppi.CURP, pppi.CURP) as CURP,
+	COALESCE(bppi.RFC, pppi.RFC) as RFC,
+	COALESCE(bppi.NSS, pppi.NSS) as NSS,
+    bc.JefeDirectoID,
+    pj.AdminProjectID,
+    COALESCE(bpp.FirstName, ppp.FirstName) as JefeFirstName,
+    COALESCE(bpp.LastName, ppp.LastName) as JefeLastName,
+    COALESCE(bpp.MiddleName, ppp.MiddleName) as JefeMiddleName,
+    CASE 
           WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
           ELSE 'PROJECT'
         END as tipo
       FROM employeemovement em
-      -- Datos del empleado (BASE)
-      LEFT JOIN basepersonnel bp ON em.EmployeeID = bp.EmployeeID
-      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
-      LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
-      -- Datos del empleado (PROJECT)
-      LEFT JOIN projectpersonnel pp ON em.EmployeeID = pp.EmployeeID
+      LEFT JOIN basepersonnel bp ON bp.EmployeeID = em.EmployeeID
+      LEFT JOIN basepersonnelpersonalinfo bppi ON bppi.BasePersonnelID = bp.BasePersonnelID
+      LEFT JOIN basecontracts bc ON bc.BasePersonnelID = bp.BasePersonnelID
+      LEFT JOIN projectpersonnel pp ON pp.EmployeeID = em.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
-      LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
-      LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
-      -- Jefe directo (BASE)
-      LEFT JOIN basepersonnel jefe_bp ON bc.jefeDirectoId = jefe_bp.EmployeeID
-      -- Jefe directo (PROJECT)
-      LEFT JOIN projectpersonnel jefe_pp ON pc.jefeDirectoId = jefe_pp.EmployeeID
-      WHERE em.MovementID = ?`,
+      LEFT JOIN projectpersonnelpersonalinfo pppi ON pppi.ProjectPersonnelID = pp.ProjectPersonnelID
+      LEFT JOIN projects pj ON pj.ProjectID = pc.ProjectID
+      LEFT JOIN employees e ON e.EmployeeID = pj.AdminProjectID
+	  LEFT JOIN employees ee ON ee.EmployeeID = bc.JefeDirectoID
+      	 LEFT JOIN basepersonnel bpp ON bpp.EmployeeID = ee.EmployeeID
+	 LEFT JOIN basepersonnel ppp ON ppp.EmployeeID = e.EmployeeID
+      WHERE em.MovementID = ? AND (
+          bp.EmployeeID IS NOT NULL
+          OR pc.Status = 1
+    )`,
       [movementId]
     );
 
@@ -140,7 +141,7 @@ async function generateUpdatedMovementPDF(
       mov.JefeFirstName || '',
       mov.JefeLastName || '',
       mov.JefeMiddleName || ''
-    ].filter(part => part.trim() !== '').join(' ') || "NO ESPECIFICADO";
+    ].filter(part => part && part.trim() !== '').join(' ').trim() || 'NO ESPECIFICADO';
 
     const formatDate = (dateValue: any): string => {
       if (!dateValue) return 'NO ESPECIFICADO';
