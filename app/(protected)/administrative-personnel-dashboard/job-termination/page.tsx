@@ -107,6 +107,7 @@ export default function EmployeesListPage() {
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [errorDetails, setErrorDetails] = useState<string>('');
   const [successMessage, setSuccessMessage] = useState('');
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   
@@ -169,6 +170,7 @@ export default function EmployeesListPage() {
     try {
       setLoading(true);
       setError('');
+      setErrorDetails('');
 
       const response = await fetch('/api/administrative-personnel-dashboard/job-termination');
       
@@ -182,10 +184,12 @@ export default function EmployeesListPage() {
         setEmployees(data.employees || []);
       } else {
         setError(data.message || 'Error al cargar empleados');
+        setErrorDetails(data.details || '');
       }
     } catch (error) {
       console.error('Error:', error);
       setError('Error de conexión al cargar empleados');
+      setErrorDetails((error as Error).message || '');
     } finally {
       setLoading(false);
     }
@@ -206,7 +210,6 @@ export default function EmployeesListPage() {
     }
   };
 
-  // Obtener URLs guardadas de la BD
   const getSavedDocumentUrls = async (empleadoId: string): Promise<any> => {
     try {
       const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?action=getDocumentUrls&employeeId=${empleadoId}`);
@@ -222,7 +225,6 @@ export default function EmployeesListPage() {
     }
   };
 
-  // Obtener información del empleado
   const fetchEmployeeInfo = async (employeeId: number): Promise<any> => {
     try {
       const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?employeeId=${employeeId}`);
@@ -250,7 +252,6 @@ export default function EmployeesListPage() {
     }
   };
 
-  // Generar URLs de descarga
   const generateDownloadUrls = async (empleadoId: string, tipoPersonal: string, nombre: string, puesto: string): Promise<TerminationDetails> => {
     const savedUrls = await getSavedDocumentUrls(empleadoId);
     
@@ -299,6 +300,7 @@ export default function EmployeesListPage() {
     try {
       setActionLoading(employee.EmployeeID);
       setError('');
+      setErrorDetails('');
       setSuccessMessage('');
 
       const response = await fetch('/api/administrative-personnel-dashboard/job-termination', {
@@ -316,10 +318,8 @@ export default function EmployeesListPage() {
 
       if (response.ok && data.success) {
         if (newStatus === 0) {
-          // Obtener información del empleado
           const employeeInfo = await fetchEmployeeInfo(employee.EmployeeID);
           
-          // Generar detalles con URLs de los documentos guardados
           const details = await generateDownloadUrls(
             employee.EmployeeID.toString(),
             employee.tipo === 'BASE' ? 'PERSONAL BASE' : 'PERSONAL DE PROYECTO',
@@ -335,11 +335,23 @@ export default function EmployeesListPage() {
         }
         await fetchEmployees();
       } else {
-        setError(data.message || `Error al ${actionText} al empleado`);
+        // Mostrar mensaje detallado del error
+        const errorMsg = data.message || `Error al ${actionText} al empleado`;
+        setError(errorMsg);
+        setErrorDetails(data.details || data.requiresManualReactivation ? 'Se requiere acción manual en el módulo de edición de usuario.' : '');
+        
+        // Si es un error de reactivación de proyecto, mostrar modal
+        if (data.requiresManualReactivation && data.employeeType === 'PROJECT') {
+          setReactivationModal({
+            show: true,
+            employee: employee
+          });
+        }
       }
     } catch (error) {
       console.error('Error:', error);
       setError(`Error de conexión al ${actionText} al empleado`);
+      setErrorDetails((error as Error).message || '');
     } finally {
       setActionLoading(null);
       setConfirmTermination({ show: false, employee: null });
@@ -348,7 +360,8 @@ export default function EmployeesListPage() {
 
   const openDeleteConfirmation = (employee: Employee) => {
     if ((employee.Status ?? 1) !== 0) {
-      setError('Solo se pueden eliminar empleados que están dados de baja');
+      setError('Solo se pueden eliminar empleados que están dados de baja (Status = 0)');
+      setErrorDetails('Un empleado activo debe ser dado de baja primero antes de poder eliminarlo permanentemente.');
       return;
     }
     
@@ -369,6 +382,7 @@ export default function EmployeesListPage() {
     try {
       setActionLoading(employee.EmployeeID);
       setError('');
+      setErrorDetails('');
       setSuccessMessage('');
 
       const response = await fetch('/api/administrative-personnel-dashboard/job-termination', {
@@ -387,11 +401,20 @@ export default function EmployeesListPage() {
         setSuccessMessage(data.message || 'EMPLEADO ELIMINADO PERMANENTEMENTE DEL SISTEMA');
         await fetchEmployees();
       } else {
-        setError(data.message || 'ERROR AL ELIMINAR EL EMPLEADO');
+        // Mostrar mensaje detallado del error
+        const errorMsg = data.message || 'ERROR AL ELIMINAR EL EMPLEADO';
+        setError(errorMsg);
+        setErrorDetails(data.details || '');
+        
+        // Si el error contiene información sobre dependencias, mostrarla claramente
+        if (errorMsg.includes('administrador') || errorMsg.includes('jefe directo') || errorMsg.includes('entrenador')) {
+          setErrorDetails(' El empleado tiene dependencias activas que impiden su eliminación. Revise el mensaje de error para más detalles.');
+        }
       }
     } catch (error) {
       console.error('Error:', error);
       setError('ERROR DE CONEXIÓN AL ELIMINAR EL EMPLEADO');
+      setErrorDetails((error as Error).message || '');
     } finally {
       setActionLoading(null);
       setConfirmDeleteModal({ show: false, employee: null });
@@ -405,6 +428,7 @@ export default function EmployeesListPage() {
   const handleDownloadFile = async (url: string | null | undefined, filename: string) => {
     if (!url) {
       setError('No hay archivo disponible para descargar');
+      setErrorDetails('El documento solicitado no se encontró en el sistema.');
       return;
     }
     
@@ -431,11 +455,11 @@ export default function EmployeesListPage() {
     } catch (error) {
       console.error('Error al descargar archivo:', error);
       setError('Error al descargar el archivo. Intente nuevamente.');
+      setErrorDetails((error as Error).message || '');
       setDownloading(false);
     }
   };
 
-  // Descargar todos los PDFs en ZIP
   const handleDownloadAllPDFs = async () => {
     if (!terminationDetails) return;
     
@@ -446,6 +470,7 @@ export default function EmployeesListPage() {
       
       if (!savedUrls || (!savedUrls.ftRh12PdfUrl && !savedUrls.ftRh13PdfUrl && !savedUrls.ftRh14PdfUrl)) {
         setError('No se encontraron documentos para descargar');
+        setErrorDetails('El empleado no tiene documentos de terminación generados.');
         setDownloadingZip(false);
         return;
       }
@@ -494,6 +519,7 @@ export default function EmployeesListPage() {
       
       if (!hasFiles) {
         setError('No se pudieron descargar los documentos. Intente nuevamente.');
+        setErrorDetails('Los archivos PDF no están disponibles o no se pudieron descargar.');
         setDownloadingZip(false);
         return;
       }
@@ -512,11 +538,11 @@ export default function EmployeesListPage() {
     } catch (error) {
       console.error('Error al crear ZIP:', error);
       setError('Error al crear archivo ZIP. Intente nuevamente.');
+      setErrorDetails((error as Error).message || '');
       setDownloadingZip(false);
     }
   };
 
-  // Descargar todos los editables en ZIP
   const handleDownloadAllEditables = async () => {
     if (!terminationDetails) return;
     
@@ -567,6 +593,7 @@ export default function EmployeesListPage() {
       
       if (!hasFiles) {
         setError('No se pudieron descargar los documentos editables. Intente nuevamente.');
+        setErrorDetails('Los archivos editables no están disponibles o no se pudieron descargar.');
         setDownloadingZip(false);
         return;
       }
@@ -585,6 +612,7 @@ export default function EmployeesListPage() {
     } catch (error) {
       console.error('Error al crear ZIP de editables:', error);
       setError('Error al crear archivo ZIP. Intente nuevamente.');
+      setErrorDetails((error as Error).message || '');
       setDownloadingZip(false);
     }
   };
@@ -667,6 +695,12 @@ export default function EmployeesListPage() {
     } else {
       setExpandedContract(contractId);
     }
+  };
+
+  // Función para limpiar errores manualmente (al hacer clic en el botón de cerrar)
+  const clearError = () => {
+    setError('');
+    setErrorDetails('');
   };
 
   if (sessionLoading) {
@@ -935,7 +969,7 @@ export default function EmployeesListPage() {
                                 disabled={downloading || !terminationDetails.ftRh12PdfDownloadUrl}
                                 className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Descargar PDF"
-                              >
+                               >
                                 {downloading ? (
                                   <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
                                 ) : (
@@ -1179,17 +1213,33 @@ export default function EmployeesListPage() {
           {successMessage && !showSuccessModal && (
             <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in">
               <div className="flex items-center">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                <CheckCircle className="h-5 w-5 text-green-600 mr-2 flex-shrink-0" />
                 <p className="text-sm font-medium text-gray-600">{successMessage}</p>
               </div>
             </div>
           )}
 
+          {/* ============================================================
+              COMPONENTE DE ERROR MEJORADO CON DETALLES
+              ============================================================ */}
           {error && (
             <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
-              <div className="flex items-center">
-                <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
-                <p className="text-sm font-medium text-gray-600">{error}</p>
+              <div className="flex items-start">
+                <AlertCircle className="h-5 w-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-red-800">{error}</p>
+                  {errorDetails && (
+                    <p className="text-sm text-red-600 mt-1 bg-red-100/50 p-2 rounded border border-red-200/50">
+                      {errorDetails}
+                    </p>
+                  )}
+                  <button
+                    onClick={clearError}
+                    className="mt-2 text-xs text-red-600 hover:text-red-800 underline font-medium"
+                  >
+                    Cerrar mensaje
+                  </button>
+                </div>
               </div>
             </div>
           )}
