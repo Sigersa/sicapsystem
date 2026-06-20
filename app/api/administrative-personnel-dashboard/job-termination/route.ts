@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
+import { UTApi } from 'uploadthing/server';
 
 type FormatoPDF = 'FT-RH-12' | 'FT-RH-13' | 'FT-RH-14';
 
@@ -11,40 +12,205 @@ const fieldMap: Record<FormatoPDF, string> = {
   'FT-RH-14': 'OFFileURL'
 };
 
-// Función para eliminar archivos de UploadThing
+// ============================================================
+// FUNCIÓN CORREGIDA USANDO EL SDK DE UPLOADTHING
+// ============================================================
+const utapi = new UTApi();
+
 async function deleteFilesFromUploadThing(fileUrls: string[]) {
   const validUrls = fileUrls.filter(url => url && url.trim() !== '');
   
-  if (validUrls.length === 0) return true;
+  if (validUrls.length === 0) {
+    console.log('[UploadThing] No hay archivos para eliminar');
+    return true;
+  }
   
   try {
-    const fileKeys = validUrls.map(url => {
-      const match = url.match(/https:\/\/utfs\.io\/f\/([^?]+)/);
-      return match ? match[1] : null;
-    }).filter(key => key !== null);
+    // Extraer fileKeys de las URLs
+    const fileKeys = validUrls
+      .map(url => {
+        // Soporta diferentes formatos de URL de UploadThing
+        const match = url.match(/utfs\.io\/f\/([^?]+)/);
+        if (match) {
+          // Limpiar el fileKey: eliminar parámetros y rutas adicionales
+          let fileKey = match[1];
+          fileKey = fileKey.split('?')[0].split('/')[0];
+          return fileKey;
+        }
+        return null;
+      })
+      .filter((key): key is string => key !== null && key.length > 0);
+
+    console.log('[UploadThing] FileKeys a eliminar:', fileKeys);
     
-    if (fileKeys.length === 0) return true;
-    
-    const response = await fetch('https://uploadthing.com/api/deleteFiles', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-UploadThing-Secret': process.env.UPLOADTHING_SECRET!,
-      },
-      body: JSON.stringify({ fileKeys }),
-    });
-    
-    if (!response.ok) {
-      console.error('Error eliminando archivos de UploadThing:', await response.text());
-      return false;
+    if (fileKeys.length === 0) {
+      console.log('[UploadThing] No se pudieron extraer fileKeys de las URLs');
+      return true;
     }
+
+    // Usar el SDK de UploadThing para eliminar los archivos
+    await utapi.deleteFiles(fileKeys);
     
-    console.log(`Eliminados ${fileKeys.length} archivos de UploadThing`);
+    console.log(`[UploadThing] Archivos eliminados exitosamente: ${fileKeys.length}`);
     return true;
+    
   } catch (error) {
-    console.error('Error al eliminar archivos de UploadThing:', error);
+    console.error('[UploadThing] Error al eliminar archivos:', error);
     return false;
   }
+}
+
+// Función para extraer fileKey de una URL individual (para el primer código)
+function extractFileKeyFromUrl(url: string): string | null {
+  try {
+    const matches = url.match(/\/f\/([a-zA-Z0-9-_]+)/);
+    return matches ? matches[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+// Función para eliminar un archivo individual de UploadThing
+async function deleteFileFromUploadThing(fileUrl: string): Promise<void> {
+  try {
+    const fileKey = extractFileKeyFromUrl(fileUrl);
+    if (!fileKey) {
+      console.warn('No se pudo extraer el fileKey de la URL:', fileUrl);
+      return;
+    }
+    
+    await utapi.deleteFiles([fileKey]);
+    console.log(`Archivo eliminado de UploadThing: ${fileKey}`);
+  } catch (error) {
+    console.error('Error al eliminar archivo de UploadThing:', error);
+    // No lanzamos el error para no interrumpir el flujo principal
+  }
+}
+
+// Función para recopilar todas las URLs de documentos de un empleado de proyecto
+async function collectProjectPersonnelUrls(connection: any, projectPersonnelID: number): Promise<string[]> {
+  const urls: string[] = [];
+  
+  try {
+    // 1. Obtener URLs de projectcontracts
+    const [contracts] = await connection.execute(
+      `SELECT CDFileURL, CRFileURL, OFFileURL, ContractFileURL, WarningFileURL, 
+              AgreementFileURL, LetterFileURL
+       FROM projectcontracts 
+       WHERE ProjectPersonnelID = ?`,
+      [projectPersonnelID]
+    );
+    
+    for (const contract of contracts as any[]) {
+      const fields = ['CDFileURL', 'CRFileURL', 'OFFileURL', 'ContractFileURL', 
+                      'WarningFileURL', 'AgreementFileURL', 'LetterFileURL'];
+      for (const field of fields) {
+        if (contract[field] && typeof contract[field] === 'string' && contract[field].trim() !== '') {
+          urls.push(contract[field]);
+        }
+      }
+    }
+
+    // 2. Obtener URLs de projectpersonneldocumentation
+    const [docs] = await connection.execute(
+      `SELECT CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, IMSSFileURL, 
+              INEFileURL, CDFileURL, CEFileURL, CPFileURL, LMFileURL,
+              ANPFileURL, CRFileURL, RIFileURL, EMFileURL, FotoFileURL, FolletoFileURL
+       FROM projectpersonneldocumentation 
+       WHERE ProjectPersonnelID = ?`,
+      [projectPersonnelID]
+    );
+    
+    if ((docs as any[]).length > 0) {
+      const doc = (docs as any[])[0];
+      for (const [key, value] of Object.entries(doc)) {
+        if (value && typeof value === 'string' && value.trim() !== '') {
+          urls.push(value);
+        }
+      }
+    }
+
+  } catch (error) {
+    console.error('[collectProjectPersonnelUrls] Error:', error);
+  }
+  
+  return urls;
+}
+
+// Función para recopilar todas las URLs de documentos de un empleado base
+async function collectBasePersonnelUrls(connection: any, employeeId: number): Promise<string[]> {
+  const urls: string[] = [];
+  
+  try {
+    // 1. Obtener URLs de jobtermination
+    const [rows] = await connection.execute(
+      `SELECT CDFileURL, CRFileURL, OFFileURL 
+       FROM jobtermination 
+       WHERE EmployeeID = ?`,
+      [employeeId]
+    );
+    
+    if ((rows as any[]).length > 0) {
+      const urlsRow = (rows as any[])[0];
+      const fields = ['CDFileURL', 'CRFileURL', 'OFFileURL'];
+      for (const field of fields) {
+        if (urlsRow[field] && typeof urlsRow[field] === 'string' && urlsRow[field].trim() !== '') {
+          urls.push(urlsRow[field]);
+        }
+      }
+    }
+
+    // 2. Obtener BasePersonnelID
+    const [bp] = await connection.execute(
+      'SELECT BasePersonnelID FROM basepersonnel WHERE EmployeeID = ?',
+      [employeeId]
+    );
+    
+    if ((bp as any[]).length > 0) {
+      const basePersonnelID = (bp as any[])[0].BasePersonnelID;
+      
+      // 3. Obtener URLs de basepersonneldocumentation
+      const [docs] = await connection.execute(
+        `SELECT CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, IMSSFileURL, 
+                INEFileURL, CDFileURL, CEFileURL, CPFileURL, LMFileURL,
+                ANPFileURL, CRFileURL, RIFileURL, EMFileURL, FotoFileURL, FolletoFileURL
+         FROM basepersonneldocumentation 
+         WHERE BasePersonnelID = ?`,
+        [basePersonnelID]
+      );
+      
+      if ((docs as any[]).length > 0) {
+        const doc = (docs as any[])[0];
+        for (const [key, value] of Object.entries(doc)) {
+          if (value && typeof value === 'string' && value.trim() !== '') {
+            urls.push(value);
+          }
+        }
+      }
+      
+      // 4. Obtener URLs de basecontracts
+      const [contracts] = await connection.execute(
+        `SELECT ContractFileURL, WarningFileURL, AgreementFileURL, LetterFileURL
+         FROM basecontracts 
+         WHERE BasePersonnelID = ?`,
+        [basePersonnelID]
+      );
+      
+      for (const contract of contracts as any[]) {
+        const fields = ['ContractFileURL', 'WarningFileURL', 'AgreementFileURL', 'LetterFileURL'];
+        for (const field of fields) {
+          if (contract[field] && typeof contract[field] === 'string' && contract[field].trim() !== '') {
+            urls.push(contract[field]);
+          }
+        }
+      }
+    }
+
+  } catch (error) {
+    console.error('[collectBasePersonnelUrls] Error:', error);
+  }
+  
+  return urls;
 }
 
 export async function GET(request: NextRequest) {
@@ -575,25 +741,12 @@ export async function PUT(request: NextRequest) {
         await connection.beginTransaction();
         
         try {
-          // Obtener las URLs de los documentos antes de eliminar el registro
-          const urlsToDelete: string[] = [];
-          const [rows] = await connection.execute(
-            `SELECT CDFileURL, CRFileURL, OFFileURL 
-             FROM jobtermination 
-             WHERE EmployeeID = ?`,
-            [EmployeeID]
-          );
+          // Obtener todas las URLs de documentos del empleado base
+          const urlsToDelete = await collectBasePersonnelUrls(connection, EmployeeID);
           
-          if ((rows as any[]).length > 0) {
-            const urls = (rows as any[])[0];
-            if (urls.CDFileURL) urlsToDelete.push(urls.CDFileURL);
-            if (urls.CRFileURL) urlsToDelete.push(urls.CRFileURL);
-            if (urls.OFFileURL) urlsToDelete.push(urls.OFFileURL);
-          }
-          
-          // Eliminar archivos de UploadThing
+          // Eliminar archivos de UploadThing usando el SDK
           if (urlsToDelete.length > 0) {
-            console.log(`Eliminando ${urlsToDelete.length} archivos de UploadThing para empleado ${EmployeeID}`);
+            console.log(`[Reactivación] Eliminando ${urlsToDelete.length} archivos de UploadThing para empleado ${EmployeeID}`);
             await deleteFilesFromUploadThing(urlsToDelete);
           }
           
@@ -691,6 +844,7 @@ export async function DELETE(request: NextRequest) {
 
     connection = await getConnection();
 
+    // Verificar si el empleado existe
     const [existingEmployee] = await connection.execute(
       'SELECT EmployeeID, Status FROM employees WHERE EmployeeID = ?',
       [EmployeeID]
@@ -707,11 +861,73 @@ export async function DELETE(request: NextRequest) {
     
     if (employee.Status !== 0) {
       return NextResponse.json(
-        { success: false, message: 'Solo se pueden eliminar empleados dados de baja' },
+        { success: false, message: 'Solo se pueden eliminar empleados dados de baja (Status = 0)' },
         { status: 400 }
       );
     }
 
+    // ============================================================
+    // VALIDACIONES DE DEPENDENCIAS ANTES DE ELIMINAR
+    // ============================================================
+
+    // 1. Verificar si es administrador de proyectos
+    const [adminProjects] = await connection.execute(
+      `SELECT ProjectID, NameProject 
+       FROM projects 
+       WHERE AdminProjectID = ?`,
+      [EmployeeID]
+    );
+
+    if ((adminProjects as any[]).length > 0) {
+      const projectNames = (adminProjects as any[]).map(p => p.NameProject).join(', ');
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: `No se puede eliminar el empleado porque es administrador del(los) siguiente(s) proyecto(s): ${projectNames}. Debe reasignar o eliminar estos proyectos antes de proceder.` 
+        },
+        { status: 400 }
+      );
+    }
+
+    // 2. Verificar si es jefe directo de contratos base
+    const [baseContracts] = await connection.execute(
+      `SELECT COUNT(*) as count 
+       FROM basecontracts 
+       WHERE jefeDirectoId = ?`,
+      [EmployeeID]
+    );
+
+    const baseContractsCount = (baseContracts as any[])[0]?.count || 0;
+    if (baseContractsCount > 0) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: `No se puede eliminar el empleado porque es jefe directo de ${baseContractsCount} contrato(s) base. Debe reasignar estos contratos antes de proceder.` 
+        },
+        { status: 400 }
+      );
+    }
+
+    // 3. Verificar si es entrenador en DC3
+    const [dc3Trainer] = await connection.execute(
+      `SELECT COUNT(*) as count 
+       FROM employeedc3 
+       WHERE TrainerID = ?`,
+      [EmployeeID]
+    );
+
+    const dc3TrainerCount = (dc3Trainer as any[])[0]?.count || 0;
+    if (dc3TrainerCount > 0) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: `No se puede eliminar el empleado porque es entrenador en ${dc3TrainerCount} registro(s) DC3. Debe reasignar estos registros antes de proceder.` 
+        },
+        { status: 400 }
+      );
+    }
+
+    // Si pasó todas las validaciones, proceder con la eliminación
     await connection.beginTransaction();
 
     try {
@@ -727,87 +943,139 @@ export async function DELETE(request: NextRequest) {
 
       const type = (employeeType as any[])[0]?.EmployeeType;
       let urlsToDelete: string[] = [];
+      let projectPersonnelID: number | null = null;
 
       if (type === 'BASE') {
-        // Obtener URLs antes de eliminar
-        const [rows] = await connection.execute(
-          `SELECT CDFileURL, CRFileURL, OFFileURL 
-           FROM jobtermination 
-           WHERE EmployeeID = ?`,
-          [EmployeeID]
-        );
-        
-        if ((rows as any[]).length > 0) {
-          const urls = (rows as any[])[0];
-          if (urls.CDFileURL) urlsToDelete.push(urls.CDFileURL);
-          if (urls.CRFileURL) urlsToDelete.push(urls.CRFileURL);
-          if (urls.OFFileURL) urlsToDelete.push(urls.OFFileURL);
-        }
-        
+        // Recopilar todas las URLs de documentos del empleado base
+        urlsToDelete = await collectBasePersonnelUrls(connection, EmployeeID);
+
+        // Eliminar jobtermination primero (esto también eliminará sus documentos)
         await connection.execute('DELETE FROM jobtermination WHERE EmployeeID = ?', [EmployeeID]);
         
-        const [basePersonnel] = await connection.execute(
-          'SELECT BasePersonnelID FROM basepersonnel WHERE EmployeeID = ?',
-          [EmployeeID]
-        );
+        // Eliminar basepersonnel (las FK con CASCADE eliminarán el resto)
+        await connection.execute('DELETE FROM basepersonnel WHERE EmployeeID = ?', [EmployeeID]);
         
-        if ((basePersonnel as any[]).length > 0) {
-          const basePersonnelID = (basePersonnel as any[])[0].BasePersonnelID;
-          await connection.execute('DELETE FROM basepersonnelpersonalinfo WHERE BasePersonnelID = ?', [basePersonnelID]);
-          await connection.execute('DELETE FROM basepersonnel WHERE EmployeeID = ?', [EmployeeID]);
-        }
       } else if (type === 'PROJECT') {
+        // Obtener ProjectPersonnelID
         const [projectPersonnel] = await connection.execute(
           'SELECT ProjectPersonnelID FROM projectpersonnel WHERE EmployeeID = ?',
           [EmployeeID]
         );
         
         if ((projectPersonnel as any[]).length > 0) {
-          const projectPersonnelID = (projectPersonnel as any[])[0].ProjectPersonnelID;
+          projectPersonnelID = (projectPersonnel as any[])[0].ProjectPersonnelID;
           
-          // Obtener URLs de los contratos antes de eliminarlos
-          const [contracts] = await connection.execute(
-            `SELECT CDFileURL, CRFileURL, OFFileURL 
-             FROM projectcontracts 
-             WHERE ProjectPersonnelID = ?`,
-            [projectPersonnelID]
-          );
-          
-          for (const contract of contracts as any[]) {
-            if (contract.CDFileURL) urlsToDelete.push(contract.CDFileURL);
-            if (contract.CRFileURL) urlsToDelete.push(contract.CRFileURL);
-            if (contract.OFFileURL) urlsToDelete.push(contract.OFFileURL);
+          if (projectPersonnelID !== null) {
+            // Recopilar todas las URLs de documentos del empleado de proyecto
+            urlsToDelete = await collectProjectPersonnelUrls(connection, projectPersonnelID);
+
+            console.log(`[DELETE] URLs a eliminar para proyecto ${projectPersonnelID}:`, urlsToDelete.length);
+
+            // 3. ELIMINAR REGISTROS ASOCIADOS
+            // Eliminar projectcontracts (NO elimina el proyecto)
+            await connection.execute(
+              'DELETE FROM projectcontracts WHERE ProjectPersonnelID = ?',
+              [projectPersonnelID]
+            );
+            
+            // Eliminar projectpersonnelbeneficiaries
+            await connection.execute(
+              'DELETE FROM projectpersonnelbeneficiaries WHERE ProjectPersonnelID = ?',
+              [projectPersonnelID]
+            );
+            
+            // Eliminar projectpersonneldocumentation
+            await connection.execute(
+              'DELETE FROM projectpersonneldocumentation WHERE ProjectPersonnelID = ?',
+              [projectPersonnelID]
+            );
+            
+            // Eliminar projectpersonnelpersonalinfo
+            await connection.execute(
+              'DELETE FROM projectpersonnelpersonalinfo WHERE ProjectPersonnelID = ?',
+              [projectPersonnelID]
+            );
           }
-          
-          await connection.execute(
-            `UPDATE projectcontracts 
-             SET CDFileURL = NULL, CRFileURL = NULL, OFFileURL = NULL
-             WHERE ProjectPersonnelID = ?`,
-            [projectPersonnelID]
-          );
-          
-          await connection.execute('DELETE FROM projectpersonnelpersonalinfo WHERE ProjectPersonnelID = ?', [projectPersonnelID]);
-          await connection.execute('DELETE FROM projectpersonnel WHERE EmployeeID = ?', [EmployeeID]);
+        }
+        
+        // ============================================================
+        // ELIMINAR jobtermination PARA EMPLEADOS DE PROYECTO
+        // ============================================================
+        // Primero obtener las URLs de jobtermination antes de eliminar
+        const [jtRows] = await connection.execute(
+          `SELECT CDFileURL, CRFileURL, OFFileURL 
+           FROM jobtermination 
+           WHERE EmployeeID = ?`,
+          [EmployeeID]
+        );
+        
+        if ((jtRows as any[]).length > 0) {
+          const urlsRow = (jtRows as any[])[0];
+          const fields = ['CDFileURL', 'CRFileURL', 'OFFileURL'];
+          for (const field of fields) {
+            if (urlsRow[field] && typeof urlsRow[field] === 'string' && urlsRow[field].trim() !== '') {
+              urlsToDelete.push(urlsRow[field]);
+            }
+          }
+        }
+        
+        // Eliminar jobtermination
+        await connection.execute(
+          'DELETE FROM jobtermination WHERE EmployeeID = ?',
+          [EmployeeID]
+        );
+        
+        // 5. Finalmente eliminar el projectpersonnel
+        await connection.execute(
+          'DELETE FROM projectpersonnel WHERE EmployeeID = ?',
+          [EmployeeID]
+        );
+      }
+
+      // Eliminar archivos de UploadThing usando el SDK ANTES de eliminar los registros
+      if (urlsToDelete.length > 0) {
+        console.log(`[DELETE] Eliminando ${urlsToDelete.length} archivos de UploadThing para empleado ${EmployeeID}`);
+        const deleted = await deleteFilesFromUploadThing(urlsToDelete);
+        if (!deleted) {
+          console.warn('[DELETE] Algunos archivos no se pudieron eliminar de UploadThing');
         }
       }
 
-      // Eliminar archivos de UploadThing
-      if (urlsToDelete.length > 0) {
-        console.log(`Eliminando ${urlsToDelete.length} archivos de UploadThing para empleado ${EmployeeID}`);
-        await deleteFilesFromUploadThing(urlsToDelete);
-      }
-
+      // Ahora eliminar el empleado
       await connection.execute('DELETE FROM employees WHERE EmployeeID = ?', [EmployeeID]);
+      
       await connection.commit();
 
       return NextResponse.json({
         success: true,
-        message: 'EMPLEADO ELIMINADO PERMANENTEMENTE JUNTO CON SUS DOCUMENTOS'
+        message: 'EMPLEADO ELIMINADO PERMANENTEMENTE JUNTO CON TODOS SUS REGISTROS Y DOCUMENTOS ASOCIADOS'
       });
 
-    } catch (error) {
+    } catch (error: any) {
       await connection.rollback();
-      throw error;
+      console.error('Error en transacción de eliminación:', error);
+      
+      let errorMessage = 'Error al eliminar el empleado.';
+      if (error.code === 'ER_ROW_IS_REFERENCED_2') {
+        if (error.sqlMessage?.includes('projectcontracts')) {
+          errorMessage = 'No se puede eliminar el empleado porque tiene contratos de proyecto asociados.';
+        } else if (error.sqlMessage?.includes('basecontracts')) {
+          errorMessage = 'No se puede eliminar el empleado porque es jefe directo de contratos base. Debe reasignar estos contratos primero.';
+        } else if (error.sqlMessage?.includes('employeedc3')) {
+          errorMessage = 'No se puede eliminar el empleado porque es instructor en registros DC3. Debe reasignar estos registros primero.';
+        } else if (error.sqlMessage?.includes('projects')) {
+          errorMessage = 'No se puede eliminar el empleado porque es administrador de proyectos. Debe reasignar estos proyectos primero.';
+        } else {
+          errorMessage = 'No se puede eliminar el empleado porque tiene registros relacionados en la base de datos.';
+        }
+      } else if (error.sqlMessage) {
+        errorMessage = `Error en la base de datos: ${error.sqlMessage}`;
+      }
+      
+      return NextResponse.json(
+        { success: false, message: errorMessage },
+        { status: 500 }
+      );
     }
 
   } catch (error) {
@@ -901,7 +1169,6 @@ async function generateAndSaveAllPDFsFixed(
   const formatos: FormatoPDF[] = ['FT-RH-12', 'FT-RH-13', 'FT-RH-14'];
 
   for (const formato of formatos) {
-    // SIEMPRE usar employeeId para generar el PDF
     const url = `${baseUrl}/api/download/pdf/${formato}?empleadoId=${employeeId}&save=1`;
     
     console.log(`[PDF-GEN] Generando ${formato} para empleado ${employeeId} (${employeeType})`);
@@ -920,14 +1187,12 @@ async function generateAndSaveAllPDFsFixed(
         updateConnection = await getConnection();
         
         if (employeeType === 'PROJECT' && contractID) {
-          // Guardar en el contrato específico
           console.log(`[PDF-GEN] Guardando ${formato} en contrato ${contractID}`);
           await updateConnection.execute(
             `UPDATE projectcontracts SET ${fieldName} = ? WHERE ContractID = ?`,
             [data.fileUrl, contractID]
           );
         } else if (employeeType === 'BASE') {
-          // Guardar en jobtermination
           const [existing] = await updateConnection.execute(
             `SELECT JobTerminationID FROM jobtermination WHERE EmployeeID = ?`,
             [employeeId]
@@ -946,16 +1211,16 @@ async function generateAndSaveAllPDFsFixed(
           );
         }
         
-        console.log(`[PDF-GEN] ✅ ${formato} guardado exitosamente`);
+        console.log(`[PDF-GEN] ${formato} guardado exitosamente`);
       } catch (error) {
-        console.error(`[PDF-GEN] ❌ Error guardando ${formato}:`, error);
+        console.error(`[PDF-GEN] Error guardando ${formato}:`, error);
       } finally {
         if (updateConnection) {
           await updateConnection.release();
         }
       }
     } else {
-      console.error(`[PDF-GEN] ❌ Error generando ${formato}:`, data);
+      console.error(`[PDF-GEN] Error generando ${formato}:`, data);
     }
   }
 }
