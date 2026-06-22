@@ -565,7 +565,7 @@ export async function PUT(
         } finally {
           await updateConnection.release();
         }
-        console.log(`✅ PDF regenerado para DC3 ID: ${dc3Id}`);
+        console.log(`PDF regenerado para DC3 ID: ${dc3Id}`);
       } catch (pdfError) {
         console.error('Error al regenerar PDF después de actualización:', pdfError);
         // No fallamos la operación si el PDF falla
