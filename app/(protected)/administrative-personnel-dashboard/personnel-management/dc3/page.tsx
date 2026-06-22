@@ -201,6 +201,17 @@ const formatDate = (dateString: string | null): string => {
   }
 };
 
+// Función para extraer la URL del PDF del DocumentURL
+const getPDFUrlFromDocumentURL = (documentURL: string | null): string | null => {
+  if (!documentURL) return null;
+  
+  if (documentURL.startsWith('http://') || documentURL.startsWith('https://')) {
+    return documentURL;
+  }
+  
+  return null;
+};
+
 export default function EmployeeDC3Page() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
@@ -471,212 +482,182 @@ export default function EmployeeDC3Page() {
     }, 100);
   };
 
-  // Función para abrir modal de edición
-  const handleEditRecord = async (record: EmployeeDC3) => {
-    setModalMode('edit');
-    setRecordToEdit(record);
-    
-    try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeedc3/search?term=${record.EmployeeID}`);
-      if (response.ok) {
-        const data = await response.json();
-        const employeeData = data.employees.find((emp: EmployeeSearchResult) => emp.EmployeeID === record.EmployeeID);
-        if (employeeData) {
-          setSelectedEmployeeData(employeeData);
-          setSelectedEmployee(employeeData);
-          setEmployeeIdInput(record.EmployeeID.toString());
-        }
-      }
-    } catch (error) {
-      console.error('Error al cargar datos del empleado:', error);
-    }
-    
-    // Determinar si es instructor externo
-    const isExternal = record.isExternalTrainer === true;
-    const trainerName = record.TrainerName || '';
-    
-    setShowCustomTrainerInput(isExternal);
-    
-    setFormData({
-      EmployeeID: record.EmployeeID.toString(),
-      SpecificOccupation: record.SpecificOccupation || '',
-      CourseName: record.CourseName || '',
-      StartDate: formatDateForInput(record.StartDate),
-      EndDate: formatDateForInput(record.EndDate),
-      Area: record.Area || '',
-      TrainerID: isExternal ? 'otro' : (record.TrainerID ? record.TrainerID.toString() : ''),
-      TrainerName: isExternal ? trainerName : '',
-      Duration: record.Duration?.toString() || ''
-    });
-    
-    setShowModal(true);
-  };
-
-  // Función para guardar registro DC3
-  const handleSaveRecord = async () => {
-    try {
-      setSaving(true);
-      setError('');
-
-      // Validar campos requeridos
-      if (!formData.EmployeeID) {
-        setError('DEBE SELECCIONAR UN EMPLEADO VÁLIDO');
-        setSaving(false);
-        return;
-      }
-
-      if (!formData.CourseName) {
-        setError('EL NOMBRE DEL CURSO ES REQUERIDO');
-        setSaving(false);
-        return;
-      }
-
-      if (!formData.StartDate) {
-        setError('LA FECHA DE INICIO ES REQUERIDA');
-        setSaving(false);
-        return;
-      }
-
-      if (!formData.EndDate) {
-        setError('LA FECHA DE FIN ES REQUERIDA');
-        setSaving(false);
-        return;
-      }
-
-      const startDate = new Date(formData.StartDate);
-      const endDate = new Date(formData.EndDate);
+    // Función para abrir modal de edición
+    const handleEditRecord = async (record: EmployeeDC3) => {
+      setModalMode('edit');
+      setRecordToEdit(record);
       
-      if (isNaN(startDate.getTime())) {
-        setError('FORMATO DE FECHA DE INICIO INVÁLIDO');
-        setSaving(false);
-        return;
+      try {
+        const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeedc3/search?term=${record.EmployeeID}`);
+        if (response.ok) {
+          const data = await response.json();
+          const employeeData = data.employees.find((emp: EmployeeSearchResult) => emp.EmployeeID === record.EmployeeID);
+          if (employeeData) {
+            setSelectedEmployeeData(employeeData);
+            setSelectedEmployee(employeeData);
+            setEmployeeIdInput(record.EmployeeID.toString());
+          }
+        }
+      } catch (error) {
+        console.error('Error al cargar datos del empleado:', error);
       }
       
-      if (isNaN(endDate.getTime())) {
-        setError('FORMATO DE FECHA DE FIN INVÁLIDO');
-        setSaving(false);
-        return;
-      }
-
-      if (startDate > endDate) {
-        setError('LA FECHA DE FIN DEBE SER POSTERIOR A LA FECHA DE INICIO');
-        setSaving(false);
-        return;
-      }
-
-      if (formData.Duration) {
-        const durationNum = parseInt(formData.Duration);
-        if (isNaN(durationNum) || durationNum <= 0) {
-          setError('LA DURACIÓN DEBE SER UN NÚMERO POSITIVO');
-          setSaving(false);
-          return;
-        }
-      }
-
-      // Preparar datos para enviar
-      const recordData: any = {
-        EmployeeID: parseInt(formData.EmployeeID),
-        SpecificOccupation: formData.SpecificOccupation || null,
-        CourseName: formData.CourseName,
-        StartDate: formData.StartDate,
-        EndDate: formData.EndDate,
-        Area: formData.Area || null,
-        Duration: formData.Duration ? parseInt(formData.Duration) : null
-      };
-
-      // Determinar el instructor
-      if (showCustomTrainerInput && formData.TrainerName && formData.TrainerName.trim() !== '') {
-        // Instructor externo
-        recordData.TrainerID = null;
-        recordData.TrainerName = formData.TrainerName.trim();
-        recordData.isExternalTrainer = true;
-      } else if (formData.TrainerID && formData.TrainerID !== 'otro' && formData.TrainerID !== '') {
-        // Instructor interno
-        recordData.TrainerID = parseInt(formData.TrainerID);
-        recordData.TrainerName = null;
-        recordData.isExternalTrainer = false;
-      } else if (modalMode === 'edit' && recordToEdit) {
-        // Mantener el instructor existente en edición
-        if (recordToEdit.isExternalTrainer) {
-          recordData.TrainerID = null;
-          recordData.TrainerName = recordToEdit.TrainerName || '';
-          recordData.isExternalTrainer = true;
-        } else {
-          recordData.TrainerID = recordToEdit.TrainerID;
-          recordData.TrainerName = null;
-          recordData.isExternalTrainer = false;
-        }
-      } else {
-        setError('DEBE SELECCIONAR UN INSTRUCTOR INTERNO O ESPECIFICAR UN INSTRUCTOR EXTERNO');
-        setSaving(false);
-        return;
-      }
-
-      let response;
+      // Determinar si es instructor externo
+      const isExternal = record.isExternalTrainer === true;
+      const trainerName = record.TrainerName || '';
       
-      if (modalMode === 'create') {
-        response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeedc3', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(recordData)
-        });
-      } else {
-        response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeedc3/${recordToEdit?.DC3ID}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(recordData)
-        });
-      }
+      // IMPORTANTE: Establecer correctamente el estado del input de instructor externo
+      setShowCustomTrainerInput(isExternal);
+      
+      setFormData({
+        EmployeeID: record.EmployeeID.toString(),
+        SpecificOccupation: record.SpecificOccupation || '',
+        CourseName: record.CourseName || '',
+        StartDate: formatDateForInput(record.StartDate),
+        EndDate: formatDateForInput(record.EndDate),
+        Area: record.Area || '',
+        TrainerID: isExternal ? 'otro' : (record.TrainerID ? record.TrainerID.toString() : ''),
+        TrainerName: isExternal ? trainerName : '', // ESTE ES EL CAMBIO CLAVE
+        Duration: record.Duration?.toString() || ''
+      });
+  
+  setShowModal(true);
+};
 
-      const data = await response.json();
+// Función para guardar registro DC3
+const handleSaveRecord = async () => {
+  try {
+    setSaving(true);
+    setError('');
 
-      if (response.ok && data.success) {
-        handleCloseModal();
-        await fetchRecords();
-        
-        if (modalMode === 'edit') {
-          setSuccessMessage('¡DC3 ACTUALIZADO EXITOSAMENTE!');
-          setTimeout(() => setSuccessMessage(''), 3000);
-        } else if (modalMode === 'create' && selectedEmployeeData && data.fileUrl) {
-          const baseUrl = window.location.origin;
-          const pdfUrl = data.fileUrl;
-          const excelUrl = `${baseUrl}/api/download/edit/DC-3?dc3Id=${data.dc3Id}`;
-          
-          setSuccessDetails({
-            DC3ID: data.dc3Id || 0,
-            EmployeeID: parseInt(formData.EmployeeID),
-            EmployeeName: `${selectedEmployeeData.FirstName} ${selectedEmployeeData.LastName} ${selectedEmployeeData.MiddleName || ''}`.trim(),
-            tipo: selectedEmployeeData.tipo,
-            CourseName: formData.CourseName,
-            StartDate: formData.StartDate,
-            EndDate: formData.EndDate,
-            Duration: parseInt(formData.Duration) || 0,
-            Area: formData.Area || 'N/A',
-            SpecificOccupation: formData.SpecificOccupation || 'N/A',
-            fileUrl: pdfUrl,
-            pdfUrl: pdfUrl,
-            excelUrl: excelUrl
-          });
-          setShowSuccessModal(true);
-        } else {
-          setSuccessMessage(modalMode === 'create' ? '¡DC3 CREADO EXITOSAMENTE!' : '¡DC3 ACTUALIZADO EXITOSAMENTE!');
-          setTimeout(() => setSuccessMessage(''), 3000);
-        }
-      } else {
-        setError(data.message || 'ERROR AL GUARDAR DC3');
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      setError('ERROR DE CONEXIÓN AL REGISTRO DC3');
-    } finally {
+    // Validar campos requeridos
+    if (!formData.EmployeeID) {
+      setError('DEBE SELECCIONAR UN EMPLEADO VÁLIDO');
       setSaving(false);
+      return;
     }
-  };
 
+    if (!formData.CourseName) {
+      setError('EL NOMBRE DEL CURSO ES REQUERIDO');
+      setSaving(false);
+      return;
+    }
+
+    if (!formData.StartDate) {
+      setError('LA FECHA DE INICIO ES REQUERIDA');
+      setSaving(false);
+      return;
+    }
+
+    if (!formData.EndDate) {
+      setError('LA FECHA DE FIN ES REQUERIDA');
+      setSaving(false);
+      return;
+    }
+
+    const startDate = new Date(formData.StartDate);
+    const endDate = new Date(formData.EndDate);
+    
+    if (isNaN(startDate.getTime())) {
+      setError('FORMATO DE FECHA DE INICIO INVÁLIDO');
+      setSaving(false);
+      return;
+    }
+    
+    if (isNaN(endDate.getTime())) {
+      setError('FORMATO DE FECHA DE FIN INVÁLIDO');
+      setSaving(false);
+      return;
+    }
+
+    if (startDate > endDate) {
+      setError('LA FECHA DE FIN DEBE SER POSTERIOR A LA FECHA DE INICIO');
+      setSaving(false);
+      return;
+    }
+
+    if (formData.Duration) {
+      const durationNum = parseInt(formData.Duration);
+      if (isNaN(durationNum) || durationNum <= 0) {
+        setError('LA DURACIÓN DEBE SER UN NÚMERO POSITIVO');
+        setSaving(false);
+        return;
+      }
+    }
+
+    // Preparar datos para enviar
+    const recordData: any = {
+      EmployeeID: parseInt(formData.EmployeeID),
+      SpecificOccupation: formData.SpecificOccupation || null,
+      CourseName: formData.CourseName,
+      StartDate: formData.StartDate,
+      EndDate: formData.EndDate,
+      Area: formData.Area || null,
+      Duration: formData.Duration ? parseInt(formData.Duration) : null
+    };
+
+    // Determinar el instructor
+    if (showCustomTrainerInput && formData.TrainerName && formData.TrainerName.trim() !== '') {
+      // Instructor externo
+      recordData.TrainerID = null;
+      recordData.TrainerName = formData.TrainerName.trim();
+    } else if (formData.TrainerID && formData.TrainerID !== 'otro' && formData.TrainerID !== '') {
+      // Instructor interno
+      recordData.TrainerID = parseInt(formData.TrainerID);
+      recordData.TrainerName = null;
+    } else {
+      setError('DEBE SELECCIONAR UN INSTRUCTOR INTERNO O ESPECIFICAR UN INSTRUCTOR EXTERNO');
+      setSaving(false);
+      return;
+    }
+
+    let response;
+    
+    if (modalMode === 'create') {
+      response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeedc3', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(recordData)
+      });
+    } else {
+      // Para edición, aseguramos que el TrainerName se envíe correctamente
+      const updateData = { ...recordData };
+      
+      // Si es instructor externo, aseguramos que TrainerName tenga el valor
+      if (showCustomTrainerInput && formData.TrainerName) {
+        updateData.TrainerName = formData.TrainerName.trim();
+        updateData.TrainerID = null;
+      }
+      
+      response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeedc3/${recordToEdit?.DC3ID}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updateData)
+      });
+    }
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      handleCloseModal();
+      await fetchRecords();
+      
+      setSuccessMessage(modalMode === 'create' ? '¡DC3 CREADO EXITOSAMENTE!' : '¡DC3 ACTUALIZADO EXITOSAMENTE!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } else {
+      setError(data.message || 'ERROR AL GUARDAR DC3');
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    setError('ERROR DE CONEXIÓN AL REGISTRO DC3');
+  } finally {
+    setSaving(false);
+  }
+};
   // Función para cerrar modal
   const handleCloseModal = () => {
     setShowModal(false);
@@ -1497,71 +1478,75 @@ export default function EmployeeDC3Page() {
                       </td>
                     </tr>
                   ) : (
-                    currentRecords.map((record) => (
-                      <tr key={record.DC3ID} className="hover:bg-gray-50 transition-colors border-b border-gray-300">
-                        <td className="py-3 px-4 text-sm text-gray-800 font-medium">{record.DC3ID}</td>
-                        <td className="py-3 px-4 text-sm text-gray-800 font-medium">{record.EmployeeID}</td>
-                        <td className="py-3 px-4">
-                          <div className="text-sm font-medium text-gray-800 uppercase">
-                            {record.FirstName} {record.LastName} {record.MiddleName}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="text-sm text-gray-800 uppercase">{record.Position || 'N/A'}</div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="text-sm text-gray-800 uppercase">{record.tipo || 'N/A'}</div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="text-sm text-gray-800 uppercase">{record.CourseName || 'N/A'}</div>
-                        </td>
-                        <td className="py-3 px-4 text-sm text-gray-800">{formatDate(record.StartDate)}</td>
-                        <td className="py-3 px-4 text-sm text-gray-800">{formatDate(record.EndDate)}</td>
-                        <td className="py-3 px-4 text-sm text-gray-800 font-medium">
-                          {record.Duration ? `${record.Duration} hrs` : 'N/A'}
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="text-sm text-gray-800">
-                            {getTrainerDisplay(record)}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex flex-col space-y-1">
-                            {record.DocumentURL ? (
-                              <a
-                                href={record.DocumentURL}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center text-xs text-gray-700 hover:underline"
-                                title="Ver PDF"
+                    currentRecords.map((record) => {
+                      const pdfUrl = getPDFUrlFromDocumentURL(record.DocumentURL);
+                      return (
+                        <tr key={record.DC3ID} className="hover:bg-gray-50 transition-colors border-b border-gray-300">
+                          <td className="py-3 px-4 text-sm text-gray-800 font-medium">{record.DC3ID}</td>
+                          <td className="py-3 px-4 text-sm text-gray-800 font-medium">{record.EmployeeID}</td>
+                          <td className="py-3 px-4">
+                            <div className="text-sm font-medium text-gray-800 uppercase">
+                              {record.FirstName} {record.LastName} {record.MiddleName}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="text-sm text-gray-800 uppercase">{record.Position || 'N/A'}</div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="text-sm text-gray-800 uppercase">{record.tipo || 'N/A'}</div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="text-sm text-gray-800 uppercase">{record.CourseName || 'N/A'}</div>
+                          </td>
+                          <td className="py-3 px-4 text-sm text-gray-800">{formatDate(record.StartDate)}</td>
+                          <td className="py-3 px-4 text-sm text-gray-800">{formatDate(record.EndDate)}</td>
+                          <td className="py-3 px-4 text-sm text-gray-800 font-medium">
+                            {record.Duration ? `${record.Duration} hrs` : 'N/A'}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="text-sm text-gray-800">
+                              {getTrainerDisplay(record)}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              {pdfUrl ? (
+                                <a
+                                  href={pdfUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center text-xs text-blue-600 hover:underline"
+                                  title="Ver PDF"
+                                >
+                                  <Eye className="h-4 w-4 mr-1" />
+                                  Ver PDF
+                                </a>
+                              ) : (
+                                <span className="text-xs text-gray-400">Sin documentos</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => handleEditRecord(record)}
+                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                title="Editar registro"
                               >
-                                Ver
-                              </a>
-                            ) : (
-                              <span className="text-xs text-gray-400">Sin documentos</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => handleEditRecord(record)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                              title="Editar registro"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => setConfirmDelete({ show: true, id: record.DC3ID })}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                              title="Eliminar registro"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => setConfirmDelete({ show: true, id: record.DC3ID })}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                title="Eliminar registro"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
