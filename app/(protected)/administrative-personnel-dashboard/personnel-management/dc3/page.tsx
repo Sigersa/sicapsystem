@@ -17,9 +17,10 @@ interface EmployeeDC3 {
   EndDate: string | null;
   Area: string | null;
   TrainerID: number | null;
+  TrainerName: string | null;
+  isExternalTrainer: boolean;
   Duration: number | null;
   DocumentURL: string | null;
-  // Información del empleado (join)
   FirstName?: string;
   LastName?: string;
   MiddleName?: string;
@@ -27,7 +28,7 @@ interface EmployeeDC3 {
   tipo?: 'BASE' | 'PROJECT';
 }
 
-// Interface para búsqueda de empleado con datos laborales
+// Interface para búsqueda de empleado
 interface EmployeeSearchResult {
   EmployeeID: number;
   FirstName: string;
@@ -54,6 +55,7 @@ interface DC3FormData {
   EndDate: string;
   Area: string;
   TrainerID: string;
+  TrainerName: string;
   Duration: string;
 }
 
@@ -62,7 +64,7 @@ interface Filters {
   search: string;
 }
 
-// Interface para jefe directo (instructor)
+// Interface para instructor
 interface Trainer {
   id: number;
   FirstName: string;
@@ -152,12 +154,12 @@ const OCCUPATION_OPTIONS = [
 // Opciones para el select de Área
 const AREA_OPTIONS = [
   { value: "1000 PRODUCCIÓN", label: "1000 PRODUCCIÓN" },
-  { value: "2000 SERVICIOS", label: "2000 SERVICIOS"},
-  { value: "3000 ADMINISTRACIÓN, CONTABILIDAD Y ECONOMÍA", label: "3000 ADMINISTRACIÓN, CONTABILIDAD Y ECONOMÍA"},
-  { value: "4000 COMERCIALIZACIÓN", label: "4000 COMERCIALIZACIÓN"},
-  { value: "5000 MANTENIMIENTO Y REPARACIÓN", label: "5000 MANTENIMIENTO Y REPARACIÓN"},
-  { value: "6000 SEGURIDAD", label: "6000 SEGURIDAD"},
-  { value: "7000 DESARROLLO PERSONAL Y FAMILIAR", label: "7000 DESARROLLO PERSONAL Y FAMILIAR"},
+  { value: "2000 SERVICIOS", label: "2000 SERVICIOS" },
+  { value: "3000 ADMINISTRACIÓN, CONTABILIDAD Y ECONOMÍA", label: "3000 ADMINISTRACIÓN, CONTABILIDAD Y ECONOMÍA" },
+  { value: "4000 COMERCIALIZACIÓN", label: "4000 COMERCIALIZACIÓN" },
+  { value: "5000 MANTENIMIENTO Y REPARACIÓN", label: "5000 MANTENIMIENTO Y REPARACIÓN" },
+  { value: "6000 SEGURIDAD", label: "6000 SEGURIDAD" },
+  { value: "7000 DESARROLLO PERSONAL Y FAMILIAR", label: "7000 DESARROLLO PERSONAL Y FAMILIAR" },
   { value: "8000 USO DE TECNOLOGÍAS DE LA INFORMACIÓN Y COMUNICACIÓN", label: "8000 USO DE TECNOLOGÍAS DE LA INFORMACIÓN Y COMUNICACIÓN" },
   { value: "9000 PARTICIPACIÓN SOCIAL", label: "9000 PARTICIPACIÓN SOCIAL" }
 ];
@@ -167,27 +169,18 @@ const normalizarMayusculas = (texto: string): string => {
   return texto.toUpperCase();
 };
 
-// Función para formatear fecha para input type="date" (YYYY-MM-DD)
+// Función para formatear fecha para input type="date"
 const formatDateForInput = (dateString: string | null): string => {
   if (!dateString) return '';
-  
   try {
-    // Si ya viene en formato YYYY-MM-DD, devolverlo directamente
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       return dateString;
     }
-    
-    // Intentar parsear la fecha
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) {
-      return '';
-    }
-    
-    // Formatear a YYYY-MM-DD
+    if (isNaN(date.getTime())) return '';
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
-    
     return `${year}-${month}-${day}`;
   } catch {
     return '';
@@ -229,7 +222,7 @@ export default function EmployeeDC3Page() {
     search: ''
   });
 
-  // Estados para búsqueda de empleados por ID
+  // Estados para búsqueda de empleados
   const [employeeIdInput, setEmployeeIdInput] = useState('');
   const [searchingEmployee, setSearchingEmployee] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeSearchResult | null>(null);
@@ -239,6 +232,7 @@ export default function EmployeeDC3Page() {
   // Estados para instructores
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [loadingTrainers, setLoadingTrainers] = useState(false);
+  const [showCustomTrainerInput, setShowCustomTrainerInput] = useState(false);
 
   // Estados para modales
   const [showModal, setShowModal] = useState(false);
@@ -247,7 +241,7 @@ export default function EmployeeDC3Page() {
   const [recordToEdit, setRecordToEdit] = useState<EmployeeDC3 | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ show: boolean; id: number | null }>({ show: false, id: null });
   
-  // Estado para el modal de éxito con vista previa del PDF
+  // Estado para el modal de éxito
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successDetails, setSuccessDetails] = useState<SuccessDetails | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -262,6 +256,7 @@ export default function EmployeeDC3Page() {
     EndDate: '',
     Area: '',
     TrainerID: '',
+    TrainerName: '',
     Duration: ''
   });
 
@@ -282,7 +277,7 @@ export default function EmployeeDC3Page() {
 
   // Actualizar páginas cuando cambien los registros filtrados
   useEffect(() => {
-    setTotalPages(Math.ceil(filteredRecords.length / itemsPerPage));
+    setTotalPages(Math.ceil(filteredRecords.length / itemsPerPage) || 1);
     setCurrentPage(1);
   }, [filteredRecords, itemsPerPage]);
 
@@ -458,12 +453,14 @@ export default function EmployeeDC3Page() {
       EndDate: '',
       Area: '',
       TrainerID: '',
+      TrainerName: '',
       Duration: ''
     });
     setSelectedEmployee(null);
     setSelectedEmployeeData(null);
     setEmployeeIdInput('');
     setEmployeeNotFound(false);
+    setShowCustomTrainerInput(false);
     setError('');
     setShowModal(true);
     
@@ -474,7 +471,7 @@ export default function EmployeeDC3Page() {
     }, 100);
   };
 
-  // Función para abrir modal de edición - CORREGIDA (formatear fechas)
+  // Función para abrir modal de edición
   const handleEditRecord = async (record: EmployeeDC3) => {
     setModalMode('edit');
     setRecordToEdit(record);
@@ -494,7 +491,12 @@ export default function EmployeeDC3Page() {
       console.error('Error al cargar datos del empleado:', error);
     }
     
-    // Formatear las fechas correctamente para input type="date"
+    // Determinar si es instructor externo
+    const isExternal = record.isExternalTrainer === true;
+    const trainerName = record.TrainerName || '';
+    
+    setShowCustomTrainerInput(isExternal);
+    
     setFormData({
       EmployeeID: record.EmployeeID.toString(),
       SpecificOccupation: record.SpecificOccupation || '',
@@ -502,11 +504,177 @@ export default function EmployeeDC3Page() {
       StartDate: formatDateForInput(record.StartDate),
       EndDate: formatDateForInput(record.EndDate),
       Area: record.Area || '',
-      TrainerID: record.TrainerID?.toString() || '',
+      TrainerID: isExternal ? 'otro' : (record.TrainerID ? record.TrainerID.toString() : ''),
+      TrainerName: isExternal ? trainerName : '',
       Duration: record.Duration?.toString() || ''
     });
     
     setShowModal(true);
+  };
+
+  // Función para guardar registro DC3
+  const handleSaveRecord = async () => {
+    try {
+      setSaving(true);
+      setError('');
+
+      // Validar campos requeridos
+      if (!formData.EmployeeID) {
+        setError('DEBE SELECCIONAR UN EMPLEADO VÁLIDO');
+        setSaving(false);
+        return;
+      }
+
+      if (!formData.CourseName) {
+        setError('EL NOMBRE DEL CURSO ES REQUERIDO');
+        setSaving(false);
+        return;
+      }
+
+      if (!formData.StartDate) {
+        setError('LA FECHA DE INICIO ES REQUERIDA');
+        setSaving(false);
+        return;
+      }
+
+      if (!formData.EndDate) {
+        setError('LA FECHA DE FIN ES REQUERIDA');
+        setSaving(false);
+        return;
+      }
+
+      const startDate = new Date(formData.StartDate);
+      const endDate = new Date(formData.EndDate);
+      
+      if (isNaN(startDate.getTime())) {
+        setError('FORMATO DE FECHA DE INICIO INVÁLIDO');
+        setSaving(false);
+        return;
+      }
+      
+      if (isNaN(endDate.getTime())) {
+        setError('FORMATO DE FECHA DE FIN INVÁLIDO');
+        setSaving(false);
+        return;
+      }
+
+      if (startDate > endDate) {
+        setError('LA FECHA DE FIN DEBE SER POSTERIOR A LA FECHA DE INICIO');
+        setSaving(false);
+        return;
+      }
+
+      if (formData.Duration) {
+        const durationNum = parseInt(formData.Duration);
+        if (isNaN(durationNum) || durationNum <= 0) {
+          setError('LA DURACIÓN DEBE SER UN NÚMERO POSITIVO');
+          setSaving(false);
+          return;
+        }
+      }
+
+      // Preparar datos para enviar
+      const recordData: any = {
+        EmployeeID: parseInt(formData.EmployeeID),
+        SpecificOccupation: formData.SpecificOccupation || null,
+        CourseName: formData.CourseName,
+        StartDate: formData.StartDate,
+        EndDate: formData.EndDate,
+        Area: formData.Area || null,
+        Duration: formData.Duration ? parseInt(formData.Duration) : null
+      };
+
+      // Determinar el instructor
+      if (showCustomTrainerInput && formData.TrainerName && formData.TrainerName.trim() !== '') {
+        // Instructor externo
+        recordData.TrainerID = null;
+        recordData.TrainerName = formData.TrainerName.trim();
+        recordData.isExternalTrainer = true;
+      } else if (formData.TrainerID && formData.TrainerID !== 'otro' && formData.TrainerID !== '') {
+        // Instructor interno
+        recordData.TrainerID = parseInt(formData.TrainerID);
+        recordData.TrainerName = null;
+        recordData.isExternalTrainer = false;
+      } else if (modalMode === 'edit' && recordToEdit) {
+        // Mantener el instructor existente en edición
+        if (recordToEdit.isExternalTrainer) {
+          recordData.TrainerID = null;
+          recordData.TrainerName = recordToEdit.TrainerName || '';
+          recordData.isExternalTrainer = true;
+        } else {
+          recordData.TrainerID = recordToEdit.TrainerID;
+          recordData.TrainerName = null;
+          recordData.isExternalTrainer = false;
+        }
+      } else {
+        setError('DEBE SELECCIONAR UN INSTRUCTOR INTERNO O ESPECIFICAR UN INSTRUCTOR EXTERNO');
+        setSaving(false);
+        return;
+      }
+
+      let response;
+      
+      if (modalMode === 'create') {
+        response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeedc3', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(recordData)
+        });
+      } else {
+        response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeedc3/${recordToEdit?.DC3ID}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(recordData)
+        });
+      }
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        handleCloseModal();
+        await fetchRecords();
+        
+        if (modalMode === 'edit') {
+          setSuccessMessage('¡DC3 ACTUALIZADO EXITOSAMENTE!');
+          setTimeout(() => setSuccessMessage(''), 3000);
+        } else if (modalMode === 'create' && selectedEmployeeData && data.fileUrl) {
+          const baseUrl = window.location.origin;
+          const pdfUrl = data.fileUrl;
+          const excelUrl = `${baseUrl}/api/download/edit/DC-3?dc3Id=${data.dc3Id}`;
+          
+          setSuccessDetails({
+            DC3ID: data.dc3Id || 0,
+            EmployeeID: parseInt(formData.EmployeeID),
+            EmployeeName: `${selectedEmployeeData.FirstName} ${selectedEmployeeData.LastName} ${selectedEmployeeData.MiddleName || ''}`.trim(),
+            tipo: selectedEmployeeData.tipo,
+            CourseName: formData.CourseName,
+            StartDate: formData.StartDate,
+            EndDate: formData.EndDate,
+            Duration: parseInt(formData.Duration) || 0,
+            Area: formData.Area || 'N/A',
+            SpecificOccupation: formData.SpecificOccupation || 'N/A',
+            fileUrl: pdfUrl,
+            pdfUrl: pdfUrl,
+            excelUrl: excelUrl
+          });
+          setShowSuccessModal(true);
+        } else {
+          setSuccessMessage(modalMode === 'create' ? '¡DC3 CREADO EXITOSAMENTE!' : '¡DC3 ACTUALIZADO EXITOSAMENTE!');
+          setTimeout(() => setSuccessMessage(''), 3000);
+        }
+      } else {
+        setError(data.message || 'ERROR AL GUARDAR DC3');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setError('ERROR DE CONEXIÓN AL REGISTRO DC3');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Función para cerrar modal
@@ -516,6 +684,7 @@ export default function EmployeeDC3Page() {
     setSelectedEmployee(null);
     setEmployeeIdInput('');
     setEmployeeNotFound(false);
+    setShowCustomTrainerInput(false);
     setError('');
   };
 
@@ -545,174 +714,57 @@ export default function EmployeeDC3Page() {
     }
   };
 
-  // Función para manejar cambios en el formulario - CORREGIDA
+  // Función para manejar cambios en el formulario
   const handleFormChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     
+    if (name === 'TrainerID') {
+      if (value === 'otro') {
+        setShowCustomTrainerInput(true);
+        setFormData(prev => ({
+          ...prev,
+          TrainerID: 'otro',
+          TrainerName: ''
+        }));
+      } else {
+        setShowCustomTrainerInput(false);
+        setFormData(prev => ({
+          ...prev,
+          TrainerID: value,
+          TrainerName: ''
+        }));
+      }
+      return;
+    }
+    
+    if (name === 'TrainerName') {
+      setFormData(prev => ({
+        ...prev,
+        [name]: normalizarMayusculas(value)
+      }));
+      return;
+    }
+    
     let newValue = value;
     
-    // NO normalizar a mayúsculas para fechas, selects y campos numéricos
-    if (!['StartDate', 'EndDate', 'SpecificOccupation', 'Area', 'Duration', 'TrainerID'].includes(name)) {
+    if (!['StartDate', 'EndDate', 'Duration'].includes(name)) {
       newValue = normalizarMayusculas(value);
     }
     
-    // Para el campo Duration, solo permitir números
     if (name === 'Duration') {
-      // Permitir solo números y vacío
       if (value === '' || /^\d+$/.test(value)) {
         setFormData(prev => ({
           ...prev,
           [name]: value
         }));
       }
-      return; // No actualizar si no es válido
+      return;
     }
     
     setFormData(prev => ({
       ...prev,
       [name]: newValue
     }));
-  };
-
-  // Función para guardar registro DC3 - CORREGIDA
-  const handleSaveRecord = async () => {
-    try {
-      setSaving(true);
-      setError('');
-
-      if (!formData.EmployeeID) {
-        setError('DEBE SELECCIONAR UN EMPLEADO VÁLIDO');
-        setSaving(false);
-        return;
-      }
-
-      if (!formData.CourseName) {
-        setError('EL NOMBRE DEL CURSO ES REQUERIDO');
-        setSaving(false);
-        return;
-      }
-
-      if (!formData.StartDate) {
-        setError('LA FECHA DE INICIO ES REQUERIDA');
-        setSaving(false);
-        return;
-      }
-
-      if (!formData.EndDate) {
-        setError('LA FECHA DE FIN ES REQUERIDA');
-        setSaving(false);
-        return;
-      }
-
-      // Validar que las fechas sean válidas
-      const startDate = new Date(formData.StartDate);
-      const endDate = new Date(formData.EndDate);
-      
-      if (isNaN(startDate.getTime())) {
-        setError('FORMATO DE FECHA DE INICIO INVÁLIDO');
-        setSaving(false);
-        return;
-      }
-      
-      if (isNaN(endDate.getTime())) {
-        setError('FORMATO DE FECHA DE FIN INVÁLIDO');
-        setSaving(false);
-        return;
-      }
-
-      // Validar que la fecha de fin sea posterior o igual a la fecha de inicio
-      if (startDate > endDate) {
-        setError('LA FECHA DE FIN DEBE SER POSTERIOR O IGUAL A LA FECHA DE INICIO');
-        setSaving(false);
-        return;
-      }
-
-      // Validar Duration si se proporciona
-      if (formData.Duration) {
-        const durationNum = parseInt(formData.Duration);
-        if (isNaN(durationNum) || durationNum <= 0) {
-          setError('LA DURACIÓN DEBE SER UN NÚMERO POSITIVO');
-          setSaving(false);
-          return;
-        }
-      }
-
-      const recordData = {
-        EmployeeID: parseInt(formData.EmployeeID),
-        SpecificOccupation: formData.SpecificOccupation || null,
-        CourseName: formData.CourseName,
-        StartDate: formData.StartDate,
-        EndDate: formData.EndDate,
-        Area: formData.Area || null,
-        TrainerID: formData.TrainerID ? parseInt(formData.TrainerID) : null,
-        Duration: formData.Duration ? parseInt(formData.Duration) : null
-      };
-
-      let response;
-      
-      if (modalMode === 'create') {
-        response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeedc3', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(recordData)
-        });
-      } else {
-        response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeedc3/${recordToEdit?.DC3ID}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(recordData)
-        });
-      }
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        handleCloseModal();
-        await fetchRecords();
-        
-        // Mostrar mensaje según el caso
-        if (modalMode === 'edit') {
-          setSuccessMessage('¡DC3 ACTUALIZADO EXITOSAMENTE!');
-          setTimeout(() => setSuccessMessage(''), 3000);
-        } else if (modalMode === 'create' && selectedEmployeeData && data.fileUrl) {
-          // Mostrar modal de éxito con vista previa (para creación)
-          const baseUrl = window.location.origin;
-          const pdfUrl = data.fileUrl;
-          const excelUrl = `${baseUrl}/api/download/edit/DC-3?dc3Id=${data.dc3Id}`;
-          
-          setSuccessDetails({
-            DC3ID: data.dc3Id || recordToEdit?.DC3ID,
-            EmployeeID: parseInt(formData.EmployeeID),
-            EmployeeName: `${selectedEmployeeData.FirstName} ${selectedEmployeeData.LastName} ${selectedEmployeeData.MiddleName || ''}`.trim(),
-            tipo: selectedEmployeeData.tipo,
-            CourseName: formData.CourseName,
-            StartDate: formData.StartDate,
-            EndDate: formData.EndDate,
-            Duration: parseInt(formData.Duration) || 0,
-            Area: formData.Area || 'N/A',
-            SpecificOccupation: formData.SpecificOccupation || 'N/A',
-            fileUrl: pdfUrl,
-            pdfUrl: pdfUrl,
-            excelUrl: excelUrl
-          });
-          setShowSuccessModal(true);
-        } else {
-          setSuccessMessage(modalMode === 'create' ? '¡DC3 CREADO EXITOSAMENTE!' : '¡DC3 ACTUALIZADO EXITOSAMENTE!');
-          setTimeout(() => setSuccessMessage(''), 3000);
-        }
-      } else {
-        setError(data.message || 'ERROR AL GUARDAR DC3');
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      setError('ERROR DE CONEXIÓN AL REGISTRO DC3');
-    } finally {
-      setSaving(false);
-    }
   };
 
   // Función para descargar el archivo PDF
@@ -769,6 +821,24 @@ export default function EmployeeDC3Page() {
     setShowSuccessModal(false);
     setSuccessDetails(null);
     setPdfLoading(false);
+  };
+
+  // Función auxiliar para obtener el nombre del instructor
+  const getTrainerDisplay = (record: EmployeeDC3): React.ReactNode => {
+    if (record.isExternalTrainer === true && record.TrainerName) {
+      return (
+        <span className="flex items-center gap-1">
+          <span>📝</span>
+          <span>{record.TrainerName}</span>
+        </span>
+      );
+    }
+    
+    if (record.TrainerID && record.TrainerName) {
+      return record.TrainerName;
+    }
+    
+    return 'N/A';
   };
 
   // Mostrar loading de sesión
@@ -844,7 +914,6 @@ export default function EmployeeDC3Page() {
           style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
         >
           <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full h-[90vh] flex flex-col animate-fade-in relative z-[10000]">
-            {/* Encabezado del modal */}
             <div className="p-6 pb-4 border-b flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
@@ -864,9 +933,7 @@ export default function EmployeeDC3Page() {
               </button>
             </div>
             
-            {/* Contenido del modal - dos columnas */}
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-              {/* Columna izquierda - Detalles del DC3 */}
               <div className="w-full md:w-1/3 p-6 border-r border-gray-200 overflow-y-auto">
                 <div className="space-y-4">
                   <div className="bg-gray-50 rounded-lg p-4">
@@ -902,7 +969,6 @@ export default function EmployeeDC3Page() {
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DOCUMENTOS GENERADOS</h3>
                     <div className="space-y-3">
-                      {/* PDF */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center">
                           <FileText className="h-5 w-5 text-gray-600 mr-2" />
@@ -933,7 +999,6 @@ export default function EmployeeDC3Page() {
                         </div>
                       </div>
                       
-                      {/* Excel Editable */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center">
                           <FileText className="h-5 w-5 text-gray-600 mr-2" />
@@ -957,7 +1022,6 @@ export default function EmployeeDC3Page() {
                 </div>
               </div>
               
-              {/* Columna derecha - Vista previa del PDF */}
               <div className="flex-1 flex flex-col p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-gray-800 text-sm uppercase">
@@ -995,7 +1059,6 @@ export default function EmployeeDC3Page() {
           style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
         >
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto animate-fade-in relative z-[10000]">
-            {/* Encabezado */}
             <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 tracking-tight">
@@ -1016,7 +1079,6 @@ export default function EmployeeDC3Page() {
               </button>
             </div>
 
-            {/* Contenido */}
             <div className="p-6">
               <div className="space-y-6">
                 {/* Búsqueda por ID del empleado */}
@@ -1025,7 +1087,6 @@ export default function EmployeeDC3Page() {
                     ID DEL EMPLEADO 
                   </h3>
                   
-                  {/* Input para ID del empleado */}
                   <div className="mb-4">
                     <div className="relative">
                       <input
@@ -1071,7 +1132,6 @@ export default function EmployeeDC3Page() {
                     )}
                   </div>
 
-                  {/* Datos del empleado seleccionado */}
                   {selectedEmployeeData && (
                     <div className="space-y-6">
                       <div className="bg-gray-50 rounded-lg p-4">
@@ -1242,7 +1302,7 @@ export default function EmployeeDC3Page() {
                       <div className="relative">
                         <select
                           name="TrainerID"
-                          value={formData.TrainerID}
+                          value={formData.TrainerID || (showCustomTrainerInput ? 'otro' : '')}
                           onChange={handleFormChange}
                           className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                           disabled={loadingTrainers}
@@ -1251,11 +1311,16 @@ export default function EmployeeDC3Page() {
                           {loadingTrainers ? (
                             <option value="" disabled>CARGANDO INSTRUCTORES...</option>
                           ) : (
-                            trainers.map((trainer) => (
-                              <option key={trainer.id} value={trainer.id}>
-                                {trainer.nombreCompleto} - {trainer.puesto} ({trainer.tipoPersonal})
+                            <>
+                              {trainers.map((trainer) => (
+                                <option key={trainer.id} value={trainer.id}>
+                                  {trainer.nombreCompleto} - {trainer.puesto} ({trainer.tipoPersonal})
+                                </option>
+                              ))}
+                              <option value="otro" style={{ fontWeight: 'bold', backgroundColor: '#f0f0f0' }}>
+                                ─── OTRO (INSTRUCTOR EXTERNO) ───
                               </option>
-                            ))
+                            </>
                           )}
                         </select>
                         {loadingTrainers && (
@@ -1264,13 +1329,32 @@ export default function EmployeeDC3Page() {
                           </div>
                         )}
                       </div>
+                      
+                      {showCustomTrainerInput && (
+                        <div className="mt-3">
+                          <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                            NOMBRE DEL INSTRUCTOR EXTERNO *
+                          </label>
+                          <input
+                            type="text"
+                            name="TrainerName"
+                            value={formData.TrainerName}
+                            onChange={handleFormChange}
+                            className="w-full px-3 py-2.5 text-sm bg-white border border-[#3a6ea5] rounded focus:outline-none focus:border-[#2d5592] font-medium"
+                            placeholder="Ingrese el nombre completo del instructor externo"
+                            required={showCustomTrainerInput}
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Ingrese el nombre completo del instructor que no es empleado de la empresa.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Botones de acción */}
             <div className="p-6 pt-4 border-t border-gray-300 bg-gray-50 flex justify-end gap-3">
               <button
                 onClick={handleCloseModal}
@@ -1330,7 +1414,6 @@ export default function EmployeeDC3Page() {
             </div>
           )}
 
-          {/* Barra de herramientas */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="flex-1">
               <div className="relative">
@@ -1371,7 +1454,6 @@ export default function EmployeeDC3Page() {
             </button>
           </div>
 
-          {/* Tabla de registros DC3 */}
           <div className="bg-white rounded-lg shadow border border-gray-300 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -1386,6 +1468,7 @@ export default function EmployeeDC3Page() {
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">INICIO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FIN</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">DURACIÓN (HRS)</th>
+                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">INSTRUCTOR</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">DOCUMENTOS</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
                   </tr>
@@ -1393,7 +1476,7 @@ export default function EmployeeDC3Page() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={11} className="py-12 text-center">
+                      <td colSpan={12} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
                           <p className="text-gray-600">Cargando certificados DC3...</p>
@@ -1402,7 +1485,7 @@ export default function EmployeeDC3Page() {
                     </tr>
                   ) : filteredRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="py-12 text-center">
+                      <td colSpan={12} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
                           <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
@@ -1436,6 +1519,11 @@ export default function EmployeeDC3Page() {
                         <td className="py-3 px-4 text-sm text-gray-800">{formatDate(record.EndDate)}</td>
                         <td className="py-3 px-4 text-sm text-gray-800 font-medium">
                           {record.Duration ? `${record.Duration} hrs` : 'N/A'}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="text-sm text-gray-800">
+                            {getTrainerDisplay(record)}
+                          </div>
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex flex-col space-y-1">
@@ -1486,7 +1574,7 @@ export default function EmployeeDC3Page() {
                 </div>
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    onClick={() => setCurrentPage((prev: number) => Math.max(prev - 1, 1))}
                     disabled={currentPage === 1}
                     className="p-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -1496,7 +1584,7 @@ export default function EmployeeDC3Page() {
                     {currentPage} / {totalPages}
                   </span>
                   <button
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    onClick={() => setCurrentPage((prev: number) => Math.min(prev + 1, totalPages))}
                     disabled={currentPage === totalPages}
                     className="p-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -1511,7 +1599,6 @@ export default function EmployeeDC3Page() {
 
       <Footer />
 
-      {/* Estilos para animaciones */}
       <style jsx global>{`
         @keyframes fade-in {
           from {
