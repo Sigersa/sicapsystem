@@ -23,6 +23,13 @@ interface ContractDocument {
   OFFileURL?: string | null;
 }
 
+interface BaseContract {
+  BaseContractID?: number;
+  BasePersonnelID?: number;
+  StartDate?: string;
+  EndDate?: string;
+}
+
 interface Employee {
   EmployeeID: number;
   Status: number;
@@ -52,6 +59,10 @@ interface Employee {
     OFFileURL?: string | null;
   };
   Contracts?: ContractDocument[];
+  // Campos para fechas de contrato base
+  ContractStartDate?: string;
+  ContractEndDate?: string;
+  // Campos para fechas de proyecto (ya existen en Contracts)
 }
 
 interface Filters {
@@ -335,12 +346,10 @@ export default function EmployeesListPage() {
         }
         await fetchEmployees();
       } else {
-        // Mostrar mensaje detallado del error
         const errorMsg = data.message || `Error al ${actionText} al empleado`;
         setError(errorMsg);
         setErrorDetails(data.details || data.requiresManualReactivation ? 'Se requiere acción manual en el módulo de edición de usuario.' : '');
         
-        // Si es un error de reactivación de proyecto, mostrar modal
         if (data.requiresManualReactivation && data.employeeType === 'PROJECT') {
           setReactivationModal({
             show: true,
@@ -401,12 +410,10 @@ export default function EmployeesListPage() {
         setSuccessMessage(data.message || 'EMPLEADO ELIMINADO PERMANENTEMENTE DEL SISTEMA');
         await fetchEmployees();
       } else {
-        // Mostrar mensaje detallado del error
         const errorMsg = data.message || 'ERROR AL ELIMINAR EL EMPLEADO';
         setError(errorMsg);
         setErrorDetails(data.details || '');
         
-        // Si el error contiene información sobre dependencias, mostrarla claramente
         if (errorMsg.includes('administrador') || errorMsg.includes('jefe directo') || errorMsg.includes('entrenador')) {
           setErrorDetails(' El empleado tiene dependencias activas que impiden su eliminación. Revise el mensaje de error para más detalles.');
         }
@@ -697,10 +704,21 @@ export default function EmployeesListPage() {
     }
   };
 
-  // Función para limpiar errores manualmente (al hacer clic en el botón de cerrar)
   const clearError = () => {
     setError('');
     setErrorDetails('');
+  };
+
+  // Función para formatear fecha
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'N/A';
+      return date.toLocaleDateString('es-MX');
+    } catch {
+      return 'N/A';
+    }
   };
 
   if (sessionLoading) {
@@ -1219,9 +1237,6 @@ export default function EmployeesListPage() {
             </div>
           )}
 
-          {/* ============================================================
-              COMPONENTE DE ERROR MEJORADO CON DETALLES
-              ============================================================ */}
           {error && (
             <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
               <div className="flex items-start">
@@ -1319,6 +1334,7 @@ export default function EmployeesListPage() {
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">TIPO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ESTADO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">PUESTO / PROYECTO</th>
+                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FECHAS CONTRATO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">CONTACTO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FORMATOS</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
@@ -1327,7 +1343,7 @@ export default function EmployeesListPage() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center">
+                      <td colSpan={9} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
                           <p className="text-gray-600">Cargando empleados...</p>
@@ -1336,7 +1352,7 @@ export default function EmployeesListPage() {
                     </tr>
                   ) : filteredEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center">
+                      <td colSpan={9} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
                           <p className="text-sm font-medium text-gray-600">
@@ -1376,6 +1392,20 @@ export default function EmployeesListPage() {
                             )}
                             {employee.tipo === 'BASE' && employee.Area && (
                               <div className="text-xs text-gray-500">{employee.Area}</div>
+                            )}
+                          </td>
+                          <td className="py-3 px-4">
+                            {employee.tipo === 'BASE' ? (
+                              <>
+                                <div className="text-xs text-gray-600">
+                                  <span className="font-bold">Inicio:</span> {formatDate(employee.ContractStartDate)}
+                                </div>
+                                <div className="text-xs text-gray-600">
+                                  <span className="font-bold">Término:</span> {formatDate(employee.ContractEndDate)}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-xs text-gray-400">N/A</div>
                             )}
                           </td>
                           <td className="py-3 px-4">
@@ -1465,9 +1495,9 @@ export default function EmployeesListPage() {
                         {/* Fila expandida de contratos para PROJECT inactivos */}
                         {employee.tipo === 'PROJECT' && (employee.Status ?? 1) === 0 && expandedContract === employee.EmployeeID && employee.Contracts && employee.Contracts.length > 0 && (
                           <tr className="bg-gray-50">
-                            <td colSpan={8} className="py-3 px-4">
+                            <td colSpan={9} className="py-3 px-4">
                               <div className="border-l-4 border-[#3a6ea5] pl-4">
-                                <p className="text-xs font-bold text-gray-700 mb-2 uppercase">HISTORIAL</p>
+                                <p className="text-xs font-bold text-gray-700 mb-2 uppercase">HISTORIAL DE CONTRATOS</p>
                                 <div className="space-y-3">
                                   {employee.Contracts.map((contract, idx) => (
                                     <div key={contract.ContractID} className="bg-white rounded-lg p-3 border border-gray-200">
@@ -1479,8 +1509,8 @@ export default function EmployeesListPage() {
                                       
                                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-600 mb-3">
                                         {contract.Position && <div><span className="font-bold">Puesto:</span> {contract.Position}</div>}
-                                        {contract.StartDate && <div><span className="font-bold">Inicio:</span> {new Date(contract.StartDate).toLocaleDateString()}</div>}
-                                        {contract.EndDate && <div><span className="font-bold">Fin:</span> {new Date(contract.EndDate).toLocaleDateString()}</div>}
+                                        {contract.StartDate && <div><span className="font-bold">Inicio:</span> {formatDate(contract.StartDate)}</div>}
+                                        {contract.EndDate && <div><span className="font-bold">Fin:</span> {formatDate(contract.EndDate)}</div>}
                                       </div>
                                       
                                       <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
@@ -1488,7 +1518,7 @@ export default function EmployeesListPage() {
                                         {contract.CDFileURL && (
                                           <button
                                             onClick={() => window.open(contract.CDFileURL!, '_blank')}
-                                    className="text-xs text-gray-700 hover:underline"
+                                            className="text-xs text-gray-700 hover:underline"
                                             title="FT-RH-12"
                                           >
                                             Ver Oficio Finiquito
@@ -1497,7 +1527,7 @@ export default function EmployeesListPage() {
                                         {contract.CRFileURL && (
                                           <button
                                             onClick={() => window.open(contract.CRFileURL!, '_blank')}
-                                    className="text-xs text-gray-700 hover:underline"
+                                            className="text-xs text-gray-700 hover:underline"
                                             title="FT-RH-13"
                                           >
                                             Ver Carta de Deslinde
@@ -1506,7 +1536,7 @@ export default function EmployeesListPage() {
                                         {contract.OFFileURL && (
                                           <button
                                             onClick={() => window.open(contract.OFFileURL!, '_blank')}
-                                    className="text-xs text-gray-700 hover:underline"
+                                            className="text-xs text-gray-700 hover:underline"
                                             title="FT-RH-14"
                                           >
                                             Ver Carta de Recomendación
