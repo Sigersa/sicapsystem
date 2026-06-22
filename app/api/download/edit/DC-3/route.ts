@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
         dc.Area,
         dc.Duration,
         dc.TrainerID,
+        dc.ExternalTrainerName,  -- Importante: incluir el instructor externo
         -- Datos del empleado que recibe el curso
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
@@ -75,10 +76,13 @@ export async function GET(request: NextRequest) {
           WHEN bp.EmployeeID IS NOT NULL THEN bpi.CURP
           ELSE ppi.CURP
         END as CURP,
-        -- Datos del instructor (Trainer)
-        COALESCE(trainer_bp.FirstName, trainer_pp.FirstName) as TrainerFirstName,
-        COALESCE(trainer_bp.LastName, trainer_pp.LastName) as TrainerLastName,
-        COALESCE(trainer_bp.MiddleName, trainer_pp.MiddleName) as TrainerMiddleName
+        -- Datos del instructor (Trainer) - SOLO SI ES INTERNO
+        trainer_bp.FirstName as TrainerFirstName,
+        trainer_bp.LastName as TrainerLastName,
+        trainer_bp.MiddleName as TrainerMiddleName,
+        trainer_pp.FirstName as TrainerPpFirstName,
+        trainer_pp.LastName as TrainerPpLastName,
+        trainer_pp.MiddleName as TrainerPpMiddleName
       FROM employeedc3 dc
       -- Datos del empleado que recibe el curso (BASE)
       LEFT JOIN basepersonnel bp ON dc.EmployeeID = bp.EmployeeID
@@ -88,8 +92,9 @@ export async function GET(request: NextRequest) {
       LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
       LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
-      -- Datos del instructor (Trainer)
+      -- Datos del instructor (Trainer) - BASE
       LEFT JOIN basepersonnel trainer_bp ON dc.TrainerID = trainer_bp.EmployeeID
+      -- Datos del instructor (Trainer) - PROJECT
       LEFT JOIN projectpersonnel trainer_pp ON dc.TrainerID = trainer_pp.EmployeeID
       WHERE dc.DC3ID = ?`,
       [dc3Id]
@@ -111,13 +116,39 @@ export async function GET(request: NextRequest) {
       dc3Record.FirstName || ''        // Nombre(s)
     ].filter(part => part.trim() !== '').join(' ');
 
-    // Construir nombre completo del instructor
-    const trainerName = [
-      dc3Record.TrainerFirstName || '',
-      dc3Record.TrainerLastName || '',
-      dc3Record.TrainerMiddleName || ''
-    ].filter(part => part.trim() !== '').join(' ') || "INSTRUCTOR NO ESPECIFICADO";
+    // CONSTRUIR EL NOMBRE DEL INSTRUCTOR - PRIORIZANDO EL EXTERNO
+    let trainerName = "INSTRUCTOR NO ESPECIFICADO";
+    
+    // 1. PRIMERO: Verificar si hay un instructor externo
+    if (dc3Record.ExternalTrainerName && dc3Record.ExternalTrainerName.trim() !== '') {
+      trainerName = dc3Record.ExternalTrainerName.trim();
+      console.log(`Usando instructor externo: ${trainerName}`);
+    } 
+    // 2. SEGUNDO: Buscar instructor interno (BASE)
+    else if (dc3Record.TrainerID !== null && dc3Record.TrainerFirstName) {
+      trainerName = [
+        dc3Record.TrainerFirstName || '',
+        dc3Record.TrainerLastName || '',
+        dc3Record.TrainerMiddleName || ''
+      ].filter(part => part.trim() !== '').join(' ');
+      console.log(`Usando instructor interno BASE: ${trainerName}`);
+    }
+    // 3. TERCERO: Buscar instructor interno (PROJECT)
+    else if (dc3Record.TrainerID !== null && dc3Record.TrainerPpFirstName) {
+      trainerName = [
+        dc3Record.TrainerPpFirstName || '',
+        dc3Record.TrainerPpLastName || '',
+        dc3Record.TrainerPpMiddleName || ''
+      ].filter(part => part.trim() !== '').join(' ');
+      console.log(`Usando instructor interno PROJECT: ${trainerName}`);
+    }
+    // 4. Si hay TrainerID pero no se encontró el nombre
+    else if (dc3Record.TrainerID !== null) {
+      trainerName = `INSTRUCTOR ID: ${dc3Record.TrainerID}`;
+      console.log(`Instructor ID ${dc3Record.TrainerID} sin nombre encontrado`);
+    }
 
+    // Extraer fechas
     const startYear = dc3Record.StartDate 
       ? new Date(dc3Record.StartDate).getFullYear().toString()
       : '';
@@ -152,6 +183,7 @@ export async function GET(request: NextRequest) {
     );
 
     if (!fs.existsSync(templatePath)) {
+      console.error(`Plantilla no encontrada en: ${templatePath}`);
       return NextResponse.json(
         { success: false, message: 'Plantilla DC-3 no encontrada' },
         { status: 500 }
@@ -168,7 +200,7 @@ export async function GET(request: NextRequest) {
     ws.getCell("A9").value = dc3Record.Position || "NO ESPECIFICADO";
     ws.getCell("A19").value = dc3Record.CourseName || "NO ESPECIFICADO";
     ws.getCell("A23").value = dc3Record.Area || "NO ESPECIFICADO";
-    ws.getCell("B32").value = trainerName;
+    ws.getCell("B32").value = trainerName; // Instructor (prioriza externo)
     ws.getCell("H7").value = dc3Record.SpecificOccupation || "NO ESPECIFICADO";
     ws.getCell("A21").value = dc3Record.Duration || "NO ESPECIFICADO";
     ws.getCell("I21").value = startYear || "";
@@ -182,6 +214,8 @@ export async function GET(request: NextRequest) {
 
     const tipoEmpleado = dc3Record.tipo || 'DESCONOCIDO';
     const fileName = `DC-3-${tipoEmpleado}-${dc3Record.EmployeeID}.xlsx`;
+
+    console.log(`Excel editable generado exitosamente para DC3 ID: ${dc3Id}`);
 
     return new NextResponse(buffer, {
       headers: {
