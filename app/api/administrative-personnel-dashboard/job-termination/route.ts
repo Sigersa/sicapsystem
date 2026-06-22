@@ -26,25 +26,52 @@ async function deleteFilesFromUploadThing(fileUrls: string[]) {
   }
   
   try {
-    // Extraer fileKeys de las URLs
+    // Extraer fileKeys de las URLs - VERSIÓN CORREGIDA
     const fileKeys = validUrls
       .map(url => {
-        // Soporta diferentes formatos de URL de UploadThing
-        const match = url.match(/utfs\.io\/f\/([^?]+)/);
-        if (match) {
-          // Limpiar el fileKey: eliminar parámetros y rutas adicionales
-          let fileKey = match[1];
-          fileKey = fileKey.split('?')[0].split('/')[0];
-          return fileKey;
+        try {
+          console.log(`[UploadThing] Procesando URL: ${url}`);
+          
+          // Método 1: Buscar el patrón estándar de UploadThing
+          // https://{subdomain}.ufs.sh/f/{fileKey}
+          const match = url.match(/\/f\/([a-zA-Z0-9_-]+)/);
+          if (match && match[1]) {
+            console.log(`[UploadThing] FileKey extraído (Método 1): ${match[1]}`);
+            return match[1];
+          }
+          
+          // Método 2: Extraer todo después de '/f/' hasta el final o '?'
+          const match2 = url.match(/\/f\/([^?]+)/);
+          if (match2 && match2[1]) {
+            // Limpiar: eliminar cualquier cosa después de un slash adicional
+            let fileKey = match2[1].split('/')[0];
+            console.log(`[UploadThing] FileKey extraído (Método 2): ${fileKey}`);
+            return fileKey;
+          }
+          
+          // Método 3: Usar URL API como fallback
+          const urlObj = new URL(url);
+          const pathParts = urlObj.pathname.split('/');
+          const fIndex = pathParts.indexOf('f');
+          if (fIndex !== -1 && fIndex + 1 < pathParts.length) {
+            const fileKey = pathParts[fIndex + 1];
+            console.log(`[UploadThing] FileKey extraído (Método 3): ${fileKey}`);
+            return fileKey;
+          }
+          
+          console.warn(`[UploadThing] No se pudo extraer fileKey de: ${url}`);
+          return null;
+        } catch (error) {
+          console.error(`[UploadThing] Error al extraer fileKey de URL: ${url}`, error);
+          return null;
         }
-        return null;
       })
       .filter((key): key is string => key !== null && key.length > 0);
 
-    console.log('[UploadThing] FileKeys a eliminar:', fileKeys);
+    console.log('[UploadThing] FileKeys finales a eliminar:', fileKeys);
     
     if (fileKeys.length === 0) {
-      console.log('[UploadThing] No se pudieron extraer fileKeys de las URLs');
+      console.warn('[UploadThing] No se pudieron extraer fileKeys de las URLs:', validUrls);
       return true;
     }
 
@@ -429,7 +456,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 1. Obtener personal base
+    // 1. Obtener personal base con fechas de contrato
     const [baseEmployees] = await connection.execute(`
       SELECT 
         e.EmployeeID,
@@ -449,11 +476,15 @@ export async function GET(request: NextRequest) {
         COALESCE(bpi.Phone, '') as Phone,
         jt.CDFileURL as CDFileURL,
         jt.CRFileURL as CRFileURL,
-        jt.OFFileURL as OFFileURL
+        jt.OFFileURL as OFFileURL,
+        -- Obtener fechas del contrato base activo
+        bc.StartDate as ContractStartDate,
+        jt.EndDate as ContractEndDate
       FROM basepersonnel bp
       INNER JOIN employees e ON bp.EmployeeID = e.EmployeeID
       LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
       LEFT JOIN jobtermination jt ON bp.EmployeeID = jt.EmployeeID
+      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
       ORDER BY e.EmployeeID
     `);
 
@@ -536,7 +567,10 @@ export async function GET(request: NextRequest) {
         CRFileURL: emp.CRFileURL,
         OFFileURL: emp.OFFileURL
       },
-      Contracts: []
+      Contracts: [],
+      // Campos de fechas de contrato
+      ContractStartDate: emp.ContractStartDate,
+      ContractEndDate: emp.ContractEndDate
     }));
     
     const projectEmployeesFormatted = (projectEmployees as any[]).map(emp => ({ 
@@ -545,7 +579,10 @@ export async function GET(request: NextRequest) {
       Status: emp.EmployeeStatus,
       uniqueKey: `PROJECT_${emp.EmployeeID}`,
       TerminationDocuments: null,
-      Contracts: contractsByPersonnel[emp.ProjectPersonnelID] || []
+      Contracts: contractsByPersonnel[emp.ProjectPersonnelID] || [],
+      // Para proyecto no se usan estos campos
+      ContractStartDate: null,
+      ContractEndDate: null
     }));
 
     let allEmployees = [...baseEmployeesFormatted, ...projectEmployeesFormatted];
@@ -625,6 +662,7 @@ export async function PUT(request: NextRequest) {
     connection = await getConnection();
 
     if (Status === 0) {
+      // ... código de dar de baja (sin cambios)
       const [employeeType] = await connection.execute(
         `SELECT 
           CASE 
@@ -741,22 +779,51 @@ export async function PUT(request: NextRequest) {
         await connection.beginTransaction();
         
         try {
-          // Obtener todas las URLs de documentos del empleado base
-          const urlsToDelete = await collectBasePersonnelUrls(connection, EmployeeID);
+          // ============================================================
+          // SOLO ELIMINAR LOS 3 DOCUMENTOS DE TERMINACIÓN LABORAL
+          // ============================================================
           
-          // Eliminar archivos de UploadThing usando el SDK
-          if (urlsToDelete.length > 0) {
-            console.log(`[Reactivación] Eliminando ${urlsToDelete.length} archivos de UploadThing para empleado ${EmployeeID}`);
-            await deleteFilesFromUploadThing(urlsToDelete);
+          // 1. Obtener las URLs de los documentos de terminación
+          const [terminationDocs] = await connection.execute(
+            `SELECT CDFileURL, CRFileURL, OFFileURL 
+             FROM jobtermination 
+             WHERE EmployeeID = ?`,
+            [EmployeeID]
+          );
+          
+          const urlsToDelete: string[] = [];
+          
+          if ((terminationDocs as any[]).length > 0) {
+            const docs = (terminationDocs as any[])[0];
+            
+            // Solo agregar los 3 documentos de terminación
+            if (docs.CDFileURL && docs.CDFileURL.trim() !== '') {
+              urlsToDelete.push(docs.CDFileURL);
+            }
+            if (docs.CRFileURL && docs.CRFileURL.trim() !== '') {
+              urlsToDelete.push(docs.CRFileURL);
+            }
+            if (docs.OFFileURL && docs.OFFileURL.trim() !== '') {
+              urlsToDelete.push(docs.OFFileURL);
+            }
           }
           
-          // Actualizar el estado del empleado
+          // 2. Eliminar solo esos archivos de UploadThing
+          if (urlsToDelete.length > 0) {
+            console.log(`[Reactivación BASE] Eliminando ${urlsToDelete.length} documentos de terminación para empleado ${EmployeeID}`);
+            console.log(`[Reactivación BASE] URLs a eliminar:`, urlsToDelete);
+            await deleteFilesFromUploadThing(urlsToDelete);
+          } else {
+            console.log(`[Reactivación BASE] No hay documentos de terminación para eliminar del empleado ${EmployeeID}`);
+          }
+          
+          // 3. Actualizar el estado del empleado a ACTIVO
           await connection.execute(
             `UPDATE employees SET Status = 1 WHERE EmployeeID = ?`,
             [EmployeeID]
           );
           
-          // Eliminar el registro de jobtermination
+          // 4. ELIMINAR el registro de jobtermination (esto elimina las referencias en BD)
           await connection.execute(
             `DELETE FROM jobtermination WHERE EmployeeID = ?`,
             [EmployeeID]
@@ -766,12 +833,12 @@ export async function PUT(request: NextRequest) {
           
           return NextResponse.json({
             success: true,
-            message: 'EMPLEADO REACTIVADO EXITOSAMENTE Y DOCUMENTOS ELIMINADOS'
+            message: 'EMPLEADO REACTIVADO EXITOSAMENTE. DOCUMENTOS DE TERMINACIÓN ELIMINADOS.'
           });
           
         } catch (dbError) {
           await connection.rollback();
-          console.error('Error al reactivar empleado:', dbError);
+          console.error('Error al reactivar empleado BASE:', dbError);
           return NextResponse.json({
             success: false,
             message: 'Error al reactivar el empleado'
@@ -809,6 +876,7 @@ export async function PUT(request: NextRequest) {
     }
   }
 }
+
 
 export async function DELETE(request: NextRequest) {
   let connection;
