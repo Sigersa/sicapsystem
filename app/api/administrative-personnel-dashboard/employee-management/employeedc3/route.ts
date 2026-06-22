@@ -42,25 +42,49 @@ async function verifyTrainerExists(connection: any, trainerId: number): Promise<
   }
 }
 
-// Función para generar el PDF DC-3
-async function generateDC3PDF(
-  dc3Id: number
-): Promise<{ pdfBuffer: ArrayBuffer; fileUrl: string }> {
-  const tempExcelPath = path.join(
-    os.tmpdir(),
-    `DC-3-${Date.now()}-${dc3Id}.xlsx`
-  );
-  const tempPdfPath = path.join(
-    os.tmpdir(),
-    `DC-3-${Date.now()}-${dc3Id}.pdf`
-  );
+// Función para extraer el nombre del instructor externo de DocumentURL
+function extractExternalTrainerName(documentURL: string | null): string | null {
+  if (!documentURL) return null;
+  
+  // Buscar el patrón EXT:Nombre
+  const extMatch = documentURL.match(/EXT:([^|]*)/);
+  if (extMatch) {
+    return extMatch[1].trim();
+  }
+  
+  // Si el documentURL comienza con EXT: sin PDF
+  if (documentURL.startsWith('EXT:')) {
+    return documentURL.substring(4).trim();
+  }
+  
+  return null;
+}
 
+// Función para extraer la URL del PDF de DocumentURL
+function getPDFUrlFromDocumentURL(documentURL: string | null): string | null {
+  if (!documentURL) return null;
+  
+  const pdfMatch = documentURL.match(/PDF:([^|]*)/);
+  if (pdfMatch) {
+    return pdfMatch[1];
+  }
+  
+  // Si solo es una URL (sin PDF:)
+  if (documentURL.startsWith('http://') || documentURL.startsWith('https://')) {
+    return documentURL;
+  }
+  
+  return null;
+}
+
+// Función para generar el PDF DC-3
+async function generateDC3PDF(dc3Id: number): Promise<{ pdfBuffer: ArrayBuffer; fileUrl: string }> {
+  const tempExcelPath = path.join(os.tmpdir(), `DC-3-${Date.now()}-${dc3Id}.xlsx`);
   let connection;
 
   try {
     connection = await getConnection();
 
-    // Obtener información del registro DC3, del empleado y del instructor
     const [rows] = await connection.execute<any[]>(
       `SELECT 
         dc.DC3ID,
@@ -72,8 +96,7 @@ async function generateDC3PDF(
         dc.Area,
         dc.Duration,
         dc.TrainerID,
-        e.Status,
-        -- Datos del empleado que recibe el curso
+        dc.DocumentURL,
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
         COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
@@ -82,27 +105,22 @@ async function generateDC3PDF(
           WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
           ELSE 'PROJECT'
         END as tipo,
-        COALESCE(bp.Area, p.NameProject) as AreaOrProject,
-        -- CURP del empleado que recibe el curso
         CASE 
           WHEN bp.EmployeeID IS NOT NULL THEN bpi.CURP
           ELSE ppi.CURP
         END as CURP,
-        -- Datos del instructor (Trainer)
-        COALESCE(trainer_bp.FirstName, trainer_pp.FirstName) as TrainerFirstName,
-        COALESCE(trainer_bp.LastName, trainer_pp.LastName) as TrainerLastName,
-        COALESCE(trainer_bp.MiddleName, trainer_pp.MiddleName) as TrainerMiddleName
+        trainer_bp.FirstName as TrainerFirstName,
+        trainer_bp.LastName as TrainerLastName,
+        trainer_bp.MiddleName as TrainerMiddleName
       FROM employeedc3 dc
-      -- Datos del empleado que recibe el curso (BASE)
       INNER JOIN employees e ON e.EmployeeID = dc.EmployeeID
       LEFT JOIN basepersonnel bp ON dc.EmployeeID = bp.EmployeeID
       LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
-      -- Datos del empleado que recibe el curso (PROJECT)
       LEFT JOIN projectpersonnel pp ON dc.EmployeeID = pp.EmployeeID
       LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
       LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
-      -- Datos del instructor (Trainer)
+      LEFT JOIN employees trainer_emp ON dc.TrainerID = trainer_emp.EmployeeID
       LEFT JOIN basepersonnel trainer_bp ON dc.TrainerID = trainer_bp.EmployeeID
       LEFT JOIN projectpersonnel trainer_pp ON dc.TrainerID = trainer_pp.EmployeeID
       WHERE dc.DC3ID = ? AND e.Status = 1 AND (
@@ -118,45 +136,39 @@ async function generateDC3PDF(
 
     const dc3Record = rows[0];
 
-    // Construir nombre completo del empleado en el orden: Apellido Paterno, Apellido Materno, Nombre(s)
     const employeeName = [
       dc3Record.LastName || '',
       dc3Record.MiddleName || '',
       dc3Record.FirstName || ''
     ].filter(part => part.trim() !== '').join(' ');
 
-    // Construir nombre completo del instructor
-    const trainerName = [
-      dc3Record.TrainerFirstName || '',
-      dc3Record.TrainerLastName || '',
-      dc3Record.TrainerMiddleName || ''
-    ].filter(part => part.trim() !== '').join(' ') || "INSTRUCTOR NO ESPECIFICADO";
+    let trainerName = '';
+    
+    // Verificar si el instructor es externo (TrainerID = null)
+    if (dc3Record.TrainerID === null) {
+      // Instructor externo - extraer nombre del DocumentURL
+      const extName = extractExternalTrainerName(dc3Record.DocumentURL);
+      trainerName = extName || "INSTRUCTOR EXTERNO";
+    } else if (dc3Record.TrainerFirstName) {
+      // Instructor interno
+      trainerName = [
+        dc3Record.TrainerFirstName || '',
+        dc3Record.TrainerLastName || '',
+        dc3Record.TrainerMiddleName || ''
+      ].filter(part => part.trim() !== '').join(' ');
+    }
+    
+    if (!trainerName || trainerName.trim() === '') {
+      trainerName = "INSTRUCTOR NO ESPECIFICADO";
+    }
 
-    const startYear = dc3Record.StartDate 
-      ? new Date(dc3Record.StartDate).getFullYear().toString()
-      : '';
+    const startYear = dc3Record.StartDate ? new Date(dc3Record.StartDate).getFullYear().toString() : '';
+    const startMonth = dc3Record.StartDate ? (new Date(dc3Record.StartDate).getMonth() + 1).toString().padStart(2, '0') : '';
+    const startDay = dc3Record.StartDate ? new Date(dc3Record.StartDate).getDate().toString().padStart(2, '0') : '';
+    const endYear = dc3Record.EndDate ? new Date(dc3Record.EndDate).getFullYear().toString() : '';
+    const endMonth = dc3Record.EndDate ? (new Date(dc3Record.EndDate).getMonth() + 1).toString().padStart(2, '0') : '';
+    const endDay = dc3Record.EndDate ? new Date(dc3Record.EndDate).getDate().toString().padStart(2, '0') : '';
 
-    const startMonth = dc3Record.StartDate 
-      ? (new Date(dc3Record.StartDate).getMonth() + 1).toString().padStart(2, '0')
-      : '';
-
-    const startDay = dc3Record.StartDate 
-      ? new Date(dc3Record.StartDate).getDate().toString().padStart(2, '0')
-      : '';
-
-    const endYear = dc3Record.EndDate 
-      ? new Date(dc3Record.EndDate).getFullYear().toString()
-      : '';
-
-    const endMonth = dc3Record.EndDate 
-      ? (new Date(dc3Record.EndDate).getMonth() + 1).toString().padStart(2, '0')
-      : '';
-
-    const endDay = dc3Record.EndDate 
-      ? new Date(dc3Record.EndDate).getDate().toString().padStart(2, '0')
-      : '';
-
-    // Cargar plantilla Excel
     const templatePath = path.join(
       process.cwd(),
       "public",
@@ -173,7 +185,6 @@ async function generateDC3PDF(
     await workbook.xlsx.readFile(templatePath);
     const ws = workbook.getWorksheet(1)!;
 
-    // Llenar datos en la plantilla
     ws.getCell("A7").value = dc3Record.CURP || "CURP NO ESPECIFICADO";
     ws.getCell("A5").value = employeeName || "NOMBRE NO ESPECIFICADO";
     ws.getCell("A9").value = dc3Record.Position || "NO ESPECIFICADO";
@@ -189,24 +200,19 @@ async function generateDC3PDF(
     ws.getCell("N21").value = endMonth || "";
     ws.getCell("O21").value = endDay || "";
     
-    // Guardar Excel temporal
     await workbook.xlsx.writeFile(tempExcelPath);
 
-    // Convertir a PDF usando ConvertAPI
     const result = await convertapi.convert("pdf", {
       File: tempExcelPath,
     });
 
-    // Descargar el PDF
     const pdfResponse = await fetch(result.file.url);
     const pdfBuffer = await pdfResponse.arrayBuffer();
     
-    // Subir a UploadThing
     const tipoEmpleado = dc3Record.tipo || 'DESCONOCIDO';
     const fileName = `DC-3-${tipoEmpleado}-${dc3Record.EmployeeID}-${Date.now()}.pdf`;
     
     const file = new File([Buffer.from(pdfBuffer)], fileName, { type: 'application/pdf' });
-    
     const uploadResponse = await utapi.uploadFiles([file]);
     
     if (!uploadResponse || !uploadResponse[0] || !uploadResponse[0].data || !uploadResponse[0].data.url) {
@@ -214,7 +220,7 @@ async function generateDC3PDF(
     }
     
     const fileUrl = uploadResponse[0].data.url;
-
+    
     return { pdfBuffer, fileUrl };
 
   } catch (error) {
@@ -228,13 +234,9 @@ async function generateDC3PDF(
         console.error('Error al cerrar la conexión:', error);
       }
     }
-    // Limpiar archivos temporales
     try {
       if (fs.existsSync(tempExcelPath)) {
         fs.unlinkSync(tempExcelPath);
-      }
-      if (fs.existsSync(tempPdfPath)) {
-        fs.unlinkSync(tempPdfPath);
       }
     } catch (cleanupError) {
       console.warn("Error al limpiar archivos temporales:", cleanupError);
@@ -242,7 +244,7 @@ async function generateDC3PDF(
   }
 }
 
-// GET: Obtener todos los registros de employeedc3
+// GET: Obtener todos los registros
 export async function GET(request: NextRequest) {
   let connection;
   
@@ -294,12 +296,18 @@ export async function GET(request: NextRequest) {
         CASE 
           WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
           ELSE 'PROJECT'
-        END as tipo
+        END as tipo,
+        trainer_bp.FirstName as TrainerFirstName,
+        trainer_bp.LastName as TrainerLastName,
+        trainer_bp.MiddleName as TrainerMiddleName
       FROM employeedc3 dc
       INNER JOIN employees e ON e.EmployeeID = dc.EmployeeID
       LEFT JOIN basepersonnel bp ON dc.EmployeeID = bp.EmployeeID
       LEFT JOIN projectpersonnel pp ON dc.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+      LEFT JOIN employees trainer_emp ON dc.TrainerID = trainer_emp.EmployeeID AND dc.TrainerID IS NOT NULL
+      LEFT JOIN basepersonnel trainer_bp ON dc.TrainerID = trainer_bp.EmployeeID AND dc.TrainerID IS NOT NULL
+      LEFT JOIN projectpersonnel trainer_pp ON dc.TrainerID = trainer_pp.EmployeeID AND dc.TrainerID IS NOT NULL
       WHERE e.Status = 1 AND (
           bp.EmployeeID IS NOT NULL
           OR pc.Status = 1
@@ -309,9 +317,35 @@ export async function GET(request: NextRequest) {
 
     const dc3Records = rows as any[];
 
+    const processedRecords = dc3Records.map((record: any) => {
+      let trainerName = null;
+      let isExternalTrainer = false;
+      
+      // Verificar si es instructor externo
+      if (record.TrainerID === null && record.DocumentURL) {
+        const extName = extractExternalTrainerName(record.DocumentURL);
+        if (extName) {
+          trainerName = extName;
+          isExternalTrainer = true;
+        }
+      } else if (record.TrainerID !== null && record.TrainerFirstName) {
+        trainerName = [
+          record.TrainerFirstName || '',
+          record.TrainerLastName || '',
+          record.TrainerMiddleName || ''
+        ].filter(part => part.trim() !== '').join(' ');
+      }
+      
+      return {
+        ...record,
+        TrainerName: trainerName,
+        isExternalTrainer: isExternalTrainer
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      records: dc3Records
+      records: processedRecords
     });
 
   } catch (error) {
@@ -374,6 +408,7 @@ export async function POST(request: NextRequest) {
       EndDate,
       Area,
       TrainerID,
+      TrainerName,
       Duration
     } = body;
 
@@ -406,7 +441,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validar que la fecha de fin sea posterior a la fecha de inicio
     if (new Date(StartDate) > new Date(EndDate)) {
       return NextResponse.json(
         { success: false, message: 'LA FECHA DE FIN DEBE SER POSTERIOR A LA FECHA DE INICIO' },
@@ -414,7 +448,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validar que Duration sea un número positivo si se proporciona
     if (Duration && (typeof Duration !== 'number' || Duration <= 0 || !Number.isInteger(Duration))) {
       return NextResponse.json(
         { success: false, message: 'La duración debe ser un número entero positivo' },
@@ -426,7 +459,7 @@ export async function POST(request: NextRequest) {
     await connection.beginTransaction();
 
     try {
-      // Verificar que el empleado existe
+      // Verificar empleado
       const [baseCheck] = await connection.execute(
         'SELECT EmployeeID FROM basepersonnel WHERE EmployeeID = ?',
         [EmployeeID]
@@ -441,19 +474,39 @@ export async function POST(request: NextRequest) {
         throw new Error('El empleado no existe');
       }
 
-      // Verificar que el TrainerID existe si se proporciona
-      if (TrainerID) {
-        const trainerExists = await verifyTrainerExists(connection, TrainerID);
+      // Determinar el instructor
+      let finalTrainerId = null;
+      let isExternalTrainer = false;
+      let externalTrainerName = null;
+
+      // Si TrainerName tiene valor → instructor externo
+      if (TrainerName && TrainerName.trim() !== '') {
+        finalTrainerId = null;
+        isExternalTrainer = true;
+        externalTrainerName = TrainerName.trim();
+      } 
+      // Si TrainerID es número > 0 → instructor interno
+      else if (TrainerID !== undefined && TrainerID !== null && TrainerID !== '' && Number(TrainerID) > 0) {
+        const trainerIdNum = Number(TrainerID);
+        const trainerExists = await verifyTrainerExists(connection, trainerIdNum);
         if (!trainerExists) {
-          throw new Error('El instructor seleccionado no existe');
+          throw new Error(`El instructor con ID ${trainerIdNum} no existe`);
         }
+        finalTrainerId = trainerIdNum;
+        isExternalTrainer = false;
+      } else {
+        throw new Error('Debe seleccionar un instructor interno o especificar un instructor externo');
       }
 
-      // Formatear fechas
       const startDateFormatted = formatearFechaMySQL(StartDate);
       const endDateFormatted = formatearFechaMySQL(EndDate);
 
-      // Insertar registro DC3 (sin DocumentURL por ahora)
+      // Insertar el registro
+      let initialDocumentURL = null;
+      if (isExternalTrainer && externalTrainerName) {
+        initialDocumentURL = `EXT:${externalTrainerName}`;
+      }
+
       const [result] = await connection.execute(
         `INSERT INTO employeedc3 
          (EmployeeID, SpecificOccupation, CourseName, StartDate, EndDate, Area, TrainerID, Duration, DocumentURL) 
@@ -465,41 +518,40 @@ export async function POST(request: NextRequest) {
           startDateFormatted,
           endDateFormatted,
           Area || null,
-          TrainerID || null,
+          finalTrainerId,
           Duration || null,
-          null
+          initialDocumentURL
         ]
       );
 
       const dc3Id = (result as any).insertId;
-
-      // CONFIRMAR LA TRANSACCIÓN PRIMERO
       await connection.commit();
 
-      // AHORA generar el PDF con una nueva conexión (los datos ya están en la BD)
+      // Generar PDF
       let fileUrl = null;
-
       try {
-        // Pequeña pausa para asegurar que la base de datos tenga el registro
         await new Promise(resolve => setTimeout(resolve, 200));
-        
         const { fileUrl: pdfUrl } = await generateDC3PDF(dc3Id);
         fileUrl = pdfUrl;
         
-        // Actualizar el campo DocumentURL en la base de datos (usando nueva conexión)
         const updateConnection = await getConnection();
         try {
+          let finalDocUrl = pdfUrl;
+          
+          // Si es instructor externo, guardar el nombre en DocumentURL
+          if (isExternalTrainer && externalTrainerName) {
+            finalDocUrl = `PDF:${pdfUrl}|EXT:${externalTrainerName}`;
+          }
+          
           await updateConnection.execute(
             `UPDATE employeedc3 SET DocumentURL = ? WHERE DC3ID = ?`,
-            [pdfUrl, dc3Id]
+            [finalDocUrl, dc3Id]
           );
-          console.log(`PDF subido a UploadThing y URL actualizada: ${pdfUrl}`);
         } finally {
           await updateConnection.release();
         }
       } catch (pdfError) {
         console.error('Error al generar/subir PDF:', pdfError);
-        // No revertimos la transacción principal, solo registramos el error
       }
 
       return NextResponse.json({
@@ -521,7 +573,7 @@ export async function POST(request: NextRequest) {
     
     if (error instanceof Error) {
       if (error.message.includes('foreign key constraint')) {
-        errorMessage = 'ERROR: El empleado seleccionado no existe';
+        errorMessage = 'ERROR: El empleado o instructor seleccionado no existe';
       } else if (error.message.includes('date value')) {
         errorMessage = 'ERROR: Formato de fecha incorrecto';
       } else {
