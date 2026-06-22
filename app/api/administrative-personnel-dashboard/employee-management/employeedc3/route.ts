@@ -42,34 +42,11 @@ async function verifyTrainerExists(connection: any, trainerId: number): Promise<
   }
 }
 
-// Función para extraer el nombre del instructor externo de DocumentURL
-function extractExternalTrainerName(documentURL: string | null): string | null {
-  if (!documentURL) return null;
-  
-  // Buscar el patrón EXT:Nombre
-  const extMatch = documentURL.match(/EXT:([^|]*)/);
-  if (extMatch) {
-    return extMatch[1].trim();
-  }
-  
-  // Si el documentURL comienza con EXT: sin PDF
-  if (documentURL.startsWith('EXT:')) {
-    return documentURL.substring(4).trim();
-  }
-  
-  return null;
-}
-
 // Función para extraer la URL del PDF de DocumentURL
 function getPDFUrlFromDocumentURL(documentURL: string | null): string | null {
   if (!documentURL) return null;
   
-  const pdfMatch = documentURL.match(/PDF:([^|]*)/);
-  if (pdfMatch) {
-    return pdfMatch[1];
-  }
-  
-  // Si solo es una URL (sin PDF:)
+  // Si el documentURL es una URL válida
   if (documentURL.startsWith('http://') || documentURL.startsWith('https://')) {
     return documentURL;
   }
@@ -78,7 +55,7 @@ function getPDFUrlFromDocumentURL(documentURL: string | null): string | null {
 }
 
 // Función para generar el PDF DC-3
-async function generateDC3PDF(dc3Id: number): Promise<{ pdfBuffer: ArrayBuffer; fileUrl: string }> {
+async function generateDC3PDF(dc3Id: number): Promise<{ pdfBuffer: ArrayBuffer; fileUrl: string; trainerName: string }> {
   const tempExcelPath = path.join(os.tmpdir(), `DC-3-${Date.now()}-${dc3Id}.xlsx`);
   let connection;
 
@@ -96,6 +73,7 @@ async function generateDC3PDF(dc3Id: number): Promise<{ pdfBuffer: ArrayBuffer; 
         dc.Area,
         dc.Duration,
         dc.TrainerID,
+        dc.ExternalTrainerName,
         dc.DocumentURL,
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
@@ -144,13 +122,13 @@ async function generateDC3PDF(dc3Id: number): Promise<{ pdfBuffer: ArrayBuffer; 
 
     let trainerName = '';
     
-    // Verificar si el instructor es externo (TrainerID = null)
-    if (dc3Record.TrainerID === null) {
-      // Instructor externo - extraer nombre del DocumentURL
-      const extName = extractExternalTrainerName(dc3Record.DocumentURL);
-      trainerName = extName || "INSTRUCTOR EXTERNO";
-    } else if (dc3Record.TrainerFirstName) {
-      // Instructor interno
+    // PRIMERO: Verificar si hay un instructor externo en ExternalTrainerName
+    if (dc3Record.ExternalTrainerName) {
+      trainerName = dc3Record.ExternalTrainerName;
+    }
+    
+    // SEGUNDO: Si no se encontró instructor externo, buscar instructor interno
+    if (!trainerName && dc3Record.TrainerID !== null && dc3Record.TrainerFirstName) {
       trainerName = [
         dc3Record.TrainerFirstName || '',
         dc3Record.TrainerLastName || '',
@@ -158,8 +136,13 @@ async function generateDC3PDF(dc3Id: number): Promise<{ pdfBuffer: ArrayBuffer; 
       ].filter(part => part.trim() !== '').join(' ');
     }
     
+    // Si aún no hay nombre, usar "INSTRUCTOR NO ESPECIFICADO"
     if (!trainerName || trainerName.trim() === '') {
-      trainerName = "INSTRUCTOR NO ESPECIFICADO";
+      if (dc3Record.TrainerID !== null) {
+        trainerName = `INSTRUCTOR ID: ${dc3Record.TrainerID}`;
+      } else {
+        trainerName = "INSTRUCTOR NO ESPECIFICADO";
+      }
     }
 
     const startYear = dc3Record.StartDate ? new Date(dc3Record.StartDate).getFullYear().toString() : '';
@@ -221,7 +204,7 @@ async function generateDC3PDF(dc3Id: number): Promise<{ pdfBuffer: ArrayBuffer; 
     
     const fileUrl = uploadResponse[0].data.url;
     
-    return { pdfBuffer, fileUrl };
+    return { pdfBuffer, fileUrl, trainerName };
 
   } catch (error) {
     console.error('Error al generar PDF DC3:', error);
@@ -244,7 +227,7 @@ async function generateDC3PDF(dc3Id: number): Promise<{ pdfBuffer: ArrayBuffer; 
   }
 }
 
-// GET: Obtener todos los registros
+// GET: Obtener todos los registros o uno específico
 export async function GET(request: NextRequest) {
   let connection;
   
@@ -274,7 +257,84 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const url = new URL(request.url);
+    const pathSegments = url.pathname.split('/');
+    const lastSegment = pathSegments[pathSegments.length - 1];
+    const dc3Id = !isNaN(Number(lastSegment)) ? Number(lastSegment) : null;
+
     connection = await getConnection();
+
+    if (dc3Id) {
+      const [rows] = await connection.execute<any[]>(
+        `SELECT 
+          dc.DC3ID,
+          dc.EmployeeID,
+          dc.SpecificOccupation,
+          dc.CourseName,
+          dc.StartDate,
+          dc.EndDate,
+          dc.Area,
+          dc.TrainerID,
+          dc.ExternalTrainerName,
+          dc.Duration,
+          dc.DocumentURL,
+          COALESCE(bp.FirstName, pp.FirstName) as FirstName,
+          COALESCE(bp.LastName, pp.LastName) as LastName,
+          COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
+          COALESCE(bp.Position, pc.Position) as Position,
+          CASE 
+            WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
+            ELSE 'PROJECT'
+          END as tipo,
+          trainer_bp.FirstName as TrainerFirstName,
+          trainer_bp.LastName as TrainerLastName,
+          trainer_bp.MiddleName as TrainerMiddleName
+        FROM employeedc3 dc
+        INNER JOIN employees e ON e.EmployeeID = dc.EmployeeID
+        LEFT JOIN basepersonnel bp ON dc.EmployeeID = bp.EmployeeID
+        LEFT JOIN projectpersonnel pp ON dc.EmployeeID = pp.EmployeeID
+        LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+        LEFT JOIN employees trainer_emp ON dc.TrainerID = trainer_emp.EmployeeID AND dc.TrainerID IS NOT NULL
+        LEFT JOIN basepersonnel trainer_bp ON dc.TrainerID = trainer_bp.EmployeeID AND dc.TrainerID IS NOT NULL
+        LEFT JOIN projectpersonnel trainer_pp ON dc.TrainerID = trainer_pp.EmployeeID AND dc.TrainerID IS NOT NULL
+        WHERE dc.DC3ID = ? AND e.Status = 1 AND (
+            bp.EmployeeID IS NOT NULL
+            OR pc.Status = 1
+        )`,
+        [dc3Id]
+      );
+
+      if (rows.length === 0) {
+        return NextResponse.json(
+          { success: false, message: 'Registro no encontrado' },
+          { status: 404 }
+        );
+      }
+
+      const record = rows[0];
+      let trainerName = null;
+      let isExternalTrainer = false;
+      
+      if (record.ExternalTrainerName) {
+        trainerName = record.ExternalTrainerName;
+        isExternalTrainer = true;
+      } else if (record.TrainerID !== null && record.TrainerFirstName) {
+        trainerName = [
+          record.TrainerFirstName || '',
+          record.TrainerLastName || '',
+          record.TrainerMiddleName || ''
+        ].filter(part => part.trim() !== '').join(' ');
+      }
+
+      return NextResponse.json({
+        success: true,
+        record: {
+          ...record,
+          TrainerName: trainerName,
+          isExternalTrainer: isExternalTrainer
+        }
+      });
+    }
 
     const [rows] = await connection.execute(`
       SELECT 
@@ -286,6 +346,7 @@ export async function GET(request: NextRequest) {
         dc.EndDate,
         dc.Area,
         dc.TrainerID,
+        dc.ExternalTrainerName,
         dc.Duration,
         dc.DocumentURL,
         e.Status,
@@ -321,13 +382,9 @@ export async function GET(request: NextRequest) {
       let trainerName = null;
       let isExternalTrainer = false;
       
-      // Verificar si es instructor externo
-      if (record.TrainerID === null && record.DocumentURL) {
-        const extName = extractExternalTrainerName(record.DocumentURL);
-        if (extName) {
-          trainerName = extName;
-          isExternalTrainer = true;
-        }
+      if (record.ExternalTrainerName) {
+        trainerName = record.ExternalTrainerName;
+        isExternalTrainer = true;
       } else if (record.TrainerID !== null && record.TrainerFirstName) {
         trainerName = [
           record.TrainerFirstName || '',
@@ -412,7 +469,6 @@ export async function POST(request: NextRequest) {
       Duration
     } = body;
 
-    // Validaciones
     if (!EmployeeID) {
       return NextResponse.json(
         { success: false, message: 'El ID del empleado es requerido' },
@@ -459,7 +515,6 @@ export async function POST(request: NextRequest) {
     await connection.beginTransaction();
 
     try {
-      // Verificar empleado
       const [baseCheck] = await connection.execute(
         'SELECT EmployeeID FROM basepersonnel WHERE EmployeeID = ?',
         [EmployeeID]
@@ -474,18 +529,13 @@ export async function POST(request: NextRequest) {
         throw new Error('El empleado no existe');
       }
 
-      // Determinar el instructor
       let finalTrainerId = null;
-      let isExternalTrainer = false;
       let externalTrainerName = null;
 
-      // Si TrainerName tiene valor → instructor externo
       if (TrainerName && TrainerName.trim() !== '') {
         finalTrainerId = null;
-        isExternalTrainer = true;
         externalTrainerName = TrainerName.trim();
       } 
-      // Si TrainerID es número > 0 → instructor interno
       else if (TrainerID !== undefined && TrainerID !== null && TrainerID !== '' && Number(TrainerID) > 0) {
         const trainerIdNum = Number(TrainerID);
         const trainerExists = await verifyTrainerExists(connection, trainerIdNum);
@@ -493,7 +543,6 @@ export async function POST(request: NextRequest) {
           throw new Error(`El instructor con ID ${trainerIdNum} no existe`);
         }
         finalTrainerId = trainerIdNum;
-        isExternalTrainer = false;
       } else {
         throw new Error('Debe seleccionar un instructor interno o especificar un instructor externo');
       }
@@ -501,15 +550,9 @@ export async function POST(request: NextRequest) {
       const startDateFormatted = formatearFechaMySQL(StartDate);
       const endDateFormatted = formatearFechaMySQL(EndDate);
 
-      // Insertar el registro
-      let initialDocumentURL = null;
-      if (isExternalTrainer && externalTrainerName) {
-        initialDocumentURL = `EXT:${externalTrainerName}`;
-      }
-
       const [result] = await connection.execute(
         `INSERT INTO employeedc3 
-         (EmployeeID, SpecificOccupation, CourseName, StartDate, EndDate, Area, TrainerID, Duration, DocumentURL) 
+         (EmployeeID, SpecificOccupation, CourseName, StartDate, EndDate, Area, TrainerID, ExternalTrainerName, Duration) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           EmployeeID,
@@ -519,33 +562,25 @@ export async function POST(request: NextRequest) {
           endDateFormatted,
           Area || null,
           finalTrainerId,
-          Duration || null,
-          initialDocumentURL
+          externalTrainerName,
+          Duration || null
         ]
       );
 
       const dc3Id = (result as any).insertId;
       await connection.commit();
 
-      // Generar PDF
       let fileUrl = null;
       try {
         await new Promise(resolve => setTimeout(resolve, 200));
-        const { fileUrl: pdfUrl } = await generateDC3PDF(dc3Id);
+        const { fileUrl: pdfUrl, trainerName } = await generateDC3PDF(dc3Id);
         fileUrl = pdfUrl;
         
         const updateConnection = await getConnection();
         try {
-          let finalDocUrl = pdfUrl;
-          
-          // Si es instructor externo, guardar el nombre en DocumentURL
-          if (isExternalTrainer && externalTrainerName) {
-            finalDocUrl = `PDF:${pdfUrl}|EXT:${externalTrainerName}`;
-          }
-          
           await updateConnection.execute(
             `UPDATE employeedc3 SET DocumentURL = ? WHERE DC3ID = ?`,
-            [finalDocUrl, dc3Id]
+            [pdfUrl, dc3Id]
           );
         } finally {
           await updateConnection.release();
@@ -579,6 +614,363 @@ export async function POST(request: NextRequest) {
       } else {
         errorMessage = error.message;
       }
+    }
+    
+    return NextResponse.json(
+      { 
+        success: false, 
+        message: errorMessage,
+        error: process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : undefined
+      },
+      { status: 500 }
+    );
+  } finally {
+    if (connection) {
+      try {
+        await connection.release();
+      } catch (error) {
+        console.error('Error al cerrar la conexión:', error);
+      }
+    }
+  }
+}
+
+// PUT: Actualizar registro DC3 existente
+export async function PUT(request: NextRequest) {
+  let connection;
+  
+  try {
+    const url = new URL(request.url);
+    const pathSegments = url.pathname.split('/');
+    const lastSegment = pathSegments[pathSegments.length - 1];
+    const dc3Id = !isNaN(Number(lastSegment)) ? Number(lastSegment) : null;
+
+    if (!dc3Id) {
+      return NextResponse.json(
+        { success: false, message: 'ID de DC3 no proporcionado' },
+        { status: 400 }
+      );
+    }
+    
+    const sessionId = request.cookies.get("session")?.value;
+
+    if (!sessionId) {
+      return NextResponse.json(
+        { success: false, message: 'NO AUTORIZADO' },
+        { status: 401 }
+      );
+    }
+
+    const user = await validateAndRenewSession(sessionId);
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: 'SESIÓN INVÁLIDA O EXPIRADA' },
+        { status: 401 }
+      );
+    }
+
+    if (user.UserTypeID !== 2) {
+      return NextResponse.json(
+        { success: false, message: 'ACCESO DENEGADO' },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const { 
+      EmployeeID,
+      SpecificOccupation,
+      CourseName,
+      StartDate,
+      EndDate,
+      Area,
+      TrainerID,
+      TrainerName,
+      Duration
+    } = body;
+
+    if (!EmployeeID) {
+      return NextResponse.json(
+        { success: false, message: 'El ID del empleado es requerido' },
+        { status: 400 }
+      );
+    }
+
+    if (!CourseName) {
+      return NextResponse.json(
+        { success: false, message: 'El nombre del curso es requerido' },
+        { status: 400 }
+      );
+    }
+
+    if (!StartDate) {
+      return NextResponse.json(
+        { success: false, message: 'La fecha de inicio es requerida' },
+        { status: 400 }
+      );
+    }
+
+    if (!EndDate) {
+      return NextResponse.json(
+        { success: false, message: 'La fecha de fin es requerida' },
+        { status: 400 }
+      );
+    }
+
+    if (new Date(StartDate) > new Date(EndDate)) {
+      return NextResponse.json(
+        { success: false, message: 'LA FECHA DE FIN DEBE SER POSTERIOR A LA FECHA DE INICIO' },
+        { status: 400 }
+      );
+    }
+
+    if (Duration && (typeof Duration !== 'number' || Duration <= 0 || !Number.isInteger(Duration))) {
+      return NextResponse.json(
+        { success: false, message: 'La duración debe ser un número entero positivo' },
+        { status: 400 }
+      );
+    }
+
+    connection = await getConnection();
+    await connection.beginTransaction();
+
+    try {
+      const [recordCheck] = await connection.execute(
+        'SELECT * FROM employeedc3 WHERE DC3ID = ?',
+        [dc3Id]
+      );
+
+      if ((recordCheck as any[]).length === 0) {
+        throw new Error('El registro DC3 no existe');
+      }
+
+      const [baseCheck] = await connection.execute(
+        'SELECT EmployeeID FROM basepersonnel WHERE EmployeeID = ?',
+        [EmployeeID]
+      );
+
+      const [projectCheck] = await connection.execute(
+        'SELECT EmployeeID FROM projectpersonnel WHERE EmployeeID = ?',
+        [EmployeeID]
+      );
+
+      if ((baseCheck as any[]).length === 0 && (projectCheck as any[]).length === 0) {
+        throw new Error('El empleado no existe');
+      }
+
+      let finalTrainerId = null;
+      let externalTrainerName = null;
+
+      // Prioridad: TrainerName (externo) > TrainerID (interno)
+      if (TrainerName && TrainerName.trim() !== '') {
+        // Instructor externo
+        finalTrainerId = null;
+        externalTrainerName = TrainerName.trim();
+      } 
+      else if (TrainerID !== undefined && TrainerID !== null && TrainerID !== '' && Number(TrainerID) > 0) {
+        // Instructor interno
+        const trainerIdNum = Number(TrainerID);
+        const trainerExists = await verifyTrainerExists(connection, trainerIdNum);
+        if (!trainerExists) {
+          throw new Error(`El instructor con ID ${trainerIdNum} no existe`);
+        }
+        finalTrainerId = trainerIdNum;
+        externalTrainerName = null;
+      } 
+      else {
+        // Si no se envió ni TrainerID ni TrainerName, mantener los valores existentes
+        const [existingRecord] = await connection.execute(
+          'SELECT TrainerID, ExternalTrainerName FROM employeedc3 WHERE DC3ID = ?',
+          [dc3Id]
+        );
+        if (existingRecord && (existingRecord as any[]).length > 0) {
+          const existing = (existingRecord as any[])[0];
+          
+          if (existing.ExternalTrainerName) {
+            externalTrainerName = existing.ExternalTrainerName;
+            finalTrainerId = null;
+          } else if (existing.TrainerID !== null && existing.TrainerID > 0) {
+            finalTrainerId = existing.TrainerID;
+            externalTrainerName = null;
+          }
+        }
+      }
+
+      const startDateFormatted = formatearFechaMySQL(StartDate);
+      const endDateFormatted = formatearFechaMySQL(EndDate);
+
+      await connection.execute(
+        `UPDATE employeedc3 SET 
+          EmployeeID = ?,
+          SpecificOccupation = ?,
+          CourseName = ?,
+          StartDate = ?,
+          EndDate = ?,
+          Area = ?,
+          TrainerID = ?,
+          ExternalTrainerName = ?,
+          Duration = ?
+        WHERE DC3ID = ?`,
+        [
+          EmployeeID,
+          SpecificOccupation || null,
+          CourseName,
+          startDateFormatted,
+          endDateFormatted,
+          Area || null,
+          finalTrainerId,
+          externalTrainerName,
+          Duration || null,
+          dc3Id
+        ]
+      );
+
+      await connection.commit();
+
+      let fileUrl = null;
+      try {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        const { fileUrl: pdfUrl, trainerName } = await generateDC3PDF(dc3Id);
+        fileUrl = pdfUrl;
+        
+        const updateConnection = await getConnection();
+        try {
+          await updateConnection.execute(
+            `UPDATE employeedc3 SET DocumentURL = ? WHERE DC3ID = ?`,
+            [pdfUrl, dc3Id]
+          );
+        } finally {
+          await updateConnection.release();
+        }
+      } catch (pdfError) {
+        console.error('Error al generar/subir PDF:', pdfError);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: fileUrl ? 'Registro DC3 actualizado exitosamente con nuevo documento' : 'Registro DC3 actualizado exitosamente',
+        fileUrl: fileUrl
+      });
+
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    }
+
+  } catch (error) {
+    console.error('Error al actualizar registro DC3:', error);
+    
+    let errorMessage = 'ERROR AL ACTUALIZAR EL REGISTRO DC3';
+    
+    if (error instanceof Error) {
+      if (error.message.includes('foreign key constraint')) {
+        errorMessage = 'ERROR: El empleado o instructor seleccionado no existe';
+      } else if (error.message.includes('date value')) {
+        errorMessage = 'ERROR: Formato de fecha incorrecto';
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
+    return NextResponse.json(
+      { 
+        success: false, 
+        message: errorMessage,
+        error: process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : undefined
+      },
+      { status: 500 }
+    );
+  } finally {
+    if (connection) {
+      try {
+        await connection.release();
+      } catch (error) {
+        console.error('Error al cerrar la conexión:', error);
+      }
+    }
+  }
+}
+
+// DELETE: Eliminar registro DC3
+export async function DELETE(request: NextRequest) {
+  let connection;
+  
+  try {
+    const url = new URL(request.url);
+    const pathSegments = url.pathname.split('/');
+    const lastSegment = pathSegments[pathSegments.length - 1];
+    const dc3Id = !isNaN(Number(lastSegment)) ? Number(lastSegment) : null;
+
+    if (!dc3Id) {
+      return NextResponse.json(
+        { success: false, message: 'ID de DC3 no proporcionado' },
+        { status: 400 }
+      );
+    }
+    
+    const sessionId = request.cookies.get("session")?.value;
+
+    if (!sessionId) {
+      return NextResponse.json(
+        { success: false, message: 'NO AUTORIZADO' },
+        { status: 401 }
+      );
+    }
+
+    const user = await validateAndRenewSession(sessionId);
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: 'SESIÓN INVÁLIDA O EXPIRADA' },
+        { status: 401 }
+      );
+    }
+
+    if (user.UserTypeID !== 2) {
+      return NextResponse.json(
+        { success: false, message: 'ACCESO DENEGADO' },
+        { status: 403 }
+      );
+    }
+
+    connection = await getConnection();
+    await connection.beginTransaction();
+
+    try {
+      const [recordCheck] = await connection.execute(
+        'SELECT * FROM employeedc3 WHERE DC3ID = ?',
+        [dc3Id]
+      );
+
+      if ((recordCheck as any[]).length === 0) {
+        throw new Error('El registro DC3 no existe');
+      }
+
+      await connection.execute(
+        'DELETE FROM employeedc3 WHERE DC3ID = ?',
+        [dc3Id]
+      );
+
+      await connection.commit();
+
+      return NextResponse.json({
+        success: true,
+        message: 'Registro DC3 eliminado exitosamente'
+      });
+
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    }
+
+  } catch (error) {
+    console.error('Error al eliminar registro DC3:', error);
+    
+    let errorMessage = 'ERROR AL ELIMINAR EL REGISTRO DC3';
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
     }
     
     return NextResponse.json(
