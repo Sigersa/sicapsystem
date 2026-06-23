@@ -669,7 +669,7 @@ export default function EmployeeIncidencePage() {
                                     ¡REGISTRO EXITOSO!
                                 </h2>
                                 <p className="text-gray-600 mt-1 text-sm">
-                                    Lote de {successDetails.incidenceCount} incidencia(s) registrado correctamente para el empleado.
+                                    La incidencia ha sido registrada correctamente en el sistema.
                                 </p>
                             </div>
                             <button
@@ -685,12 +685,16 @@ export default function EmployeeIncidencePage() {
                             <div className="w-full md:w-1/3 p-6 border-r border-gray-200 overflow-y-auto">
                                 <div className="space-y-4">
                                     <div className="bg-gray-50 rounded-lg p-4">
-                                        <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DETALLES DEL LOTE</h3>
+                                        <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DETALLES DEL REGISTRO</h3>
                                         <div className="space-y-3">
                                             <div className="flex justify-between items-center">
-                                                <span className="block text-xs font-bold text-gray-700 uppercase">ID LOTE:</span>
+                                                <span className="block text-xs font-bold text-gray-700 uppercase">ID DEL REGISTRO:</span>
                                                 <span className="text-gray-600 mt-1 text-sm">{successDetails.BatchID}</span>
                                             </div>
+                                            <div className="flex justify-between items-center">
+                                                    <span className="block text-xs font-bold text-gray-700 uppercase">ID EMPLEADO:</span>
+                                                    <span className="text-gray-600 mt-1 text-sm">{successDetails.EmployeeID}</span>
+                                                </div>
                                             <div className="flex justify-between items-center">
                                                 <span className="block text-xs font-bold text-gray-700 uppercase">EMPLEADO:</span>
                                                 <span className="text-gray-600 mt-1 text-sm">{successDetails.EmployeeName}</span>
@@ -700,7 +704,7 @@ export default function EmployeeIncidencePage() {
                                                 <span className="text-gray-600 mt-1 text-sm">{successDetails.tipo}</span>
                                             </div>
                                             <div className="flex justify-between items-center">
-                                                <span className="block text-xs font-bold text-gray-700 uppercase"># INCIDENCIAS:</span>
+                                                <span className="block text-xs font-bold text-gray-700 uppercase">NO. INCIDENCIAS:</span>
                                                 <span className="text-gray-600 mt-1 text-sm">{successDetails.incidenceCount}</span>
                                             </div>
                                         </div>
@@ -781,7 +785,7 @@ export default function EmployeeIncidencePage() {
                                         src={successDetails.pdfUrl}
                                         className="w-full h-full border-0"
                                         onLoad={() => setPdfLoading(false)}
-                                        title="Vista previa de incidencias"
+                                         title="Vista previa del formato FT-RH-27"
                                     />
                                 </div>
                             </div>
@@ -1090,12 +1094,13 @@ export default function EmployeeIncidencePage() {
                                 <thead className="bg-gray-100">
                                     <tr>
                                         <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ID</th>
+                                        <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ID EMPLEADO</th>
                                         <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">EMPLEADO</th>
                                         <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">PUESTO</th>
                                         <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">TIPO</th>
-                                        <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300"># INC</th>
+                                        <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">NO. INCIDENCIAS</th>
                                         <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FECHA</th>
-                                        <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">DOC</th>
+                                        <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">DOCUMENTOS</th>
                                         <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
                                     </tr>
                                 </thead>
@@ -1105,7 +1110,7 @@ export default function EmployeeIncidencePage() {
                                             <td colSpan={8} className="py-12 text-center">
                                                 <div className="flex flex-col items-center justify-center">
                                                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
-                                                    <p className="text-gray-600">Cargando lotes...</p>
+                                                    <p className="text-gray-600">Cargando incidencias...</p>
                                                 </div>
                                             </td>
                                         </tr>
@@ -1129,6 +1134,7 @@ export default function EmployeeIncidencePage() {
                                             return (
                                                 <tr key={record.BatchID} className="hover:bg-gray-50 transition-colors border-b border-gray-300">
                                                     <td className="py-3 px-4 text-sm text-gray-800 font-medium">{record.BatchID}</td>
+                                                    <td className="py-3 px-4 text-sm text-gray-800 font-medium">{record.EmployeeID}</td>
                                                     <td className="py-3 px-4">
                                                         <div className="text-sm text-gray-800 uppercase">
                                                             {employeeName}
