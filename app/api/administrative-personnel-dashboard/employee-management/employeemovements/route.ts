@@ -1,4 +1,4 @@
-// app/api/administrative-personnel-dashboard/employee-management/employeepermissions/route.ts
+// app/api/administrative-personnel-dashboard/employee-management/employeemovements/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -12,31 +12,13 @@ import ConvertAPI from "convertapi";
 const convertapi = new ConvertAPI(process.env.CONVERTAPI_SECRET!);
 const utapi = new UTApi();
 
-// Función para formatear fecha correctamente para MySQL (YYYY-MM-DD)
-const formatearFechaMySQL = (fecha: string): string | null => {
-  if (!fecha) return null;
-  
-  try {
-    if (fecha.includes('T')) {
-      return fecha.split('T')[0];
-    }
-    return fecha;
-  } catch {
-    return null;
-  }
-};
-
-// Función para generar el PDF FT-RH-09
-async function generatePermissionPDF(
+// Función para generar el PDF FT-RH-10
+async function generateMovementPDF(
   movementId: number
 ): Promise<{ pdfBuffer: ArrayBuffer; fileUrl: string }> {
   const tempExcelPath = path.join(
     os.tmpdir(),
     `FT-RH-10-${Date.now()}-${movementId}.xlsx`
-  );
-  const tempPdfPath = path.join(
-    os.tmpdir(),
-    `FT-RH-10-${Date.now()}-${movementId}.pdf`
   );
 
   let connection;
@@ -44,36 +26,36 @@ async function generatePermissionPDF(
   try {
     connection = await getConnection();
 
-    // Obtener información del permiso y del empleado
+    // Obtener información del movimiento y del empleado
     const [rows] = await connection.execute<any[]>(
       `SELECT 
-	em.MovementID,
-    em.EmployeeID,
-    em.MovementType,
-    em.Specification,
-    em.ApplicationDate,
-    em.Duration,
-    em.Former,
-    em.New,
-    em.StartDate,
-    em.EndDate,
-    em.Observations,
-	bp.Area,
-    pj.NameProject,
-	COALESCE(bp.FirstName, pp.FirstName) as FirstName,
-	COALESCE(bp.LastName, pp.LastName) as LastName,
-	COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
-	COALESCE(bp.Position, pc.Position) as Position,
-    COALESCE(bc.StartDate, pj.StartDate) as StartDatee,
-	COALESCE(bppi.CURP, pppi.CURP) as CURP,
-	COALESCE(bppi.RFC, pppi.RFC) as RFC,
-	COALESCE(bppi.NSS, pppi.NSS) as NSS,
-    bc.JefeDirectoID,
-    pj.AdminProjectID,
-    COALESCE(bpp.FirstName, ppp.FirstName) as JefeFirstName,
-    COALESCE(bpp.LastName, ppp.LastName) as JefeLastName,
-    COALESCE(bpp.MiddleName, ppp.MiddleName) as JefeMiddleName,
-    CASE 
+        em.MovementID,
+        em.EmployeeID,
+        em.MovementType,
+        em.Specification,
+        em.ApplicationDate,
+        em.Duration,
+        em.Former,
+        em.New,
+        em.StartDate,
+        em.EndDate,
+        em.Observations,
+        bp.Area,
+        pj.NameProject,
+        COALESCE(bp.FirstName, pp.FirstName) as FirstName,
+        COALESCE(bp.LastName, pp.LastName) as LastName,
+        COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
+        COALESCE(bp.Position, pc.Position) as Position,
+        COALESCE(bc.StartDate, pj.StartDate) as StartDatee,
+        COALESCE(bppi.CURP, pppi.CURP) as CURP,
+        COALESCE(bppi.RFC, pppi.RFC) as RFC,
+        COALESCE(bppi.NSS, pppi.NSS) as NSS,
+        bc.JefeDirectoID,
+        pj.AdminProjectID,
+        COALESCE(bpp.FirstName, ppp.FirstName) as JefeFirstName,
+        COALESCE(bpp.LastName, ppp.LastName) as JefeLastName,
+        COALESCE(bpp.MiddleName, ppp.MiddleName) as JefeMiddleName,
+        CASE 
           WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
           ELSE 'PROJECT'
         END as tipo
@@ -86,12 +68,12 @@ async function generatePermissionPDF(
       LEFT JOIN projectpersonnelpersonalinfo pppi ON pppi.ProjectPersonnelID = pp.ProjectPersonnelID
       LEFT JOIN projects pj ON pj.ProjectID = pc.ProjectID
       LEFT JOIN employees e ON e.EmployeeID = pj.AdminProjectID
-	  LEFT JOIN employees ee ON ee.EmployeeID = bc.JefeDirectoID
-      	 LEFT JOIN basepersonnel bpp ON bpp.EmployeeID = ee.EmployeeID
-	 LEFT JOIN basepersonnel ppp ON ppp.EmployeeID = e.EmployeeID
+      LEFT JOIN employees ee ON ee.EmployeeID = bc.JefeDirectoID
+      LEFT JOIN basepersonnel bpp ON bpp.EmployeeID = ee.EmployeeID
+      LEFT JOIN basepersonnel ppp ON ppp.EmployeeID = e.EmployeeID
       WHERE em.MovementID = ? AND (
-          bp.EmployeeID IS NOT NULL
-          OR pc.Status = 1
+        bp.EmployeeID IS NOT NULL
+        OR pc.Status = 1
       )`,
       [movementId]
     );
@@ -102,31 +84,25 @@ async function generatePermissionPDF(
 
     const mov = rows[0];
 
-   const employeeName = [
+    const employeeName = [
       mov.FirstName || '',
       mov.LastName || '',
       mov.MiddleName || ''
     ].filter(part => part && part.trim() !== '').join(' ').trim() || 'NO ESPECIFICADO';
 
-     // Construir nombre completo del jefe directo
     const jefeDirectoNombre = [
       mov.JefeFirstName || '',
       mov.JefeLastName || '',
       mov.JefeMiddleName || ''
-    ].filter(part => part.trim() !== '').join(' ') || "NO ESPECIFICADO";
+    ].filter(part => part && part.trim() !== '').join(' ') || "NO ESPECIFICADO";
 
     const formatDate = (dateValue: any): string => {
       if (!dateValue) return 'NO ESPECIFICADO';
-    
-    
- 
       try {
         const date = new Date(dateValue);
-        // Verificar si es una fecha válida
         if (isNaN(date.getTime())) {
           return 'NO ESPECIFICADO';
         }
-        // Usar el mismo formato que en FT-RH-21: toLocaleDateString('es-MX')
         return date.toLocaleDateString('es-MX');
       } catch (error) {
         console.error('Error al formatear fecha:', error);
@@ -135,96 +111,66 @@ async function generatePermissionPDF(
     };
 
     // Cargar plantilla Excel
-        const templatePath = path.join(
-          process.cwd(),
-          "public",
-          "administrative-personnel-dashboard",
-          "personnel-management",
-          "FT-RH-10.xlsx"
-        );
+    const templatePath = path.join(
+      process.cwd(),
+      "public",
+      "administrative-personnel-dashboard",
+      "personnel-management",
+      "FT-RH-10.xlsx"
+    );
     
-        
     if (!fs.existsSync(templatePath)) {
-      throw new Error('Plantilla FT-RH-09 no encontrada en: ' + templatePath);
+      throw new Error('Plantilla FT-RH-10 no encontrada en: ' + templatePath);
     }
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(templatePath);
     const ws = workbook.getWorksheet(1)!;
 
-     ws.getCell('A6').value = mov.EmployeeID || 'NO ESPECIFICADO';
-        ws.getCell('C6').value = mov.LastName || 'NO ESPECIFICADO';
-        ws.getCell('H6').value = mov.MiddleName || 'NO ESPECIFICADO';
-        ws.getCell('N6').value = mov.FirstName || 'NO ESPECIFICADO';
-        ws.getCell('A9').value = mov.Position || 'NO ESPECIFICADO';
-        ws.getCell('G9').value = mov.Area || 'N/A';
-        ws.getCell('N9').value = mov.NameProject || 'N/A';
-        ws.getCell('A12').value = mov.CURP || 'NO ESPECIFICADO';
-        ws.getCell('F12').value = mov.RFC || 'NO ESPECIFICADO';
-        ws.getCell('L12').value = mov.NSS || 'NO ESPECIFICADO'
-        ws.getCell('P12').value = formatDate(mov.StartDatee) || 'NO ESPECIFICADO';
-        if (mov.MovementType){
-          const tipomovimiento = mov.MovementType.toUpperCase().trim();
-          if (tipomovimiento === "PUESTO")  {
-            ws.getCell("C16").value = mov.Specification;
-            ws.getCell("G16").value = formatDate(mov.ApplicationDate);
-            ws.getCell("I16").value = mov.Duration;
-            ws.getCell("K16").value = mov.Former;
-            ws.getCell("N16").value = mov.New;
-            ws.getCell("P16").value = formatDate(mov.StartDate);
-            ws.getCell("R16").value = formatDate(mov.EndDate);
-          }
-          else if (tipomovimiento === "SUELDO"){
-            ws.getCell("C18").value = mov.Specification;
-            ws.getCell("G18").value = formatDate(mov.ApplicationDate);
-            ws.getCell("I18").value = mov.Duration;
-            ws.getCell("K18").value = mov.Former;
-            ws.getCell("N18").value = mov.New;
-            ws.getCell("P18").value = formatDate(mov.StartDate);
-            ws.getCell("R18").value = formatDate(mov.EndDate);
-          } 
-          else if (tipomovimiento === "PROYECTO/AREA")  {
-            ws.getCell("C20").value = mov.Specification;
-            ws.getCell("G20").value = formatDate(mov.ApplicationDate);
-            ws.getCell("I20").value = mov.Duration; 
-            ws.getCell("K20").value = mov.Former;
-            ws.getCell("N20").value = mov.New;
-            ws.getCell("P20").value = formatDate(mov.StartDate);
-            ws.getCell("R20").value = formatDate(mov.EndDate);
-          }
-          else if (tipomovimiento === "VACACIONES") {
-            ws.getCell("C22").value = mov.Specification;
-            ws.getCell("G22").value = formatDate(mov.ApplicationDate);
-            ws.getCell("I22").value = mov.Duration;
-            ws.getCell("K22").value = mov.Former;
-            ws.getCell("N22").value = mov.New;
-            ws.getCell("P22").value = formatDate(mov.StartDate);
-            ws.getCell("R22").value = formatDate(mov.EndDate);
-          }
-          else if (tipomovimiento === "COMISION") {
-            ws.getCell("C24").value = mov.Specification;
-            ws.getCell("G24").value = formatDate(mov.ApplicationDate);
-            ws.getCell("I24").value = mov.Duration;
-            ws.getCell("K24").value = mov.Former;
-            ws.getCell("N24").value = mov.New;  
-            ws.getCell("P24").value = formatDate(mov.StartDate);
-            ws.getCell("R24").value = formatDate(mov.EndDate);
-          }
-          else if (tipomovimiento === "OTROS") {
-            ws.getCell("C26").value = mov.Specification;
-            ws.getCell("G26").value = formatDate(mov.ApplicationDate);
-            ws.getCell("I26").value = mov.Duration;
-            ws.getCell("K26").value = mov.Former;
-            ws.getCell("N26").value = mov.New;
-            ws.getCell("P26").value = formatDate(mov.StartDate);
-            ws.getCell("R26").value = formatDate(mov.EndDate);
-          }
-          
-        }
-        ws.getCell('A30').value = mov.Observations || 'NO ESPECIFICADO';
-        ws.getCell('B37').value = employeeName || 'NO ESPECIFICADO';
-        ws.getCell('M37').value = jefeDirectoNombre || 'NO ESPECIFICADO';
+    // Llenar datos del empleado
+    ws.getCell('A6').value = mov.EmployeeID || 'NO ESPECIFICADO';
+    ws.getCell('C6').value = mov.LastName || 'NO ESPECIFICADO';
+    ws.getCell('H6').value = mov.MiddleName || 'NO ESPECIFICADO';
+    ws.getCell('N6').value = mov.FirstName || 'NO ESPECIFICADO';
+    ws.getCell('A9').value = mov.Position || 'NO ESPECIFICADO';
+    ws.getCell('G9').value = mov.Area || 'N/A';
+    ws.getCell('N9').value = mov.NameProject || 'N/A';
+    ws.getCell('A12').value = mov.CURP || 'NO ESPECIFICADO';
+    ws.getCell('F12').value = mov.RFC || 'NO ESPECIFICADO';
+    ws.getCell('L12').value = mov.NSS || 'NO ESPECIFICADO';
+    ws.getCell('P12').value = formatDate(mov.StartDatee) || 'NO ESPECIFICADO';
 
+    // Llenar datos del movimiento según el tipo
+    if (mov.MovementType) {
+      const tipomovimiento = mov.MovementType.toUpperCase().trim();
+      
+      // Determinar la fila según el tipo de movimiento
+      let row = 16;
+      if (tipomovimiento === "PUESTO") row = 16;
+      else if (tipomovimiento === "SUELDO") row = 18;
+      else if (tipomovimiento === "PROYECTO/AREA") row = 20;
+      else if (tipomovimiento === "VACACIONES") row = 22;
+      else if (tipomovimiento === "COMISION") row = 24;
+      else if (tipomovimiento === "OTROS") row = 26;
+      
+      // Determinar el valor de la fecha de fin
+      let endDateValue = 'N/A';
+      if (mov.Duration && mov.Duration.toUpperCase() !== 'INDETERMINADO' && mov.EndDate) {
+        endDateValue = formatDate(mov.EndDate);
+      }
+      
+      ws.getCell(`C${row}`).value = mov.Specification;
+      ws.getCell(`G${row}`).value = formatDate(mov.ApplicationDate);
+      ws.getCell(`I${row}`).value = mov.Duration || 'NO ESPECIFICADO';
+      ws.getCell(`K${row}`).value = mov.Former || 'NO ESPECIFICADO';
+      ws.getCell(`N${row}`).value = mov.New || 'NO ESPECIFICADO';
+      ws.getCell(`P${row}`).value = formatDate(mov.StartDate);
+      ws.getCell(`R${row}`).value = endDateValue;
+    }
+
+    ws.getCell('A30').value = mov.Observations || 'NO ESPECIFICADO';
+    ws.getCell('B37').value = employeeName || 'NO ESPECIFICADO';
+    ws.getCell('M37').value = jefeDirectoNombre || 'NO ESPECIFICADO';
 
     // Guardar Excel temporal
     await workbook.xlsx.writeFile(tempExcelPath);
@@ -270,16 +216,13 @@ async function generatePermissionPDF(
       if (fs.existsSync(tempExcelPath)) {
         fs.unlinkSync(tempExcelPath);
       }
-      if (fs.existsSync(tempPdfPath)) {
-        fs.unlinkSync(tempPdfPath);
-      }
     } catch (cleanupError) {
       console.warn("Error al limpiar archivos temporales:", cleanupError);
     }
   }
 }
 
-// GET: Obtener todos los permisos de empleados
+// GET: Obtener todos los movimientos de empleados
 export async function GET(request: NextRequest) {
   let connection;
   
@@ -341,16 +284,17 @@ export async function GET(request: NextRequest) {
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
       WHERE e.Status = 1
       AND (
-          bp.EmployeeID IS NOT NULL
-          OR pc.Status = 1
-      )      ORDER BY em.ApplicationDate DESC, em.MovementID DESC
+        bp.EmployeeID IS NOT NULL
+        OR pc.Status = 1
+      )
+      ORDER BY em.ApplicationDate DESC, em.MovementID DESC
     `);
 
-    const permissionRecords = rows as any[];
+    const movementRecords = rows as any[];
 
     return NextResponse.json({
       success: true,
-      records: permissionRecords
+      records: movementRecords
     });
 
   } catch (error) {
@@ -374,7 +318,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: Crear nuevo permiso
+// POST: Crear nuevo movimiento
 export async function POST(request: NextRequest) {
   let connection;
   
@@ -425,6 +369,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!Duration) {
+      return NextResponse.json(
+        { success: false, message: 'La duración es requerida' },
+        { status: 400 }
+      );
+    }
+
+    // Si la duración es "INDETERMINADO", EndDate debe ser null
+    const finalEndDate = Duration === 'INDETERMINADO' ? null : (EndDate || null);
 
     connection = await getConnection();
     await connection.beginTransaction();
@@ -434,7 +387,7 @@ export async function POST(request: NextRequest) {
       const [baseCheck] = await connection.execute(
         'SELECT EmployeeID FROM basepersonnel WHERE EmployeeID = ?',
         [EmployeeID]
-      )
+      );
 
       const [projectCheck] = await connection.execute(
         'SELECT EmployeeID FROM projectpersonnel WHERE EmployeeID = ?',
@@ -445,7 +398,7 @@ export async function POST(request: NextRequest) {
         throw new Error('El empleado no existe');
       }
 
-      // Insertar registro de permiso (sin DocumentURL por ahora)
+      // Insertar registro de movimiento (sin FileURL por ahora)
       const [result] = await connection.execute(
         `INSERT INTO employeemovement
          (EmployeeID, MovementType, Specification, ApplicationDate, Duration, Former, New, StartDate, EndDate, Observations) 
@@ -455,10 +408,10 @@ export async function POST(request: NextRequest) {
           MovementType || null,
           Specification || null,
           Duration || null,
-          Former,
-          New,
+          Former || null,
+          New || null,
           StartDate || null,
-          EndDate || null,
+          finalEndDate,
           Observations || null
         ]
       );
@@ -475,10 +428,10 @@ export async function POST(request: NextRequest) {
         // Pequeña pausa para asegurar que la base de datos tenga el registro
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        const { fileUrl: pdfUrl } = await generatePermissionPDF(movementId);
+        const { fileUrl: pdfUrl } = await generateMovementPDF(movementId);
         fileUrl = pdfUrl;
         
-        // Actualizar el campo DocumentURL en la base de datos (usando nueva conexión)
+        // Actualizar el campo FileURL en la base de datos (usando nueva conexión)
         const updateConnection = await getConnection();
         try {
           await updateConnection.execute(
@@ -496,7 +449,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: fileUrl ? 'Permiso creado exitosamente' : 'Permiso creado exitosamente (sin PDF)',
+        message: fileUrl ? 'Movimiento creado exitosamente' : 'Movimiento creado exitosamente (sin PDF)',
         movementId: movementId,
         fileUrl: fileUrl
       });
@@ -507,9 +460,9 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Error al crear permiso:', error);
+    console.error('Error al crear movimiento:', error);
     
-    let errorMessage = 'ERROR AL CREAR EL PERMISO';
+    let errorMessage = 'ERROR AL CREAR EL MOVIMIENTO';
     
     if (error instanceof Error) {
       if (error.message.includes('foreign key constraint')) {
