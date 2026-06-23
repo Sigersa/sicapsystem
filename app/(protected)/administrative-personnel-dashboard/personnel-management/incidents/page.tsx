@@ -800,12 +800,12 @@ export default function EmployeeIncidencePage() {
                         <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
                             <div>
                                 <h2 className="text-lg font-bold text-gray-900 tracking-tight">
-                                    {modalMode === 'create' ? 'NUEVO LOTE DE INCIDENCIAS' : 'EDITAR LOTE DE INCIDENCIAS'}
+                                    {modalMode === 'create' ? 'NUEVA INCIDENCIA' : 'EDITAR INCIDENCIA'}
                                 </h2>
                                 <p className="text-gray-600 mt-1 text-sm">
                                     {modalMode === 'create'
-                                        ? 'Registre hasta 4 incidencias para un mismo empleado.'
-                                        : 'Modifique la información del lote seleccionado.'
+                                        ? 'Registre una nueva incidencia para un empleado.'
+                                        : 'Modifique la información de la incidencia seleccionada.'
                                     }
                                 </p>
                             </div>
@@ -822,7 +822,7 @@ export default function EmployeeIncidencePage() {
                                 {/* Selección del empleado */}
                                 <div className="bg-gray-50 rounded-lg p-4">
                                     <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                                        SELECCIONAR EMPLEADO
+                                        ID DEL EMPLEADO
                                     </h3>
 
                                     <div className="mb-4">
@@ -901,14 +901,13 @@ export default function EmployeeIncidencePage() {
                                 <div className="bg-gray-50 rounded-lg p-4">
                                     <div className="flex justify-between items-center mb-4 border-b border-gray-200 pb-2">
                                         <h3 className="font-bold text-gray-800 text-sm uppercase">
-                                            INCIDENCIAS DEL LOTE ({incidences.length}/4)
+                                            DATOS DE LA INCIDENCIA
                                         </h3>
                                         <button
                                             onClick={addIncidence}
                                             disabled={incidences.length >= 4}
-                                            className="px-3 py-1.5 bg-[#3a6ea5] text-white text-sm font-semibold rounded hover:bg-[#2d5592] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                                            className="px-5 py-2.5 bg-[#3a6ea5] text-white font-semibold rounded-lg hover:bg-[#2d5592] transition-all duration-200 flex items-center justify-center whitespace-nowrap shadow-sm hover:shadow-md self-center"
                                         >
-                                            <Plus className="h-4 w-4" />
                                             AGREGAR
                                         </button>
                                     </div>
@@ -919,15 +918,16 @@ export default function EmployeeIncidencePage() {
                                                 <div className="flex justify-between items-start gap-4">
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-3 mb-2">
-                                                            <span className="bg-[#3a6ea5] text-white text-xs font-bold px-2 py-1 rounded">
+                                                            <span className="font-bold text-gray-800 text-sm uppercase">
                                                                 INCIDENCIA #{inc.IncidenceNumber}
                                                             </span>
                                                             {incidences.length > 1 && (
                                                                 <button
                                                                     onClick={() => removeIncidence(inc.id)}
-                                                                    className="text-red-500 hover:text-red-700 text-xs font-medium"
+                                                                    className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md transition-all duration-200 ml-2"
+                                                                    title='Eliminar incidencia'
                                                                 >
-                                                                    ELIMINAR
+                                                                   <Trash2 className="h-4 w-4" />
                                                                 </button>
                                                             )}
                                                         </div>
@@ -946,26 +946,28 @@ export default function EmployeeIncidencePage() {
                                                             </div>
                                                             <div>
                                                                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
-                                                                    DESCRIPCIÓN
+                                                                    DESCRIPCIÓN *
                                                                 </label>
                                                                 <input
                                                                     type="text"
                                                                     value={inc.Description}
                                                                     onChange={(e) => updateIncidence(inc.id, 'Description', normalizarMayusculas(e.target.value))}
-                                                                    placeholder="Opcional"
+                                                                    placeholder="Descripción de los hechos"
                                                                     className="w-full px-2 py-1.5 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#3a6ea5]"
+                                                                    required
                                                                 />
                                                             </div>
                                                             <div>
                                                                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
-                                                                    REGLA
+                                                                    REGLA *
                                                                 </label>
                                                                 <input
                                                                     type="text"
                                                                     value={inc.Rule}
                                                                     onChange={(e) => updateIncidence(inc.id, 'Rule', normalizarMayusculas(e.target.value))}
-                                                                    placeholder="Opcional"
+                                                                    placeholder="Lo que el reglamento indica"
                                                                     className="w-full px-2 py-1.5 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#3a6ea5]"
+                                                                    required
                                                                 />
                                                             </div>
                                                         </div>
@@ -1016,10 +1018,10 @@ export default function EmployeeIncidencePage() {
                     <div className="mb-6">
                         <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5]">
                             <h1 className="text-xl font-bold text-white tracking-tight">
-                                INCIDENCIAS DE EMPLEADOS
+                                INCIDENCIAS
                             </h1>
                             <p className="text-sm text-gray-200 mt-1">
-                                Administre lotes de incidencias (máximo 4 por empleado).
+                                Administre las incidencias de los empleados.
                             </p>
                         </div>
                     </div>
@@ -1078,7 +1080,7 @@ export default function EmployeeIncidencePage() {
                             onClick={handleCreateRecord}
                             className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap"
                         >
-                            NUEVO LOTE
+                            NUEVA INCIDENCIA
                         </button>
                     </div>
 
@@ -1114,8 +1116,8 @@ export default function EmployeeIncidencePage() {
                                                     <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
                                                     <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
                                                         {filters.search
-                                                            ? 'No se encontraron lotes que coincidan con la búsqueda'
-                                                            : 'No hay lotes de incidencias registrados'}
+                                                            ? 'No se encontraron incidencias que coincidan con la búsqueda'
+                                                            : 'No hay incidencias registradas'}
                                                     </p>
                                                 </div>
                                             </td>
