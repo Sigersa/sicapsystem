@@ -47,7 +47,7 @@ async function generateIncidencePDF(
             COALESCE(bp.LastName, pp.LastName) as LastName,
             COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
             COALESCE(bp.Position, pc.Position) as Position,
-            COALESCE(bc.StartDate, pc.StartDate) as StartDatee,
+            COALESCE(bc.StartDate, pj.StartDate) as StartDatee,
             CASE 
               WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
               ELSE 'PROJECT'
