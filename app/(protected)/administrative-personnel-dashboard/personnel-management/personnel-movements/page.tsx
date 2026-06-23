@@ -47,6 +47,7 @@ interface MovementFormData {
   MovementType: string;
   Specification: string;
   Duration: string;
+  DurationCustom: string; // Nuevo campo para duración personalizada
   Former: string;
   New: string;
   StartDate: string;
@@ -81,6 +82,12 @@ const TYPE_OF_MOVEMENT_OPTIONS = [
   { value: "OTROS", label: "OTROS" }
 ];
 
+// Opciones para duración
+const DURATION_OPTIONS = [
+  { value: "INDETERMINADO", label: "INDETERMINADO" },
+  { value: "OTRO", label: "OTRO (ESPECIFIQUE)" }
+];
+
 // Función para normalizar texto a mayúsculas
 const normalizarMayusculas = (texto: string): string => {
   return texto.toUpperCase();
@@ -110,7 +117,6 @@ const formatDateForInput = (dateString: string | null): string => {
   }
 };
 
-
 // Función para formatear fecha para mostrar
 const formatDate = (dateString: string | null): string => {
   if (!dateString) return 'N/A';
@@ -124,8 +130,6 @@ const formatDate = (dateString: string | null): string => {
     return dateString;
   }
 };
-
-
 
 // Función para descargar documento
 const downloadDocument = (url: string, fileName: string) => {
@@ -196,12 +200,16 @@ export default function EmployeeMovementsPage() {
   // Estado para controlar si se muestra el rango de fechas
   const [showDateRange, setShowDateRange] = useState(false);
 
+  // Estado para controlar si se muestra el campo de duración personalizada
+  const [showCustomDuration, setShowCustomDuration] = useState(false);
+
   // Estado para formulario
   const [formData, setFormData] = useState<MovementFormData>({
     EmployeeID: '',
     MovementType: '',
     Specification: '',
     Duration: '',
+    DurationCustom: '',
     Former: '',
     New: '',
     StartDate: '',
@@ -211,8 +219,6 @@ export default function EmployeeMovementsPage() {
 
   // Referencias
   const employeeIdInputRef = useRef<HTMLInputElement>(null);
-
- 
 
   // Cargar registros al montar
   useEffect(() => {
@@ -373,6 +379,7 @@ export default function EmployeeMovementsPage() {
       MovementType: '',
       Specification: '',
       Duration: '',
+      DurationCustom: '',
       Former: '',
       New: '',
       StartDate: '',
@@ -380,6 +387,7 @@ export default function EmployeeMovementsPage() {
       Observations: '',
     });
     setShowDateRange(false);
+    setShowCustomDuration(false);
     setSelectedEmployee(null);
     setSelectedEmployeeData(null);
     setEmployeeIdInput('');
@@ -414,12 +422,17 @@ export default function EmployeeMovementsPage() {
       console.error('Error al cargar datos del empleado:', error);
     }
     
+    // Determinar si la duración es personalizada
+    const duration = record.Duration || '';
+    const isCustom = duration !== 'INDETERMINADO' && duration !== '';
+    const durationValue = isCustom ? 'OTRO' : duration;
     
     setFormData({
       EmployeeID: record.EmployeeID.toString(),
       MovementType: record.MovementType || '',
       Specification: record.Specification || '',
-      Duration: record.Duration || '',
+      Duration: durationValue,
+      DurationCustom: isCustom ? duration : '',
       Former: record.Former || '',
       New: record.New || '',
       StartDate: formatDateForInput(record.StartDate),
@@ -427,6 +440,8 @@ export default function EmployeeMovementsPage() {
       Observations: record.Observations || '',
     });
     
+    setShowCustomDuration(isCustom);
+    setShowDateRange(isCustom);
     setShowModal(true);
   };
 
@@ -438,6 +453,7 @@ export default function EmployeeMovementsPage() {
     setEmployeeIdInput('');
     setEmployeeNotFound(false);
     setShowDateRange(false);
+    setShowCustomDuration(false);
     setError('');
   };
 
@@ -473,7 +489,7 @@ export default function EmployeeMovementsPage() {
     
     let newValue = value;
     
-    if (![ 'StartDate', 'EndDate' ].includes(name)) {
+    if (!['StartDate', 'EndDate', 'DurationCustom'].includes(name)) {
       newValue = normalizarMayusculas(value);
     }
     
@@ -481,6 +497,37 @@ export default function EmployeeMovementsPage() {
       ...prev,
       [name]: newValue
     }));
+    
+    // Manejar cambios en Duración
+    if (name === 'Duration') {
+      if (value === 'OTRO') {
+        setShowCustomDuration(true);
+        setShowDateRange(true);
+        setFormData(prev => ({
+          ...prev,
+          Duration: value,
+          DurationCustom: prev.DurationCustom || ''
+        }));
+      } else if (value === 'INDETERMINADO') {
+        setShowCustomDuration(false);
+        setShowDateRange(false);
+        setFormData(prev => ({
+          ...prev,
+          Duration: value,
+          DurationCustom: '',
+          EndDate: ''
+        }));
+      } else {
+        setShowCustomDuration(false);
+        setShowDateRange(false);
+        setFormData(prev => ({
+          ...prev,
+          Duration: value,
+          DurationCustom: '',
+          EndDate: ''
+        }));
+      }
+    }
   };
 
   // Función para guardar registro de movimientos
@@ -501,16 +548,32 @@ export default function EmployeeMovementsPage() {
         return;
       }
 
+      // Determinar el valor final de Duration
+      let finalDuration = formData.Duration;
+      if (formData.Duration === 'OTRO') {
+        if (!formData.DurationCustom.trim()) {
+          setError('DEBE ESPECIFICAR LA DURACIÓN');
+          setSaving(false);
+          return;
+        }
+        finalDuration = normalizarMayusculas(formData.DurationCustom.trim());
+      } else if (formData.Duration === 'INDETERMINADO') {
+        finalDuration = 'INDETERMINADO';
+      } else {
+        setError('DEBE SELECCIONAR UN TIPO DE DURACIÓN');
+        setSaving(false);
+        return;
+      }
 
       const recordData = {
         EmployeeID: parseInt(formData.EmployeeID),
         MovementType: formData.MovementType || null,
         Specification: formData.Specification || null,
-        Duration: formData.Duration || null,
+        Duration: finalDuration || null,
         Former: formData.Former || null,
         New: formData.New || null,
         StartDate: formData.StartDate || null,
-        EndDate: formData.EndDate || null,
+        EndDate: formData.Duration === 'INDETERMINADO' ? null : (formData.EndDate || null),
         Observations: formData.Observations || null
       };
 
@@ -553,7 +616,7 @@ export default function EmployeeMovementsPage() {
             tipo: selectedEmployeeData.tipo,
             Specification: formData.Specification || 'NO ESPECIFICADO',
             StartDate: formData.StartDate,
-            EndDate: formData.EndDate || null,
+            EndDate: formData.Duration === 'INDETERMINADO' ? null : (formData.EndDate || null),
             pdfUrl: pdfUrl,
             excelUrl: excelUrl
           });
@@ -635,7 +698,6 @@ export default function EmployeeMovementsPage() {
   // Función para obtener la URL de vista previa del PDF
   const getPreviewUrl = (documentUrl: string | null | undefined): string | null => {
     if (!documentUrl) return null;
-    // Si la URL ya es de UploadThing, la usamos directamente para vista previa
     return documentUrl;
   };
 
@@ -766,7 +828,7 @@ export default function EmployeeMovementsPage() {
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="block text-xs font-bold text-gray-700 uppercase">FECHA TÉRMINO:</span>
-                        <span className="text-gray-600 mt-1 text-sm">{successDetails.EndDate}</span>
+                        <span className="text-gray-600 mt-1 text-sm">{successDetails.EndDate || 'N/A'}</span>
                       </div>
                     </div>
                   </div>
@@ -778,7 +840,7 @@ export default function EmployeeMovementsPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center">
                           <FileText className="h-5 w-5 text-gray-600 mr-2" />
-                          <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-09 (PDF)</span>
+                          <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-10 (PDF)</span>
                         </div>
                         <div className="flex gap-2">
                           <a
@@ -791,7 +853,7 @@ export default function EmployeeMovementsPage() {
                             <Eye className="h-4 w-4 text-gray-700" />
                           </a>
                           <button
-                            onClick={() => handleDownloadPDF(successDetails.pdfUrl, `FT-RH-09-${successDetails.tipo}-${successDetails.EmployeeID}.pdf`)}
+                            onClick={() => handleDownloadPDF(successDetails.pdfUrl, `FT-RH-10-${successDetails.tipo}-${successDetails.EmployeeID}.pdf`)}
                             disabled={downloading}
                             className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Descargar PDF"
@@ -809,10 +871,10 @@ export default function EmployeeMovementsPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center">
                           <FileText className="h-5 w-5 text-gray-600 mr-2" />
-                          <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-09 (EDITABLE)</span>
+                          <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-10 (EDITABLE)</span>
                         </div>
                         <button
-                          onClick={() => handleDownloadExcel(successDetails.excelUrl, `FT-RH-09-${successDetails.tipo}-${successDetails.EmployeeID}.xlsx`)}
+                          onClick={() => handleDownloadExcel(successDetails.excelUrl, `FT-RH-10-${successDetails.tipo}-${successDetails.EmployeeID}.xlsx`)}
                           disabled={downloading}
                           className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Descargar Excel editable"
@@ -1023,8 +1085,8 @@ export default function EmployeeMovementsPage() {
                     {/* ESPECIFICIACIÓN */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          ESPECIFICACIÓN *
-                       </label>
+                        ESPECIFICACIÓN *
+                      </label>
                       <div className="relative">
                         <input
                           type="text"
@@ -1037,28 +1099,54 @@ export default function EmployeeMovementsPage() {
                       </div>
                     </div>
 
-                    {/* DURACIÓN */}
+                    {/* DURACIÓN - SELECT */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          DURACIÓN *
-                       </label>
+                        DURACIÓN *
+                      </label>
                       <div className="relative">
-                        <input
-                          type="text"
+                        <select
                           name="Duration"
                           value={formData.Duration}
                           onChange={handleFormChange}
                           className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                           required
-                        />
+                        >
+                          <option value="">Seleccione una opción</option>
+                          {DURATION_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
+
+                    {/* DURACIÓN PERSONALIZADA - Solo se muestra cuando se selecciona "OTRO" */}
+                    {showCustomDuration && (
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                          ESPECIFIQUE LA DURACIÓN *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            name="DurationCustom"
+                            value={formData.DurationCustom}
+                            onChange={handleFormChange}
+                            placeholder="Ej: 6 MESES, 1 AÑO, ETC."
+                            className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                            required
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     {/* ANTERIOR */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          ANTERIOR *
-                       </label>
+                        ANTERIOR *
+                      </label>
                       <div className="relative">
                         <input
                           type="text"
@@ -1074,8 +1162,8 @@ export default function EmployeeMovementsPage() {
                     {/* NUEVO */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          NUEVO *
-                       </label>
+                        NUEVO *
+                      </label>
                       <div className="relative">
                         <input
                           type="text"
@@ -1091,7 +1179,7 @@ export default function EmployeeMovementsPage() {
                     {/* FECHA DE INICIO */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                        FECHA DE INICIO * 
+                        FECHA DE INICIO *
                       </label>
                       <div className="relative">
                         <input
@@ -1105,10 +1193,11 @@ export default function EmployeeMovementsPage() {
                       </div>
                     </div>
 
-                    {/* FECHA DE FIN (solo si es más de 1 día) */}
+                    {/* FECHA DE FIN - Solo se muestra si la duración no es INDETERMINADO */}
+                    {showDateRange && (
                       <div>
                         <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                          FECHA DE FIN *
+                          FECHA DE FIN
                         </label>
                         <div className="relative">
                           <input
@@ -1118,12 +1207,10 @@ export default function EmployeeMovementsPage() {
                             onChange={handleFormChange}
                             min={formData.StartDate}
                             className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                            required
                           />
                         </div>
                       </div>
-                  
-
+                    )}
 
                     {/* OBSERVACIONES */}
                     <div className="md:col-span-2">
@@ -1158,7 +1245,7 @@ export default function EmployeeMovementsPage() {
               </button>
               <button
                 onClick={handleSaveRecord}
-                disabled={saving || !selectedEmployee || !formData.MovementType || !formData.Specification || !formData.Duration || !formData.Former || !formData.New || !formData.StartDate || !formData.EndDate}
+                disabled={saving || !selectedEmployee || !formData.MovementType || !formData.Specification || !formData.Duration || !formData.Former || !formData.New || !formData.StartDate || (formData.Duration === 'OTRO' && !formData.DurationCustom)}
                 className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap disabled:opacity-50"
               >
                 {saving ? (
@@ -1318,7 +1405,7 @@ export default function EmployeeMovementsPage() {
                             <div className="text-sm text-gray-800 uppercase">{formatDate(record.ApplicationDate)}</div>
                           </td>
                           <td className="py-3 px-4">
-                              <div className="text-sm text-gray-800 uppercase">{record.Duration}</div>
+                            <div className="text-sm text-gray-800 uppercase">{record.Duration}</div>
                           </td>
                           <td className="py-3 px-4">
                             <div className="text-sm text-gray-800 uppercase">{record.Former}</div>
@@ -1336,7 +1423,7 @@ export default function EmployeeMovementsPage() {
                                   href={previewUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                className="flex items-center text-xs text-gray-700 hover:underline"
+                                  className="flex items-center text-xs text-gray-700 hover:underline"
                                   title="Ver PDF"
                                 >
                                   Ver
