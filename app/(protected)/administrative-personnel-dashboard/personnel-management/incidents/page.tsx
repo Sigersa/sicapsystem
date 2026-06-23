@@ -933,19 +933,19 @@ export default function EmployeeIncidencePage() {
                                                         </div>
                                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                                             <div>
-                                                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                                                                 <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                                                                     FECHA *
                                                                 </label>
                                                                 <input
                                                                     type="date"
                                                                     value={inc.IncidenceDate}
                                                                     onChange={(e) => updateIncidence(inc.id, 'IncidenceDate', e.target.value)}
-                                                                    className="w-full px-2 py-1.5 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#3a6ea5]"
+                                                                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                                                                     required
                                                                 />
                                                             </div>
                                                             <div>
-                                                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                                                                 <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                                                                     DESCRIPCIÓN *
                                                                 </label>
                                                                 <input
@@ -953,12 +953,12 @@ export default function EmployeeIncidencePage() {
                                                                     value={inc.Description}
                                                                     onChange={(e) => updateIncidence(inc.id, 'Description', normalizarMayusculas(e.target.value))}
                                                                     placeholder="Descripción de los hechos"
-                                                                    className="w-full px-2 py-1.5 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#3a6ea5]"
+                                                                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                                                                     required
                                                                 />
                                                             </div>
                                                             <div>
-                                                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                                                                 <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                                                                     REGLA *
                                                                 </label>
                                                                 <input
@@ -966,7 +966,7 @@ export default function EmployeeIncidencePage() {
                                                                     value={inc.Rule}
                                                                     onChange={(e) => updateIncidence(inc.id, 'Rule', normalizarMayusculas(e.target.value))}
                                                                     placeholder="Lo que el reglamento indica"
-                                                                    className="w-full px-2 py-1.5 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#3a6ea5]"
+                                                                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                                                                     required
                                                                 />
                                                             </div>
@@ -1005,7 +1005,7 @@ export default function EmployeeIncidencePage() {
                                         GUARDANDO...
                                     </>
                                 ) : (
-                                    modalMode === 'create' ? 'CREAR LOTE' : 'ACTUALIZAR LOTE'
+                                    modalMode === 'create' ? 'CREAR' : 'ACTUALIZAR'
                                 )}
                             </button>
                         </div>
@@ -1089,7 +1089,7 @@ export default function EmployeeIncidencePage() {
                             <table className="w-full">
                                 <thead className="bg-gray-100">
                                     <tr>
-                                        <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ID LOTE</th>
+                                        <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ID</th>
                                         <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">EMPLEADO</th>
                                         <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">PUESTO</th>
                                         <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">TIPO</th>
