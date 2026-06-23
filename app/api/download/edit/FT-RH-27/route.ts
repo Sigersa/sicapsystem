@@ -1,5 +1,4 @@
 // app/api/download/edit/FT-RH-27/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import path from "path";
@@ -37,9 +36,9 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const incidenceId = searchParams.get("incidenceId");
+    const batchId = searchParams.get("batchId");
 
-    if (!incidenceId) {
+    if (!batchId) {
       return NextResponse.json(
         { success: false, message: "Se requiere el ID de la incidencia" },
         { status: 400 }
@@ -49,72 +48,71 @@ export async function GET(request: NextRequest) {
     connection = await getConnection();
 
     // Obtener información de la incidencia y del empleado
-    const [rows] = await connection.execute<any[]>(
-      `SELECT 
-        ei.IncidenceID,
-        ei.EmployeeID,
-        ei.InicidenceNumber,
-        ei.Description,
-        ei.Rule,
-        ei.FileURL,
-        ei.IncidenceDate,
-        bp.Area,
-        pj.NameProject,
-        -- Datos del empleado
-        COALESCE(bp.FirstName, pp.FirstName) as FirstName,
-        COALESCE(bp.LastName, pp.LastName) as LastName,
-        COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
-        COALESCE(bp.Position, pc.Position) as Position,
-        COALESCE(bc.StartDate, pc.StartDate) as StartDatee,
-        CASE 
-          WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
-          ELSE 'PROJECT'
-        END as tipo
-      FROM employeeincidence ei
-      -- Datos del empleado (BASE)
-      LEFT JOIN basepersonnel bp ON ei.EmployeeID = bp.EmployeeID
-      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
-      -- Datos del empleado (PROJECT)
-      LEFT JOIN projectpersonnel pp ON ei.EmployeeID = pp.EmployeeID
-      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
-      LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
-      WHERE ei.IncidenceID = ?`,
-      [incidenceId]
+    const [batchRows] = await connection.execute<any[]>(
+     `SELECT 
+                eib.BatchID,
+                eib.BatchDate,
+                eib.EmployeeID,
+                COALESCE(bp.FirstName, pp.FirstName) as FirstName,
+                COALESCE(bp.LastName, pp.LastName) as LastName,
+                COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
+                COALESCE(bp.Position, pc.Position) as Position,
+                COALESCE(bc.StartDate, pj.StartDate) as StartDate,
+                bp.Area,
+                pj.NameProject,
+                CASE 
+                    WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
+                    ELSE 'PROJECT'
+                END as tipo
+            FROM employee_incidence_batches eib
+            LEFT JOIN basepersonnel bp ON eib.EmployeeID = bp.EmployeeID
+            LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
+            LEFT JOIN projectpersonnel pp ON eib.EmployeeID = pp.EmployeeID
+            LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+            LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
+            WHERE eib.BatchID = ?`,
+            [batchId]
     );
 
-    if (!rows || rows.length === 0) {
-      return NextResponse.json(
-        { success: false, message: 'Incidencia no encontrada' },
-        { status: 404 }
-      );
-    }
+     if (!batchRows || batchRows.length === 0) {
+            throw new Error(`Batch con ID ${batchId} no encontrado`);
+        }
 
-    const inc = rows[0];
 
-    // Función para formatear fecha como en el ejemplo de FT-RH-21
+        const batch = batchRows[0];
+
+         // Obtener todas las incidencias del lote
+        const [incidenceRows] = await connection.execute<any[]>(
+            `SELECT 
+                IncidenceNumber,
+                IncidenceDate,
+                Description,
+                Rule
+            FROM employee_incidence_details 
+            WHERE BatchID = ?
+            ORDER BY IncidenceNumber`,
+            [batchId]
+        );
+
+        if (incidenceRows.length === 0) {
+            throw new Error('No se encontraron incidencias para este lote');
+        }
+
+    // Función para formatear fecha
     const formatDate = (dateValue: any): string => {
       if (!dateValue) return 'NO ESPECIFICADO';
       
       try {
         const date = new Date(dateValue);
-        // Verificar si es una fecha válida
         if (isNaN(date.getTime())) {
           return 'NO ESPECIFICADO';
         }
-        // Usar el mismo formato que en FT-RH-21: toLocaleDateString('es-MX')
         return date.toLocaleDateString('es-MX');
       } catch (error) {
         console.error('Error al formatear fecha:', error);
         return 'NO ESPECIFICADO';
       }
     };
-
-    // Construir nombre completo del empleado
-    const employeeName = [
-      inc.FirstName || '',
-      inc.LastName || '',
-      inc.MiddleName || ''
-    ].filter(part => part && part.trim() !== '').join(' ').trim() || 'NO ESPECIFICADO';
 
     // Cargar plantilla Excel
     const templatePath = path.join(
@@ -124,38 +122,45 @@ export async function GET(request: NextRequest) {
       "personnel-management",
       "FT-RH-27.xlsx"
     );
-
-    if (!fs.existsSync(templatePath)) {
-      return NextResponse.json(
-        { success: false, message: 'Plantilla FT-RH-27 no encontrada' },
-        { status: 500 }
-      );
-    }
+    
+   if (!fs.existsSync(templatePath)) {
+               throw new Error('Plantilla FT-RH-27 no encontrada en: ' + templatePath);
+           }
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(templatePath);
     const ws = workbook.getWorksheet(1)!;
 
-    ws.getCell('A6').value = inc.LastName || 'NO ESPECIFICADO';
-    ws.getCell('E6').value = inc.MiddleName || 'NO ESPECIFICADO';
-    ws.getCell('H6').value = inc.FirstName || 'NO ESPECIFICADO';
-    ws.getCell('A9').value = formatDate(inc.StartDatee);
-    ws.getCell('C9').value = inc.Position || 'NO ESPECIFICADO';
-    ws.getCell('A12').value = inc.InicidenceNumber || 'NO ESPECIFICADO';
-    ws.getCell('B12').value = formatDate(inc.IncidenceDate);
-    ws.getCell('D12').value = inc.Description || 'NO ESPECIFICADO';
-    ws.getCell('H12').value = inc.Rule || 'NO ESPECIFICADO';
-    ws.getCell('E17').value = employeeName || 'NO ESPECIFICADO';
-    ws.getCell('G9').value = inc.NameProject || 'N/A';
-    ws.getCell('I9').value = inc.Area || 'N/A';
+    const employeeName = [
+      batch.FirstName || '',
+      batch.MiddleName || '',
+      batch.LastName || ''
+    ].filter(part => part && part.trim() !== '').join(' ').trim() || 'NO ESPECIFICADO';
 
-    // Leer el archivo como buffer
-    const buffer = await workbook.xlsx.writeBuffer();
-    
-    const tipoEmpleado = inc.tipo || 'DESCONOCIDO';
-    const fileName = `FT-RH-27-${tipoEmpleado}-${inc.EmployeeID}.xlsx`;
+       ws.getCell('A6').value = batch.LastName || 'NO ESPECIFICADO';
+        ws.getCell('E6').value = batch.MiddleName || 'NO ESPECIFICADO';
+        ws.getCell('H6').value = batch.FirstName || 'NO ESPECIFICADO';
+        ws.getCell('H6').value = batch.FirstName || 'NO ESPECIFICADO';
+        ws.getCell('A9').value = formatDate(batch.StartDate);
+        ws.getCell('C9').value = batch.Position || 'NO ESPECIFICADO';
+        ws.getCell('G9').value = batch.NameProject || 'N/A';
+        ws.getCell('I9').value = batch.Area || 'N/A';
+        ws.getCell('E20').value = employeeName || 'NO ESPECIFICADO';
 
-   return new NextResponse(buffer, {
+        // Llenar cada incidencia en filas consecutivas (12, 13, 14, 15)
+        incidenceRows.forEach((inc, index) => {
+            const rowNumber = 12 + index; // Fila 12, 13, 14, 15
+            ws.getCell(`A${rowNumber}`).value = inc.IncidenceNumber || 'NO ESPECIFICADO';
+            ws.getCell(`B${rowNumber}`).value = formatDate(inc.IncidenceDate);
+            ws.getCell(`D${rowNumber}`).value = inc.Description || 'NO ESPECIFICADO';
+            ws.getCell(`H${rowNumber}`).value = inc.Rule || 'NO ESPECIFICADO';
+        });
+        
+       const buffer = await workbook.xlsx.writeBuffer();
+
+    const fileName = `FT-RH-27.xlsx`;
+
+    return new NextResponse(buffer, {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="${fileName}"`,
@@ -163,7 +168,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error("Error al generar FT-RH-27 editable:", error);
+    console.error("Error al generar FT-RH-05 editable:", error);
     return NextResponse.json(
       { 
         success: false,
