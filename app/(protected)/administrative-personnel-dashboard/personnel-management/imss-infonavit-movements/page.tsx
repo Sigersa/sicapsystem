@@ -1029,7 +1029,7 @@ export default function EmployeeMovementsPage() {
                             <button
                               onClick={() => removeEmployeeFromBatch(emp.id)}
                               className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md transition-all duration-200 ml-2"
-                              title="Eliminar del lote"
+                              title="Eliminar de la solicitud"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
