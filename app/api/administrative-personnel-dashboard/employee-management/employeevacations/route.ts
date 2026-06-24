@@ -46,7 +46,7 @@ const calcularDiasVacaciones = (aniosAntiguedad: number): number => {
 // Función para obtener los días totales usados en vacaciones
 const getTotalUsedVacationDays = async (connection: any, employeeId: number): Promise<number> => {
   const [vacations] = await connection.execute(
-    `SELECT SUM(Days) as totalUsed
+    `SELECT COALESCE(SUM(Days), 0) as totalUsed
      FROM employeevacations 
      WHERE EmployeeID = ?`,
     [employeeId]
@@ -55,7 +55,7 @@ const getTotalUsedVacationDays = async (connection: any, employeeId: number): Pr
   return (vacations as any[])[0]?.totalUsed || 0;
 };
 
-// Función para generar y guardar el PDF del período de vacaciones (SOLO AL CREAR/ACTUALIZAR)
+// Función para generar y guardar el PDF del período de vacaciones (SOLO CUANDO SE COMPLETAN LAS VACACIONES)
 async function generateAndSaveVacationPDF(
   employeeId: number,
   vacationId: number,
@@ -218,8 +218,9 @@ export async function POST(req: NextRequest) {
         throw new Error('LOS DÍAS DEBEN SER UN NÚMERO POSITIVO');
       }
       
-      const totalUsedDays = await getTotalUsedVacationDays(connection, EmployeeID);
-      const remainingDays = daysOfVacations - totalUsedDays;
+      // Obtener días totales usados ANTES de insertar
+      const totalUsedDaysBefore = await getTotalUsedVacationDays(connection, EmployeeID);
+      const remainingDays = daysOfVacations - totalUsedDaysBefore;
       
       if (daysToTake > remainingDays) {
         throw new Error(`NO SE PUEDE AGREGAR EL PERÍODO. DÍAS DISPONIBLES: ${remainingDays}, DÍAS SOLICITADOS: ${daysToTake}`);
@@ -258,41 +259,49 @@ export async function POST(req: NextRequest) {
       
       const insertedId = (vacationResult as any).insertId;
       
+      // Obtener días totales usados DESPUÉS de insertar
+      const totalUsedDaysAfter = await getTotalUsedVacationDays(connection, EmployeeID);
+      const completedVacations = totalUsedDaysAfter >= daysOfVacations;
+      
+      console.log(`Vacaciones completadas: ${completedVacations}`);
+      console.log(`Días disponibles: ${daysOfVacations}, Días usados: ${totalUsedDaysAfter}`);
+      
       // Confirmar la transacción
       await connection.commit();
       
       console.log(`Período de vacaciones creado con ID: ${insertedId}`);
       
-      // Generar PDF después de confirmar la transacción
+      // Generar PDF SOLO si se han completado todas las vacaciones
       let fileUrl = null;
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin;
-        const cookies = req.headers.get('cookie') || '';
-        
-        fileUrl = await generateAndSaveVacationPDF(EmployeeID, insertedId, baseUrl, cookies);
-        
-        if (fileUrl) {
-          console.log(`PDF generado exitosamente: ${fileUrl}`);
-          // Actualizar FileURL en la base de datos
-          const updateConnection = await getConnection();
-          try {
-            await updateConnection.execute(
-              `UPDATE employeevacations SET FileURL = ? WHERE VacationID = ?`,
-              [fileUrl, insertedId]
-            );
-            console.log(`URL actualizada en BD para VacationID: ${insertedId}`);
-          } finally {
-            await updateConnection.release();
+      if (completedVacations) {
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin;
+          const cookies = req.headers.get('cookie') || '';
+          
+          fileUrl = await generateAndSaveVacationPDF(EmployeeID, insertedId, baseUrl, cookies);
+          
+          if (fileUrl) {
+            console.log(`PDF generado exitosamente: ${fileUrl}`);
+            // Actualizar FileURL en la base de datos
+            const updateConnection = await getConnection();
+            try {
+              await updateConnection.execute(
+                `UPDATE employeevacations SET FileURL = ? WHERE VacationID = ?`,
+                [fileUrl, insertedId]
+              );
+              console.log(`URL actualizada en BD para VacationID: ${insertedId}`);
+            } finally {
+              await updateConnection.release();
+            }
+          } else {
+            console.log('No se pudo generar el PDF');
           }
-        } else {
-          console.log('No se pudo generar el PDF');
+        } catch (pdfError) {
+          console.error('Error al generar PDF:', pdfError);
         }
-      } catch (pdfError) {
-        console.error('Error al generar PDF:', pdfError);
+      } else {
+        console.log(`No se genera PDF porque las vacaciones no están completas. Usados: ${totalUsedDaysAfter}/${daysOfVacations}`);
       }
-      
-      // Obtener los días totales usados actualizados
-      const updatedTotalUsedDays = await getTotalUsedVacationDays(connection, EmployeeID);
       
       return NextResponse.json(
         { 
@@ -302,9 +311,10 @@ export async function POST(req: NextRequest) {
           endDate: formattedEndDate,
           yearsOfSeniority: yearsOfSeniority,
           daysOfVacations: daysOfVacations,
-          totalUsedDays: updatedTotalUsedDays,
-          remainingDays: daysOfVacations - updatedTotalUsedDays,
+          totalUsedDays: totalUsedDaysAfter,
+          remainingDays: daysOfVacations - totalUsedDaysAfter,
           fileUrl: fileUrl,
+          completedVacations: completedVacations,
           success: true 
         },
         { status: 201 }
@@ -512,44 +522,69 @@ export async function PUT(req: NextRequest) {
         [Days, Days, formattedStartDate, formattedEndDate, Observations || '', vacationId]
       );
       
+      // Verificar si después de la actualización se completan las vacaciones
+      const totalUsedDaysAfter = await getTotalUsedVacationDays(connection, EmployeeID);
+      const completedVacations = totalUsedDaysAfter >= daysOfVacations;
+      
+      console.log(`Vacaciones completadas después de actualizar: ${completedVacations}`);
+      console.log(`Días disponibles: ${daysOfVacations}, Días usados: ${totalUsedDaysAfter}`);
+      
       await connection.commit();
       
-      // Generar nuevo PDF después de actualizar
+      // Generar nuevo PDF SOLO si se han completado todas las vacaciones
       let newFileUrl = null;
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin;
-        const cookies = req.headers.get('cookie') || '';
-        newFileUrl = await generateAndSaveVacationPDF(EmployeeID, parseInt(vacationId), baseUrl, cookies);
-        
-        if (newFileUrl) {
-          const updateConnection = await getConnection();
-          try {
-            await updateConnection.execute(
-              `UPDATE employeevacations SET FileURL = ? WHERE VacationID = ?`,
-              [newFileUrl, vacationId]
-            );
-            console.log(`URL actualizada para VacationID: ${vacationId}`);
-          } finally {
-            await updateConnection.release();
+      if (completedVacations) {
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin;
+          const cookies = req.headers.get('cookie') || '';
+          newFileUrl = await generateAndSaveVacationPDF(EmployeeID, parseInt(vacationId), baseUrl, cookies);
+          
+          if (newFileUrl) {
+            const updateConnection = await getConnection();
+            try {
+              await updateConnection.execute(
+                `UPDATE employeevacations SET FileURL = ? WHERE VacationID = ?`,
+                [newFileUrl, vacationId]
+              );
+              console.log(`URL actualizada para VacationID: ${vacationId}`);
+            } finally {
+              await updateConnection.release();
+            }
           }
+          
+          // Eliminar archivo antiguo si existe y se generó uno nuevo
+          if (oldFileUrl && newFileUrl) {
+            try {
+              const { UTApi } = await import('uploadthing/server');
+              const utapi = new UTApi();
+              const fileKey = oldFileUrl.match(/\/f\/([a-zA-Z0-9-_]+)/)?.[1];
+              if (fileKey) {
+                await utapi.deleteFiles([fileKey]);
+                console.log(`Archivo antiguo eliminado: ${fileKey}`);
+              }
+            } catch (deleteError) {
+              console.error('Error al eliminar archivo antiguo:', deleteError);
+            }
+          }
+        } catch (pdfError) {
+          console.error('Error al generar nuevo PDF:', pdfError);
         }
-        
-        // Eliminar archivo antiguo si existe y se generó uno nuevo
-        if (oldFileUrl && newFileUrl) {
+      } else {
+        console.log(`No se genera PDF porque las vacaciones no están completas. Usados: ${totalUsedDaysAfter}/${daysOfVacations}`);
+        // Si no se completan las vacaciones, eliminar archivo antiguo si existe
+        if (oldFileUrl) {
           try {
             const { UTApi } = await import('uploadthing/server');
             const utapi = new UTApi();
             const fileKey = oldFileUrl.match(/\/f\/([a-zA-Z0-9-_]+)/)?.[1];
             if (fileKey) {
               await utapi.deleteFiles([fileKey]);
-              console.log(`Archivo antiguo eliminado: ${fileKey}`);
+              console.log(`Archivo antiguo eliminado (no completado): ${fileKey}`);
             }
           } catch (deleteError) {
             console.error('Error al eliminar archivo antiguo:', deleteError);
           }
         }
-      } catch (pdfError) {
-        console.error('Error al generar nuevo PDF:', pdfError);
       }
       
       return NextResponse.json(
@@ -560,7 +595,8 @@ export async function PUT(req: NextRequest) {
           vacationId: vacationId,
           fileUrl: newFileUrl,
           startDate: formattedStartDate,
-          endDate: formattedEndDate
+          endDate: formattedEndDate,
+          completedVacations: completedVacations
         },
         { status: 200 }
       );
