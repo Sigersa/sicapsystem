@@ -123,10 +123,77 @@ function formatDateToSpanish(dateString: string | Date): string {
   }
 }
 
+// Función para formatear fechas cortas para períodos
+function formatDateShort(dateString: string | Date): string {
+  if (!dateString) return "";
+  
+  try {
+    const dateObj = typeof dateString === 'string' ? new Date(dateString) : dateString;
+    
+    if (isNaN(dateObj.getTime())) {
+      return "";
+    }
+    
+    const dia = dateObj.getDate().toString().padStart(2, "0");
+    const mes = new Intl.DateTimeFormat("es-MX", {
+      month: "long",
+    }).format(dateObj).toUpperCase();
+    const anio = dateObj.getFullYear();
+    
+    return `${dia} DE ${mes} DEL ${anio}`;
+  } catch (error) {
+    return "";
+  }
+}
+
+// Función para obtener todos los períodos de vacaciones de un empleado
+const getVacationPeriods = async (connection: any, employeeId: number): Promise<any[]> => {
+  const [periods] = await connection.execute(
+    `SELECT VacationID, Days, StartDate, EndDate, Observations
+     FROM employeevacations 
+     WHERE EmployeeID = ?
+     ORDER BY StartDate ASC`,
+    [employeeId]
+  );
+  
+  return periods as any[];
+};
+
+// Función para formatear los períodos de vacaciones en el formato solicitado
+const formatPeriods = (periods: any[]): string => {
+  if (!periods || periods.length === 0) {
+    return "NO SE REGISTRARON PERÍODOS DE VACACIONES";
+  }
+
+  const formattedPeriods = periods.map((period, index) => {
+    const days = period.Days;
+    const startDateFormatted = formatDateShort(period.StartDate);
+    const endDateFormatted = formatDateShort(period.EndDate);
+    
+    // Si es un solo día, mostrar "1 DÍA EL [fecha]"
+    if (days === 1) {
+      return `1 DÍA EL ${startDateFormatted}`;
+    }
+    
+    // Si son varios días, mostrar "X DÍAS DEL [inicio] AL [fin]"
+    return `${days} DÍAS DEL ${startDateFormatted} AL ${endDateFormatted}`;
+  });
+
+  // Unir con comas y punto final
+  let result = formattedPeriods.join(", ");
+  
+  // Asegurar que termine con punto
+  if (result.length > 0 && !result.endsWith('.')) {
+    result += '.';
+  }
+  
+  return result;
+};
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const empleadoId = searchParams.get("empleadoId");
-  const vacationId = searchParams.get("vacationId"); // Nuevo parámetro para obtener el período específico
+  const vacationId = searchParams.get("vacationId");
 
   if (!empleadoId) {
     return NextResponse.json(
@@ -146,7 +213,7 @@ export async function GET(request: NextRequest) {
       SELECT EmployeeType
       FROM employees 
       WHERE EmployeeID = ?
-    `,
+      `,
       [empleadoId]
     );
 
@@ -163,11 +230,12 @@ export async function GET(request: NextRequest) {
     let contractStartDate = "";
     let yearsOfSeniority = 0;
     let daysOfVacations = 0;
-    let vacationStartDate = "";
-    let vacationEndDate = "";
     let totalUsedDays = 0;
     let remainingDays = 0;
-    let currentVacationDays = 0;
+    let allPeriods: any[] = [];
+
+    // Obtener todos los períodos de vacaciones del empleado
+    allPeriods = await getVacationPeriods(connection, parseInt(empleadoId));
 
     // Obtener información del personal base
     const [basePersonnelRows] = await connection.query<any[]>(
@@ -206,48 +274,6 @@ export async function GET(request: NextRequest) {
     // Calcular días de vacaciones según los años de antigüedad
     daysOfVacations = calcularDiasVacaciones(yearsOfSeniority);
     
-    // Obtener el período de vacaciones específico si se proporciona vacationId
-    if (vacationId) {
-      const [vacationRows] = await connection.query<any[]>(
-        `
-        SELECT 
-          StartDate,
-          EndDate,
-          Days
-        FROM employeevacations 
-        WHERE VacationID = ? AND EmployeeID = ?
-        `,
-        [vacationId, empleadoId]
-      );
-      
-      if (vacationRows.length) {
-        vacationStartDate = vacationRows[0].StartDate || "";
-        vacationEndDate = vacationRows[0].EndDate || "";
-        currentVacationDays = vacationRows[0].Days || 0;
-      }
-    } else {
-      // Si no se proporciona vacationId, obtener el período más reciente
-      const [vacationRows] = await connection.query<any[]>(
-        `
-        SELECT 
-          StartDate,
-          EndDate,
-          Days
-        FROM employeevacations 
-        WHERE EmployeeID = ?
-        ORDER BY StartDate DESC
-        LIMIT 1
-        `,
-        [empleadoId]
-      );
-      
-      if (vacationRows.length) {
-        vacationStartDate = vacationRows[0].StartDate || "";
-        vacationEndDate = vacationRows[0].EndDate || "";
-        currentVacationDays = vacationRows[0].Days || 0;
-      }
-    }
-    
     // Obtener días totales usados
     totalUsedDays = await getTotalUsedVacationDays(connection, parseInt(empleadoId));
     
@@ -265,8 +291,9 @@ export async function GET(request: NextRequest) {
     // Formatear fechas
     const formattedContractStartDate = formatDateToSpanish(contractStartDate);
     const applicationDate = formatDateToSpanish(new Date());
-    const formattedVacationStartDate = formatDateToSpanish(vacationStartDate);
-    const formattedVacationEndDate = formatDateToSpanish(vacationEndDate);
+    
+    // Formatear períodos de vacaciones
+    const periodsText = formatPeriods(allPeriods);
     
     // Usar la plantilla FT-RH-08
     const templatePath = path.join(
@@ -296,12 +323,10 @@ export async function GET(request: NextRequest) {
         PUESTO_DEL_EMPLEADO: position.toUpperCase() || "NO ESPECIFICADO",
         FECHA_GENERACION: applicationDate,
         AÑOS: yearsOfSeniority.toString(),
-        DIAS_TOTALES: dias(daysOfVacations),
+        DIAS_VACACIONES: dias(daysOfVacations), // Días totales que le corresponden
         DIAS_USADOS: dias(totalUsedDays),
         DIAS_RESTANTES: dias(remainingDays),
-        FECHA_INICIO: formattedVacationStartDate,
-        FECHA_TERMINO: formattedVacationEndDate,
-        DIAS_VACACIONES: currentVacationDays ? dias(currentVacationDays) : "NO ESPECIFICADO",
+        PERIODOS: periodsText,
       },
       cmdDelimiter: ["[[", "]]"],
     });
