@@ -92,7 +92,7 @@ export default function Login() {
             </div>
           </div>
 
-          <h2 className="text-base font-light text-gray-800 mb-2">SICAP</h2>
+          <h2 className="text-base font-light text-gray-800 mb-2">SICAaaP</h2>
           <p className="text-gray-600 text-xs">
             Ingrese sus credenciales corporativas
           </p>
