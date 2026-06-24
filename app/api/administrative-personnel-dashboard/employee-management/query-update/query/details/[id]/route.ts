@@ -56,6 +56,7 @@ export async function GET(
     let beneficiario: any = null;
     let documentacion: any = null;
     let projectInfo: any = null;
+    let fechaAltaIMSS: string | null = null;
     let uniqueKey = `${employeeId}_${tipo}`;
 
     if (tipo === 'BASE') {
@@ -143,6 +144,22 @@ export async function GET(
             letterFileURL: contractRow.LetterFileURL,
             agreementFileURL: contractRow.AgreementFileURL
           };
+        }
+
+        // Obtener Fecha de Alta IMSS
+        const [imssMovements] = await connection.execute(`
+          SELECT emb.DateMovement 
+          FROM basepersonnel bp
+          LEFT JOIN employees e ON e.EmployeeID = bp.EmployeeID
+          LEFT JOIN employeeimssinfonavitmovements eii ON eii.EmployeeID = e.EmployeeID
+          LEFT JOIN employee_movement_batches emb ON emb.BatchID = eii.BatchID
+          WHERE bp.EmployeeID = ? AND eii.Status = 1
+          ORDER BY emb.DateMovement DESC
+          LIMIT 1
+        `, [employeeId]);
+
+        if (Array.isArray(imssMovements) && imssMovements.length > 0) {
+          fechaAltaIMSS = (imssMovements as any[])[0].DateMovement;
         }
 
         const [beneficiarioRows] = await connection.execute(`
@@ -277,6 +294,22 @@ export async function GET(
           };
         }
 
+        // Obtener Fecha de Alta IMSS para proyecto
+        const [imssMovements] = await connection.execute(`
+          SELECT emb.DateMovement 
+          FROM projectpersonnel pp
+          LEFT JOIN employees e ON e.EmployeeID = pp.EmployeeID
+          LEFT JOIN employeeimssinfonavitmovements eii ON eii.EmployeeID = e.EmployeeID
+          LEFT JOIN employee_movement_batches emb ON emb.BatchID = eii.BatchID
+          WHERE pp.EmployeeID = ? AND eii.Status = 1
+          ORDER BY emb.DateMovement DESC
+          LIMIT 1
+        `, [employeeId]);
+
+        if (Array.isArray(imssMovements) && imssMovements.length > 0) {
+          fechaAltaIMSS = (imssMovements as any[])[0].DateMovement;
+        }
+
         if (lastContract) {
           contractInfo = {
             contractId: lastContract.ContractID,
@@ -367,7 +400,8 @@ export async function GET(
       contractInfo,
       beneficiario,
       documentacion,
-      projectInfo
+      projectInfo,
+      fechaAltaIMSS
     });
 
   } catch (error) {
