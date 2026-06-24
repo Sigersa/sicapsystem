@@ -1,4 +1,3 @@
-// app/api/administrative-personnel-dashboard/employee-management/employeeimssinfonavit/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -12,7 +11,6 @@ import ConvertAPI from "convertapi";
 const convertapi = new ConvertAPI(process.env.CONVERTAPI_SECRET!);
 const utapi = new UTApi();
 
-// Función para formatear fecha correctamente para MySQL (YYYY-MM-DD)
 const formatearFechaMySQL = (fecha: string): string | null => {
   if (!fecha) return null;
   
@@ -26,7 +24,6 @@ const formatearFechaMySQL = (fecha: string): string | null => {
   }
 };
 
-// Función para extraer el fileKey de una URL de UploadThing
 function extractFileKeyFromUrl(url: string): string | null {
   try {
     const matches = url.match(/\/f\/([a-zA-Z0-9-_]+)/);
@@ -36,7 +33,6 @@ function extractFileKeyFromUrl(url: string): string | null {
   }
 }
 
-// Función para eliminar archivo de UploadThing
 async function deleteFileFromUploadThing(fileUrl: string): Promise<void> {
   try {
     const fileKey = extractFileKeyFromUrl(fileUrl);
@@ -52,9 +48,7 @@ async function deleteFileFromUploadThing(fileUrl: string): Promise<void> {
   }
 }
 
-// Función para obtener los ContractIDs de un empleado (tanto BASE como PROJECT)
 async function getEmployeeContractIDs(connection: any, employeeId: number): Promise<{ baseContractId: number | null, projectContractId: number | null }> {
-  // Verificar si es empleado BASE
   const [baseResult] = await connection.execute(
     `SELECT bc.ContractID as BaseContractID
      FROM basepersonnel bp 
@@ -70,7 +64,6 @@ async function getEmployeeContractIDs(connection: any, employeeId: number): Prom
     baseContractId = baseContracts[0].BaseContractID;
   }
   
-  // Verificar si es empleado PROJECT
   const [projectResult] = await connection.execute(
     `SELECT pc.ContractID as ProjectContractID
      FROM projectpersonnel pp 
@@ -89,7 +82,52 @@ async function getEmployeeContractIDs(connection: any, employeeId: number): Prom
   return { baseContractId, projectContractId };
 }
 
-// Función para generar el PDF FT-RH-05 actualizado
+// Función para obtener el ALTA activa (Status = 1) de un empleado
+async function getActiveAltaMovement(connection: any, employeeId: number, excludeBatchId?: number): Promise<any | null> {
+  let query = `
+    SELECT em.MovementID, em.BatchID
+    FROM employeeimssinfonavitmovements em
+    INNER JOIN employee_movement_batches emb ON em.BatchID = emb.BatchID
+    WHERE em.EmployeeID = ? 
+    AND em.Status = 1
+    AND emb.MovementType = 'ALTA'
+  `;
+  
+  const params: any[] = [employeeId];
+  
+  if (excludeBatchId) {
+    query += ` AND em.BatchID != ?`;
+    params.push(excludeBatchId);
+  }
+  
+  query += ` ORDER BY em.MovementID DESC LIMIT 1`;
+  
+  const [rows] = await connection.execute(query, params);
+  return (rows as any[])[0] || null;
+}
+
+// Función para obtener el último movimiento de un empleado (para restaurar status)
+async function getLastMovement(connection: any, employeeId: number, excludeBatchId?: number): Promise<any | null> {
+  let query = `
+    SELECT em.MovementID, em.Status, emb.MovementType
+    FROM employeeimssinfonavitmovements em
+    INNER JOIN employee_movement_batches emb ON em.BatchID = emb.BatchID
+    WHERE em.EmployeeID = ?
+  `;
+  
+  const params: any[] = [employeeId];
+  
+  if (excludeBatchId) {
+    query += ` AND em.BatchID != ?`;
+    params.push(excludeBatchId);
+  }
+  
+  query += ` ORDER BY em.MovementID DESC LIMIT 1`;
+  
+  const [rows] = await connection.execute(query, params);
+  return (rows as any[])[0] || null;
+}
+
 async function generateUpdatedMovementPDF(
   batchId: number
 ): Promise<{ pdfBuffer: ArrayBuffer; fileUrl: string }> {
@@ -103,14 +141,12 @@ async function generateUpdatedMovementPDF(
   try {
     connection = await getConnection();
 
-    // Obtener información del batch
     const [batchRows] = await connection.execute<any[]>(
       `SELECT 
         emb.BatchID,
         emb.MovementType,
         emb.DateMovement,
         emb.ReasonForWithdrawal,
-        -- Datos del administrador (para el proyecto)
         pj.NameProject,
         pj.AdminProjectID,
         COALESCE(admin_bp.FirstName) as AdminNombre,
@@ -133,13 +169,11 @@ async function generateUpdatedMovementPDF(
 
     const batch = batchRows[0];
 
-    // Obtener todos los empleados del lote
     const [employeeRows] = await connection.execute<any[]>(
       `SELECT 
         em.EmployeeID,
         em.BaseContractID,
         em.ProjectContractID,
-        -- Datos del empleado
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
         COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
@@ -155,11 +189,9 @@ async function generateUpdatedMovementPDF(
           ELSE 'NO ESPECIFICADO'
         END as tipo
       FROM employeeimssinfonavitmovements em
-      -- Datos del empleado (BASE)
       LEFT JOIN basepersonnel bp ON em.EmployeeID = bp.EmployeeID
       LEFT JOIN basecontracts bc ON em.BaseContractID = bc.ContractID
       LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
-      -- Datos del empleado (PROJECT)
       LEFT JOIN projectpersonnel pp ON em.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON em.ProjectContractID = pc.ContractID
       LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
@@ -197,7 +229,6 @@ async function generateUpdatedMovementPDF(
       }
     };
 
-    // Cargar plantilla Excel
     const templatePath = path.join(
       process.cwd(),
       "public",
@@ -217,7 +248,6 @@ async function generateUpdatedMovementPDF(
     ws.getCell('D5').value = batch.NameProject || 'NO ESPECIFICADO';
     ws.getCell('D7').value = adminName || 'NO ESPECIFICADO';
 
-    // Llenar datos de empleados
     employeeRows.forEach((mov, index) => {
       const rowNumber = 10 + index; 
       
@@ -240,19 +270,15 @@ async function generateUpdatedMovementPDF(
       ws.getCell(`M${rowNumber}`).value = batch.ReasonForWithdrawal || 'N/A';
     });
 
-    // Guardar Excel temporal
     await workbook.xlsx.writeFile(tempExcelPath);
 
-    // Convertir a PDF usando ConvertAPI
     const result = await convertapi.convert("pdf", {
       File: tempExcelPath,
     });
 
-    // Descargar el PDF
     const pdfResponse = await fetch(result.file.url);
     const pdfBuffer = await pdfResponse.arrayBuffer();
 
-    // Subir a UploadThing
     const fileName = `FT-RH-05-${batchId}-${Date.now()}.pdf`;
     
     const file = new File([Buffer.from(pdfBuffer)], fileName, { type: 'application/pdf' });
@@ -278,7 +304,6 @@ async function generateUpdatedMovementPDF(
         console.error('Error al cerrar la conexión:', error);
       }
     }
-    // Limpiar archivos temporales
     try {
       if (fs.existsSync(tempExcelPath)) {
         fs.unlinkSync(tempExcelPath);
@@ -352,6 +377,7 @@ export async function GET(
         em.EmployeeID,
         em.BaseContractID,
         em.ProjectContractID,
+        em.Status,
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
         COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
@@ -438,13 +464,12 @@ export async function PUT(
     const BatchID = parseInt(id);
     const body = await request.json();
     const { 
-      Employees, // Array de EmployeeIDs
+      Employees, 
       MovementType,
       DateMovement,
       ReasonForWithdrawal,
     } = body;
 
-    // Validaciones
     if (!Employees || !Array.isArray(Employees) || Employees.length === 0) {
       return NextResponse.json(
         { success: false, message: 'Debe incluir al menos un empleado' },
@@ -473,7 +498,6 @@ export async function PUT(
       );
     }
 
-    // SOLO validar ReasonForWithdrawal si el movimiento es BAJA
     if (MovementType.toUpperCase() === 'BAJA' && !ReasonForWithdrawal) {
       return NextResponse.json(
         { success: false, message: 'El motivo de baja es requerido para movimientos de BAJA' },
@@ -485,9 +509,9 @@ export async function PUT(
     await connection.beginTransaction();
 
     try {
-      // Verificar que el lote existe y obtener el FileURL actual
+      // Obtener el batch actual
       const [batchCheck] = await connection.execute<any[]>(
-        'SELECT BatchID, FileURL FROM employee_movement_batches WHERE BatchID = ?',
+        'SELECT BatchID, FileURL, MovementType as CurrentMovementType FROM employee_movement_batches WHERE BatchID = ?',
         [BatchID]
       );
 
@@ -497,27 +521,113 @@ export async function PUT(
 
       const currentBatch = batchCheck[0];
       const oldFileUrl = currentBatch.FileURL;
+      const currentMovementType = currentBatch.CurrentMovementType;
 
-      // Validar que todos los empleados existen y tienen contrato
+      // Obtener los empleados actuales del lote
+      const [currentEmployees] = await connection.execute<any[]>(
+        `SELECT EmployeeID, Status FROM employeeimssinfonavitmovements WHERE BatchID = ?`,
+        [BatchID]
+      );
+      
+      const currentEmployeeIds = currentEmployees.map((e: any) => e.EmployeeID);
+
+      // Determinar el nuevo status basado en el MovementType
+      const newStatus = MovementType === 'ALTA' ? 1 : 0;
+
+      // Procesar los empleados que serán removidos del lote
+      for (const empId of currentEmployeeIds) {
+        if (!Employees.includes(empId)) {
+          // El empleado fue removido del lote
+          // Buscar el último movimiento del empleado (excluyendo el lote actual)
+          const lastMovement = await getLastMovement(connection, empId, BatchID);
+          
+          if (lastMovement) {
+            // Restaurar el status del último movimiento anterior
+            await connection.execute(
+              `UPDATE employeeimssinfonavitmovements 
+               SET Status = ? 
+               WHERE MovementID = ?`,
+              [lastMovement.Status, lastMovement.MovementID]
+            );
+          }
+        }
+      }
+
+      // Procesar los empleados que se mantienen o se agregan
       const employeesToSave = [];
+      
       for (const employeeId of Employees) {
         const { baseContractId, projectContractId } = await getEmployeeContractIDs(connection, employeeId);
         
         if (!baseContractId && !projectContractId) {
           throw new Error(`El empleado ${employeeId} no tiene un contrato activo.`);
         }
+
+        // Verificar si el empleado ya está en el lote actual
+        const existingInBatch = currentEmployeeIds.includes(employeeId);
         
-        employeesToSave.push({ 
-          EmployeeID: employeeId, 
-          BaseContractID: baseContractId, 
-          ProjectContractID: projectContractId 
-        });
+        if (existingInBatch) {
+          // Si ya está en el lote, actualizar su status según el nuevo MovementType
+          employeesToSave.push({ 
+            EmployeeID: employeeId, 
+            BaseContractID: baseContractId, 
+            ProjectContractID: projectContractId,
+            Status: newStatus
+          });
+          
+          // Actualizar el status del empleado en el lote
+          await connection.execute(
+            `UPDATE employeeimssinfonavitmovements 
+             SET Status = ? 
+             WHERE BatchID = ? AND EmployeeID = ?`,
+            [newStatus, BatchID, employeeId]
+          );
+        } else {
+          // Nuevo empleado agregado al lote
+          if (MovementType === 'ALTA') {
+            // Verificar si tiene un ALTA activa en otro lote
+            const activeAlta = await getActiveAltaMovement(connection, employeeId);
+            
+            if (activeAlta) {
+              throw new Error(`El empleado ${employeeId} ya tiene un ALTA activa (MovementID: ${activeAlta.MovementID}). Debe realizar una BAJA primero.`);
+            }
+            
+            employeesToSave.push({ 
+              EmployeeID: employeeId, 
+              BaseContractID: baseContractId, 
+              ProjectContractID: projectContractId,
+              Status: 1
+            });
+            
+          } else if (MovementType === 'BAJA') {
+            // Verificar si tiene un ALTA activa
+            const activeAlta = await getActiveAltaMovement(connection, employeeId);
+            
+            if (!activeAlta) {
+              throw new Error(`El empleado ${employeeId} no tiene un ALTA activa. No se puede dar de BAJA.`);
+            }
+            
+            // Marcar el ALTA activa como inactiva
+            await connection.execute(
+              `UPDATE employeeimssinfonavitmovements 
+               SET Status = 0 
+               WHERE MovementID = ?`,
+              [activeAlta.MovementID]
+            );
+            
+            employeesToSave.push({ 
+              EmployeeID: employeeId, 
+              BaseContractID: baseContractId, 
+              ProjectContractID: projectContractId,
+              Status: 0
+            });
+          }
+        }
       }
 
-      // Formatear fecha
       const dateMovementFormatted = DateMovement ? formatearFechaMySQL(DateMovement) : null;
 
-      // 1. Actualizar los datos del batch
+      // Actualizar los datos del batch
       await connection.execute(
         `UPDATE employee_movement_batches 
          SET MovementType = ?, DateMovement = ?, ReasonForWithdrawal = ?
@@ -530,43 +640,47 @@ export async function PUT(
         ]
       );
 
-      // 2. Eliminar todos los empleados actuales del lote
-      await connection.execute(
-        'DELETE FROM employeeimssinfonavitmovements WHERE BatchID = ?',
-        [BatchID]
-      );
-
-      // 3. Insertar los nuevos empleados con ambos IDs de contrato
-      for (const emp of employeesToSave) {
-        await connection.execute(
-          `INSERT INTO employeeimssinfonavitmovements 
-           (BatchID, EmployeeID, BaseContractID, ProjectContractID) 
-           VALUES (?, ?, ?, ?)`,
-          [
-            BatchID,
-            emp.EmployeeID,
-            emp.BaseContractID,
-            emp.ProjectContractID
-          ]
-        );
+      // Eliminar los empleados que ya no están en el lote
+      for (const empId of currentEmployeeIds) {
+        if (!Employees.includes(empId)) {
+          await connection.execute(
+            'DELETE FROM employeeimssinfonavitmovements WHERE BatchID = ? AND EmployeeID = ?',
+            [BatchID, empId]
+          );
+        }
       }
 
-      // Confirmar la transacción
+      // Insertar los nuevos empleados (los que no estaban en el lote)
+      for (const emp of employeesToSave) {
+        if (!currentEmployeeIds.includes(emp.EmployeeID)) {
+          await connection.execute(
+            `INSERT INTO employeeimssinfonavitmovements 
+             (BatchID, EmployeeID, BaseContractID, ProjectContractID, Status) 
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              BatchID,
+              emp.EmployeeID,
+              emp.BaseContractID,
+              emp.ProjectContractID,
+              emp.Status
+            ]
+          );
+        }
+      }
+
       await connection.commit();
 
-      // 4. Generar nuevo PDF con los datos actualizados
+      // Generar nuevo PDF
       let newFileUrl: string | null = null;
       let pdfGenerationSuccess = false;
 
       try {
-        // Pequeña pausa para asegurar que la base de datos tenga los registros
         await new Promise(resolve => setTimeout(resolve, 200));
         
         const { fileUrl: pdfUrl } = await generateUpdatedMovementPDF(BatchID);
         newFileUrl = pdfUrl;
         pdfGenerationSuccess = true;
         
-        // Actualizar el campo FileURL en la base de datos
         const updateConnection = await getConnection();
         try {
           await updateConnection.execute(
@@ -575,7 +689,6 @@ export async function PUT(
           );
           console.log(`PDF actualizado subido a UploadThing: ${newFileUrl}`);
           
-          // Eliminar el archivo anterior si existe y la generación fue exitosa
           if (oldFileUrl && pdfGenerationSuccess) {
             await deleteFileFromUploadThing(oldFileUrl);
           }
@@ -584,10 +697,8 @@ export async function PUT(
         }
       } catch (pdfError) {
         console.error('Error al generar/subir PDF durante actualización:', pdfError);
-        // Si falla la generación del PDF, mantenemos el archivo anterior
         newFileUrl = oldFileUrl;
         
-        // Restaurar el archivo anterior en la base de datos
         if (oldFileUrl) {
           const restoreConnection = await getConnection();
           try {
@@ -626,6 +737,10 @@ export async function PUT(
         errorMessage = 'ERROR: Uno o más empleados no existen o no tienen contrato activo';
       } else if (error.message.includes('date value')) {
         errorMessage = 'ERROR: Formato de fecha incorrecto';
+      } else if (error.message.includes('ya tiene un ALTA activa')) {
+        errorMessage = error.message;
+      } else if (error.message.includes('no tiene un ALTA activa')) {
+        errorMessage = error.message;
       } else if (error.message.includes('no tiene un contrato activo')) {
         errorMessage = error.message;
       } else {
@@ -693,7 +808,6 @@ export async function DELETE(
     await connection.beginTransaction();
 
     try {
-      // Verificar que el lote existe y obtener el FileURL
       const [batchCheck] = await connection.execute<any[]>(
         'SELECT BatchID, FileURL FROM employee_movement_batches WHERE BatchID = ?',
         [BatchID]
@@ -705,18 +819,39 @@ export async function DELETE(
 
       const fileUrl = batchCheck[0].FileURL;
 
-      // Eliminar el archivo de UploadThing si existe
+      // Obtener los empleados del lote
+      const [employees] = await connection.execute<any[]>(
+        `SELECT EmployeeID, Status 
+         FROM employeeimssinfonavitmovements 
+         WHERE BatchID = ?`,
+        [BatchID]
+      );
+
+      // Restaurar status de empleados que estaban en el lote
+      for (const emp of employees) {
+        // Buscar el último movimiento del empleado (excluyendo el lote actual)
+        const lastMovement = await getLastMovement(connection, emp.EmployeeID, BatchID);
+        
+        if (lastMovement) {
+          // Restaurar el status del último movimiento anterior
+          await connection.execute(
+            `UPDATE employeeimssinfonavitmovements 
+             SET Status = ? 
+             WHERE MovementID = ?`,
+            [lastMovement.Status, lastMovement.MovementID]
+          );
+        }
+      }
+
       if (fileUrl) {
         await deleteFileFromUploadThing(fileUrl);
       }
       
-      // Eliminar los empleados asociados al lote
       await connection.execute(
         'DELETE FROM employeeimssinfonavitmovements WHERE BatchID = ?',
         [BatchID]
       );
 
-      // Eliminar el lote
       await connection.execute(
         'DELETE FROM employee_movement_batches WHERE BatchID = ?',
         [BatchID]
