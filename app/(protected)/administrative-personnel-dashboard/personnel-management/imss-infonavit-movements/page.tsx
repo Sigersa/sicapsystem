@@ -1,4 +1,3 @@
-// app/administrative-personnel-dashboard/personnel-management/personnel-movements/page.tsx
 'use client';
 
 import AppHeader from '@/components/header/2/2.1';
@@ -6,7 +5,7 @@ import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useState, useEffect, ChangeEvent, useRef, KeyboardEvent } from 'react';
-import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Download, Eye, Plus, UserMinus } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Download, Eye } from 'lucide-react';
 
 // Interface para movimientos de empleados
 interface EmployeeMovement {
@@ -37,7 +36,7 @@ interface EmployeeSearchResult {
 
 // Interface para empleado en el lote
 interface EmployeeInBatch {
-  id: string; // clave temporal para el frontend
+  id: string;
   EmployeeID: number;
   EmployeeData: EmployeeSearchResult;
 }
@@ -73,12 +72,10 @@ const TYPE_OF_MOVEMENT_OPTIONS = [
   { value: "BAJA", label: "BAJA" }
 ];
 
-// Función para normalizar texto a mayúsculas
 const normalizarMayusculas = (texto: string): string => {
   return texto.toUpperCase();
 };
 
-// Función para formatear fecha para input type="date" (YYYY-MM-DD)
 const formatDateForInput = (dateString: string | null): string => {
   if (!dateString) return '';
   
@@ -102,7 +99,6 @@ const formatDateForInput = (dateString: string | null): string => {
   }
 };
 
-// Función para formatear fecha para mostrar
 const formatDate = (dateString: string | null): string => {
   if (!dateString) return 'N/A';
   try {
@@ -116,107 +112,69 @@ const formatDate = (dateString: string | null): string => {
   }
 };
 
-// Función para descargar documento
-const downloadDocument = (url: string, fileName: string) => {
-  fetch(url)
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('Error al descargar el documento');
-      }
-      return response.blob();
-    })
-    .then(blob => {
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-    })
-    .catch(error => {
-      console.error('Error:', error);
-      alert('Error al descargar el documento. Por favor, intente nuevamente.');
-    });
-};
-
 export default function EmployeeMovementsPage() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
 
-  // Estados
   const [records, setRecords] = useState<EmployeeMovement[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<EmployeeMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   
-  // Estados para paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
 
-  // Estados para filtros
   const [filters, setFilters] = useState<Filters>({
     search: ''
   });
 
-  // Estados para búsqueda de empleados por ID (para agregar al lote)
   const [employeeIdInput, setEmployeeIdInput] = useState('');
   const [searchingEmployee, setSearchingEmployee] = useState(false);
   const [employeeToAdd, setEmployeeToAdd] = useState<EmployeeSearchResult | null>(null);
   const [employeeNotFound, setEmployeeNotFound] = useState(false);
   const [employeesInBatch, setEmployeesInBatch] = useState<EmployeeInBatch[]>([]);
 
-  // Estados para modales
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [saving, setSaving] = useState(false);
   const [recordToEdit, setRecordToEdit] = useState<EmployeeMovement | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ show: boolean; id: number | null }>({ show: false, id: null });
 
-  // Estado para el modal de éxito con vista previa del PDF
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successDetails, setSuccessDetails] = useState<SuccessDetails | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  // Estado para formulario
   const [formData, setFormData] = useState<MovementFormData>({
     MovementType: '',
     DateMovement: '',
     ReasonForWithdrawal: '',
   });
 
-  // Referencias
   const employeeIdInputRef = useRef<HTMLInputElement>(null);
 
-  // Cargar registros al montar
   useEffect(() => {
     if (user) {
       fetchRecords();
     }
   }, [user]);
 
-  // Aplicar filtros cuando cambien
   useEffect(() => {
     applyFilters();
   }, [records, filters]);
 
-  // Actualizar páginas cuando cambien los registros filtrados
   useEffect(() => {
     setTotalPages(Math.ceil(filteredRecords.length / itemsPerPage));
     setCurrentPage(1);
   }, [filteredRecords, itemsPerPage]);
 
-  // Obtener registros actuales de la página
   const currentRecords = filteredRecords.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
-  // Función para obtener registros de movimientos
   const fetchRecords = async () => {
     try {
       setLoading(true);
@@ -243,7 +201,6 @@ export default function EmployeeMovementsPage() {
     }
   };
 
-  // Función para aplicar filtros
   const applyFilters = () => {
     let filtered = [...records];
 
@@ -260,14 +217,12 @@ export default function EmployeeMovementsPage() {
     setFilteredRecords(filtered);
   };
 
-  // Función para limpiar filtros
   const clearFilters = () => {
     setFilters({
       search: ''
     });
   };
 
-  // Función para buscar empleado por ID al presionar Enter
   const handleEmployeeIdKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -282,7 +237,6 @@ export default function EmployeeMovementsPage() {
     }
   };
 
-  // Función para buscar empleado por ID
   const searchEmployeeById = async (id: string) => {
     try {
       setSearchingEmployee(true);
@@ -298,7 +252,6 @@ export default function EmployeeMovementsPage() {
         );
         
         if (employee) {
-          // Verificar si el empleado ya está en el lote
           const alreadyInBatch = employeesInBatch.some(e => e.EmployeeID === employee.EmployeeID);
           if (alreadyInBatch) {
             setError('ESTE EMPLEADO YA HA SIDO AGREGADO AL LOTE');
@@ -326,7 +279,6 @@ export default function EmployeeMovementsPage() {
     }
   };
 
-  // Función para agregar empleado al lote
   const addEmployeeToBatch = () => {
     if (!employeeToAdd) return;
     
@@ -346,12 +298,10 @@ export default function EmployeeMovementsPage() {
     }
   };
 
-  // Función para eliminar empleado del lote
   const removeEmployeeFromBatch = (id: string) => {
     setEmployeesInBatch(employeesInBatch.filter(emp => emp.id !== id));
   };
 
-  // Función para limpiar la búsqueda de empleado
   const clearEmployeeSearch = () => {
     setEmployeeIdInput('');
     setEmployeeToAdd(null);
@@ -362,7 +312,6 @@ export default function EmployeeMovementsPage() {
     }
   };
 
-  // Función para limpiar todo el lote
   const clearBatch = () => {
     setEmployeesInBatch([]);
     setEmployeeToAdd(null);
@@ -370,7 +319,6 @@ export default function EmployeeMovementsPage() {
     setEmployeeNotFound(false);
   };
 
-  // Función para abrir modal de creación
   const handleCreateRecord = () => {
     setModalMode('create');
     setFormData({
@@ -397,23 +345,24 @@ export default function EmployeeMovementsPage() {
       setLoading(true);
       setError('');
 
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeeimssinfonavit/batch/${batchId}`);
+      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeeimssinfonavit/${batchId}`);
       
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          // Cargar los datos del movimiento
           setFormData({
             MovementType: data.batch.MovementType || '',
             DateMovement: formatDateForInput(data.batch.DateMovement),
             ReasonForWithdrawal: data.batch.ReasonForWithdrawal || '',
           });
           
-          // Cargar los empleados del lote
           const employees = data.employees.map((emp: any, index: number) => ({
             id: `edit-${index}-${emp.EmployeeID}`,
             EmployeeID: emp.EmployeeID,
-            EmployeeData: emp
+            EmployeeData: {
+              ...emp,
+              tipo: emp.tipo
+            }
           }));
           setEmployeesInBatch(employees);
         } else {
@@ -430,13 +379,11 @@ export default function EmployeeMovementsPage() {
     }
   };
 
-  // Función para abrir modal de edición
   const handleEditRecord = async (record: EmployeeMovement) => {
     setModalMode('edit');
     setRecordToEdit(record);
     setShowModal(true);
     
-    // Cargar los datos completos del lote
     await loadBatchForEdit(record.BatchID);
     
     setTimeout(() => {
@@ -446,7 +393,6 @@ export default function EmployeeMovementsPage() {
     }, 100);
   };
 
-  // Función para cerrar modal
   const handleCloseModal = () => {
     setShowModal(false);
     setEmployeesInBatch([]);
@@ -456,7 +402,6 @@ export default function EmployeeMovementsPage() {
     setError('');
   };
 
-  // Función para eliminar registro
   const handleDeleteRecord = async (id: number) => {
     setLoading(true);
     try {
@@ -482,7 +427,6 @@ export default function EmployeeMovementsPage() {
     }
   };
 
-  // Función para manejar cambios en el formulario
   const handleFormChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     
@@ -498,7 +442,6 @@ export default function EmployeeMovementsPage() {
     }));
   };
 
-  // Función para guardar registro de movimientos (múltiples empleados)
   const handleSaveRecord = async () => {
     try {
       setSaving(true);
@@ -522,7 +465,6 @@ export default function EmployeeMovementsPage() {
         return;
       }
 
-      // Validar motivo de baja solo cuando el tipo de movimiento es BAJA
       if (formData.MovementType === 'BAJA' && !formData.ReasonForWithdrawal) {
         setError('DEBE INGRESAR UN MOTIVO DE BAJA');
         setSaving(false);
@@ -563,7 +505,6 @@ export default function EmployeeMovementsPage() {
         await fetchRecords();
         
         if (modalMode === 'create' && data.fileUrl) {
-          // Mostrar modal de éxito con vista previa (para creación)
           const baseUrl = window.location.origin;
           const pdfUrl = data.fileUrl;
           const excelUrl = `${baseUrl}/api/download/edit/FT-RH-05?batchId=${data.batchId}`;
@@ -599,7 +540,6 @@ export default function EmployeeMovementsPage() {
     }
   };
 
-  // Función para descargar el archivo PDF
   const handleDownloadPDF = async (url: string, filename: string) => {
     try {
       setDownloading(true);
@@ -628,7 +568,6 @@ export default function EmployeeMovementsPage() {
     }
   };
 
-  // Función para descargar el archivo Excel editable
   const handleDownloadExcel = (url: string, filename: string) => {
     try {
       setDownloading(true);
@@ -648,20 +587,17 @@ export default function EmployeeMovementsPage() {
     }
   };
 
-  // Función para cerrar modal de éxito
   const closeSuccessModal = () => {
     setShowSuccessModal(false);
     setSuccessDetails(null);
     setPdfLoading(false);
   };
 
-  // Función para obtener la URL de vista previa del PDF
   const getPreviewUrl = (documentUrl: string | null | undefined): string | null => {
     if (!documentUrl) return null;
     return documentUrl;
   };
 
-  // Mostrar loading de sesión
   if (sessionLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
@@ -673,7 +609,6 @@ export default function EmployeeMovementsPage() {
     );
   }
 
-  // Si no hay usuario
   if (!user) {
     return null;
   }
@@ -682,7 +617,7 @@ export default function EmployeeMovementsPage() {
     <div className="min-h-screen bg-gray-100">
       <AppHeader title="PANEL ADMINISTRATIVO" />
 
-      {/* MODAL DE CONFIRMACIÓN PARA ELIMINAR */}
+      {/* Modal de Confirmación para Eliminar */}
       {confirmDelete.show && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
@@ -727,14 +662,13 @@ export default function EmployeeMovementsPage() {
         </div>
       )}
 
-      {/* MODAL DE ÉXITO CON VISTA PREVIA DEL PDF */}
+      {/* Modal de Éxito con Vista Previa del PDF */}
       {showSuccessModal && successDetails && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
           style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
         >
           <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full h-[90vh] flex flex-col animate-fade-in relative z-[10000]">
-            {/* Encabezado del modal */}
             <div className="p-6 pb-4 border-b flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
@@ -754,9 +688,7 @@ export default function EmployeeMovementsPage() {
               </button>
             </div>
             
-            {/* Contenido del modal - dos columnas */}
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-              {/* Columna izquierda - Detalles del Movimiento */}
               <div className="w-full md:w-1/3 p-6 border-r border-gray-200 overflow-y-auto">
                 <div className="space-y-4">
                   <div className="bg-gray-50 rounded-lg p-4">
@@ -791,7 +723,6 @@ export default function EmployeeMovementsPage() {
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DOCUMENTOS GENERADOS</h3>
                     <div className="space-y-3">
-                      {/* PDF */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center">
                           <FileText className="h-5 w-5 text-gray-600 mr-2" />
@@ -822,7 +753,6 @@ export default function EmployeeMovementsPage() {
                         </div>
                       </div>
                       
-                      {/* Excel Editable */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center">
                           <FileText className="h-5 w-5 text-gray-600 mr-2" />
@@ -846,7 +776,6 @@ export default function EmployeeMovementsPage() {
                 </div>
               </div>
               
-              {/* Columna derecha - Vista previa del PDF */}
               <div className="flex-1 flex flex-col p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-gray-800 text-sm uppercase">
@@ -877,14 +806,13 @@ export default function EmployeeMovementsPage() {
         </div>
       )}
 
-      {/* MODAL DE REGISTRO DE MOVIMIENTO (MÚLTIPLES EMPLEADOS) */}
+      {/* Modal de Registro de Movimiento */}
       {showModal && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
           style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0 }}
         >
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto animate-fade-in relative z-[10000]">
-            {/* Encabezado */}
             <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 tracking-tight">
@@ -892,7 +820,7 @@ export default function EmployeeMovementsPage() {
                 </h2>
                 <p className="text-gray-600 mt-1 text-sm">
                   {modalMode === 'create' 
-                    ? 'Registre una nueva solucitud de movimientos IMSS e INFONAVIT del personal.'
+                    ? 'Registre una nueva solicitud de movimientos IMSS e INFONAVIT del personal.'
                     : 'Modifique la información de la solicitud seleccionada.'
                   }
                 </p>
@@ -905,7 +833,6 @@ export default function EmployeeMovementsPage() {
               </button>
             </div>
 
-            {/* Contenido */}
             <div className="p-6">
               <div className="space-y-6">
                 {/* Búsqueda por ID del empleado para agregar al lote */}
@@ -960,17 +887,14 @@ export default function EmployeeMovementsPage() {
                     )}
                   </div>
 
-                  {/* Empleado encontrado para agregar */}
                   {employeeToAdd && (
                     <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-sm transition-shadow">
                       <div className="flex justify-between items-start gap-4">
                         <div className="flex-1">
-                          {/* Nombre del empleado */}
                           <h3 className="font-semibold text-gray-800 mb-3 text-base border-b border-gray-200 pb-2">
                             {`${employeeToAdd.FirstName} ${employeeToAdd.LastName} ${employeeToAdd.MiddleName || ''}`.trim()}
                           </h3>
                           
-                          {/* Información del empleado en grid */}
                           <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                             <div>
                               <span className="text-xs font-semibold text-gray-600 uppercase">ID:</span>
@@ -1070,7 +994,6 @@ export default function EmployeeMovementsPage() {
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     
-                    {/* TIPO DE MOVIMIENTO */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                         TIPO DE MOVIMIENTO *
@@ -1093,7 +1016,6 @@ export default function EmployeeMovementsPage() {
                       </div>
                     </div>
 
-                    {/* FECHA DEL MOVIMIENTO */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                         FECHA DEL MOVIMIENTO *
@@ -1110,7 +1032,6 @@ export default function EmployeeMovementsPage() {
                       </div>
                     </div>
 
-                    {/* MOTIVO DE BAJA - Solo visible cuando el tipo de movimiento es BAJA */}
                     {formData.MovementType === 'BAJA' && (
                       <div className="md:col-span-2">
                         <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
@@ -1132,7 +1053,6 @@ export default function EmployeeMovementsPage() {
               </div>
             </div>
 
-            {/* Botones de acción */}
             <div className="p-6 pt-4 border-t border-gray-300 bg-gray-50 flex justify-end gap-3">
               <button
                 onClick={handleCloseModal}
@@ -1152,7 +1072,7 @@ export default function EmployeeMovementsPage() {
                     GUARDANDO...
                   </>
                 ) : (
-                  modalMode === 'create' ? `CREAR` : 'ACTUALIZAR'
+                  modalMode === 'create' ? 'CREAR' : 'ACTUALIZAR'
                 )}
               </button>
             </div>
@@ -1361,7 +1281,6 @@ export default function EmployeeMovementsPage() {
 
       <Footer />
 
-      {/* Estilos para animaciones */}
       <style jsx global>{`
         @keyframes fade-in {
           from {
