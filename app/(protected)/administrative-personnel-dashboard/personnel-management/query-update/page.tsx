@@ -189,6 +189,7 @@ interface EmployeeDetails {
     endDate: string;
     status: number;
   };
+  fechaAltaIMSS?: string | null;
 }
 
 // Interface para el formulario de edición
@@ -1432,7 +1433,7 @@ export default function EmployeesListPage() {
             </div>
           </div>
         </div>
-      )}
+      )} 
 
       {/* MODAL DE DETALLES/EDICIÓN */}
       {showDetailsModal && selectedEmployee && employeeDetails && (
@@ -1665,6 +1666,15 @@ export default function EmployeesListPage() {
                           <option value="OTRO">OTRO</option>
                         </select>
                       </div>
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Fecha de Alta IMSS</label>
+                        <input 
+                          type="text" 
+                          value={employeeDetails.fechaAltaIMSS ? formatDate(employeeDetails.fechaAltaIMSS) : 'N/A'} 
+                          disabled 
+                          className="w-full px-3 py-2 text-sm bg-gray-100 border border-gray-300 rounded text-gray-600 cursor-not-allowed" 
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1773,6 +1783,10 @@ export default function EmployeesListPage() {
                           })()}
                         </span></div>
                       )}
+                      <div>
+                        <span className="block text-xs font-bold text-gray-500 uppercase">Fecha de Alta IMSS</span>
+                        <span className="text-sm text-gray-900">{employeeDetails.fechaAltaIMSS ? formatDate(employeeDetails.fechaAltaIMSS) : 'N/A'}</span>
+                      </div>
                     </div>
                   </div>
                   
