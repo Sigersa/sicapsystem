@@ -55,6 +55,7 @@ interface SuccessDetails {
   StartDate: string;
   EndDate: string;
   fileUrl: string | null;
+  completedVacations: boolean;
 }
 
 // Función para normalizar texto a mayúsculas
@@ -819,7 +820,8 @@ export default function SystemAdminDashboard() {
               Days: daysToTake,
               StartDate: result.startDate,
               EndDate: result.endDate,
-              fileUrl: result.fileUrl || null
+              fileUrl: result.fileUrl || null,
+              completedVacations: result.completedVacations || false
             });
             setShowSuccessModal(true);
           }
@@ -842,7 +844,8 @@ export default function SystemAdminDashboard() {
                 endDateObj.setDate(endDateObj.getDate() + daysToTake);
                 return endDateObj.toISOString().split('T')[0];
               })(),
-              fileUrl: result.fileUrl || null
+              fileUrl: result.fileUrl || null,
+              completedVacations: result.completedVacations || false
             });
             setShowSuccessModal(true);
           }
@@ -1017,10 +1020,12 @@ export default function SystemAdminDashboard() {
               <div>
                 <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
                   <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-                  ¡REGISTRO EXITOSO!
+                  {successDetails.completedVacations ? '¡VACACIONES COMPLETADAS!' : '¡REGISTRO EXITOSO!'}
                 </h2>
                 <p className="text-gray-600 mt-1 text-sm">
-                  El período de vacaciones ha sido registrado correctamente en el sistema.
+                  {successDetails.completedVacations 
+                    ? 'El empleado ha completado todas sus vacaciones. Se ha generado el documento FT-RH-08.'
+                    : 'El período de vacaciones ha sido registrado correctamente en el sistema.'}
                 </p>
               </div>
               <button
@@ -1071,35 +1076,62 @@ export default function SystemAdminDashboard() {
                           {successDetails.EndDate}
                         </span>
                       </div>
+                      {successDetails.completedVacations && (
+                        <div className="mt-2 p-2 bg-green-100 rounded-md border border-green-300">
+                          <p className="text-xs text-green-700 font-bold">✓ VACACIONES COMPLETADAS</p>
+                          <p className="text-xs text-green-600">Se ha generado el documento FT-RH-08</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                   
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DOCUMENTO GENERADO</h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <FileText className="h-5 w-5 text-gray-600 mr-2" />
-                          <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-08 (PDF)</span>
-                        </div>
-                        <div className="flex gap-2">
-                          {successDetails.fileUrl && (
-                            <a
-                              href={successDetails.fileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                              title="Vista previa"
-                              onClick={() => setPdfLoading(true)}
+                  {successDetails.fileUrl && successDetails.completedVacations && (
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase">DOCUMENTO GENERADO</h3>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                            <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-08 (PDF)</span>
+                          </div>
+                          <div className="flex gap-2">
+                            {successDetails.fileUrl && (
+                              <a
+                                href={successDetails.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                                title="Vista previa"
+                                onClick={() => setPdfLoading(true)}
+                              >
+                                <Eye className="h-4 w-4 text-gray-700" />
+                              </a>
+                            )}
+                            <button
+                              onClick={() => successDetails.fileUrl && handleDownloadPDF(successDetails.fileUrl, successDetails.EmployeeID, successDetails.VacationID)}
+                              disabled={downloading || !successDetails.fileUrl}
+                              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Descargar PDF"
                             >
-                              <Eye className="h-4 w-4 text-gray-700" />
-                            </a>
-                          )}
+                              {downloading ? (
+                                <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
+                              ) : (
+                                <Download className="h-4 w-4 text-gray-700" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <FileText className="h-5 w-5 text-gray-600 mr-2" />
+                            <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-08 (EDITABLE)</span>
+                          </div>
                           <button
-                            onClick={() => successDetails.fileUrl && handleDownloadPDF(successDetails.fileUrl, successDetails.EmployeeID, successDetails.VacationID)}
-                            disabled={downloading || !successDetails.fileUrl}
+                            onClick={() => handleDownloadWord(successDetails.EmployeeID, successDetails.VacationID)}
+                            disabled={downloading}
                             className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Descargar PDF"
+                            title="Descargar Word editable"
                           >
                             {downloading ? (
                               <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
@@ -1109,27 +1141,8 @@ export default function SystemAdminDashboard() {
                           </button>
                         </div>
                       </div>
-                      
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <FileText className="h-5 w-5 text-gray-600 mr-2" />
-                          <span className="block text-xs font-bold text-gray-700 uppercase">FT-RH-08 (EDITABLE)</span>
-                        </div>
-                        <button
-                          onClick={() => handleDownloadWord(successDetails.EmployeeID, successDetails.VacationID)}
-                          disabled={downloading}
-                          className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Descargar Word editable"
-                        >
-                          {downloading ? (
-                            <div className="h-4 w-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin"></div>
-                          ) : (
-                            <Download className="h-4 w-4 text-gray-700" />
-                          )}
-                        </button>
-                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
               
@@ -1137,7 +1150,7 @@ export default function SystemAdminDashboard() {
               <div className="flex-1 flex flex-col p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-gray-800 text-sm uppercase">
-                    VISTA PREVIA - FORMATO FT-RH-08
+                    {successDetails.completedVacations ? 'VISTA PREVIA - FORMATO FT-RH-08' : 'VISTA PREVIA DE PERÍODO'}
                   </h3>
                 </div>
                 
@@ -1151,7 +1164,7 @@ export default function SystemAdminDashboard() {
                     </div>
                   )}
                   
-                  {successDetails.fileUrl ? (
+                  {successDetails.fileUrl && successDetails.completedVacations ? (
                     <iframe
                       src={successDetails.fileUrl}
                       className="w-full h-full border-0"
@@ -1165,9 +1178,21 @@ export default function SystemAdminDashboard() {
                   ) : (
                     <div className="flex items-center justify-center h-full">
                       <div className="text-center">
-                        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                        <p className="text-gray-600">No se pudo cargar la vista previa del PDF</p>
-                        <p className="text-xs text-gray-500 mt-2">El PDF se generará automáticamente</p>
+                        {successDetails.completedVacations ? (
+                          <>
+                            <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                            <p className="text-gray-600">No se pudo cargar la vista previa del PDF</p>
+                            <p className="text-xs text-gray-500 mt-2">El PDF se generó pero no está disponible para vista previa</p>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-3" />
+                            <p className="text-gray-600">Período registrado correctamente</p>
+                            <p className="text-xs text-gray-500 mt-2">
+                              {successDetails.fileUrl ? 'El PDF se generó correctamente' : 'El PDF se generará al completar todas las vacaciones'}
+                            </p>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
