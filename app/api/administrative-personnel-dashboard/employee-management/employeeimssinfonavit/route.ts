@@ -1,4 +1,3 @@
-// app/api/administrative-personnel-dashboard/employee-management/employeeimssinfonavit/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -28,7 +27,6 @@ const formatearFechaMySQL = (fecha: string): string | null => {
 
 // Función para obtener los ContractIDs de un empleado (tanto BASE como PROJECT)
 async function getEmployeeContractIDs(connection: any, employeeId: number): Promise<{ baseContractId: number | null, projectContractId: number | null }> {
-  // Verificar si es empleado BASE
   const [baseResult] = await connection.execute(
     `SELECT bc.ContractID as BaseContractID
      FROM basepersonnel bp 
@@ -44,7 +42,6 @@ async function getEmployeeContractIDs(connection: any, employeeId: number): Prom
     baseContractId = baseContracts[0].BaseContractID;
   }
   
-  // Verificar si es empleado PROJECT
   const [projectResult] = await connection.execute(
     `SELECT pc.ContractID as ProjectContractID
      FROM projectpersonnel pp 
@@ -63,6 +60,23 @@ async function getEmployeeContractIDs(connection: any, employeeId: number): Prom
   return { baseContractId, projectContractId };
 }
 
+// Función para verificar si un empleado tiene un ALTA activa (Status = 1)
+async function getActiveAltaMovement(connection: any, employeeId: number): Promise<any | null> {
+  const [rows] = await connection.execute(
+    `SELECT em.MovementID, em.BatchID
+     FROM employeeimssinfonavitmovements em
+     INNER JOIN employee_movement_batches emb ON em.BatchID = emb.BatchID
+     WHERE em.EmployeeID = ? 
+     AND em.Status = 1
+     AND emb.MovementType = 'ALTA'
+     ORDER BY em.MovementID DESC
+     LIMIT 1`,
+    [employeeId]
+  );
+  
+  return (rows as any[])[0] || null;
+}
+
 // Función para generar el PDF FT-RH-05
 async function generateMovementPDF(
   batchId: number,
@@ -78,14 +92,12 @@ async function generateMovementPDF(
   try {
     connection = await getConnection();
 
-    // Obtener datos del batch
     const [batchRows] = await connection.execute<any[]>(
       `SELECT 
         emb.BatchID,
         emb.MovementType,
         emb.DateMovement,
         emb.ReasonForWithdrawal,
-        -- Datos del administrador (para el proyecto)
         pj.NameProject,
         pj.AdminProjectID,
         COALESCE(admin_bp.FirstName) as AdminNombre,
@@ -108,7 +120,6 @@ async function generateMovementPDF(
 
     const batch = batchRows[0];
 
-    // Obtener datos de cada empleado en el lote
     const employeesData: any[] = [];
     
     for (const emp of employees) {
@@ -117,7 +128,6 @@ async function generateMovementPDF(
           em.EmployeeID,
           em.BaseContractID,
           em.ProjectContractID,
-          -- Datos del empleado
           COALESCE(bp.FirstName, pp.FirstName) as FirstName,
           COALESCE(bp.LastName, pp.LastName) as LastName,
           COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
@@ -133,11 +143,9 @@ async function generateMovementPDF(
             ELSE 'NO ESPECIFICADO'
           END as tipo
         FROM employeeimssinfonavitmovements em
-        -- Datos del empleado (BASE)
         LEFT JOIN basepersonnel bp ON em.EmployeeID = bp.EmployeeID
         LEFT JOIN basecontracts bc ON em.BaseContractID = bc.ContractID
         LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
-        -- Datos del empleado (PROJECT)
         LEFT JOIN projectpersonnel pp ON em.EmployeeID = pp.EmployeeID
         LEFT JOIN projectcontracts pc ON em.ProjectContractID = pc.ContractID
         LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
@@ -175,7 +183,6 @@ async function generateMovementPDF(
       }
     };
 
-    // Cargar plantilla Excel
     const templatePath = path.join(
       process.cwd(),
       "public",
@@ -195,7 +202,6 @@ async function generateMovementPDF(
     ws.getCell('D5').value = batch.NameProject || 'NO ESPECIFICADO';
     ws.getCell('D7').value = adminName || 'NO ESPECIFICADO';
 
-    // Llenar datos de empleados (máximo 10)
     employeesData.forEach((mov, index) => {
       const rowNumber = 10 + index; 
       
@@ -218,19 +224,15 @@ async function generateMovementPDF(
       ws.getCell(`M${rowNumber}`).value = batch.ReasonForWithdrawal || 'N/A';
     });
 
-    // Guardar Excel temporal
     await workbook.xlsx.writeFile(tempExcelPath);
 
-    // Convertir a PDF usando ConvertAPI
     const result = await convertapi.convert("pdf", {
       File: tempExcelPath,
     });
 
-    // Descargar el PDF
     const pdfResponse = await fetch(result.file.url);
     const pdfBuffer = await pdfResponse.arrayBuffer();
 
-    // Subir a UploadThing
     const fileName = `FT-RH-05-${batchId}-${Date.now()}.pdf`;
     
     const file = new File([Buffer.from(pdfBuffer)], fileName, { type: 'application/pdf' });
@@ -256,7 +258,6 @@ async function generateMovementPDF(
         console.error('Error al cerrar la conexión:', error);
       }
     }
-    // Limpiar archivos temporales
     try {
       if (fs.existsSync(tempExcelPath)) {
         fs.unlinkSync(tempExcelPath);
@@ -297,7 +298,6 @@ export async function GET(request: NextRequest) {
 
     connection = await getConnection();
     
-    // Obtener batches agrupados (uno por lote)
     const [rows] = await connection.execute(`
       SELECT 
           emb.BatchID,
@@ -386,7 +386,6 @@ export async function POST(request: NextRequest) {
       ReasonForWithdrawal,
     } = body;
 
-    // Validaciones
     if (!Employees || !Array.isArray(Employees) || Employees.length === 0) {
       return NextResponse.json(
         { success: false, message: 'Debe incluir al menos un empleado' },
@@ -419,10 +418,9 @@ export async function POST(request: NextRequest) {
     await connection.beginTransaction();
 
     try {
-      // Formatear fecha
       const dateMovementFormatted = DateMovement ? formatearFechaMySQL(DateMovement) : null;
       
-      // Insertar en employee_movement_batches (un solo registro para el lote)
+      // Insertar en employee_movement_batches
       const [batchResult] = await connection.execute(
         `INSERT INTO employee_movement_batches 
          (MovementType, DateMovement, ReasonForWithdrawal) 
@@ -435,48 +433,80 @@ export async function POST(request: NextRequest) {
       );
 
       const BatchID = (batchResult as any).insertId;
-
-      // Insertar cada empleado en employeeimssinfonavitmovements
       const employeesToSave = [];
       
       for (const employeeId of Employees) {
         // Obtener ambos IDs de contrato
         const { baseContractId, projectContractId } = await getEmployeeContractIDs(connection, employeeId);
         
-        // Validar que tenga al menos un contrato
         if (!baseContractId && !projectContractId) {
           throw new Error(`El empleado ${employeeId} no tiene un contrato activo.`);
         }
-        
-        await connection.execute(
-          `INSERT INTO employeeimssinfonavitmovements 
-           (BatchID, EmployeeID, BaseContractID, ProjectContractID) 
-           VALUES (?, ?, ?, ?)`,
-          [
-            BatchID,
-            employeeId,
-            baseContractId,
-            projectContractId
-          ]
-        );
+
+        if (MovementType === 'ALTA') {
+          // Verificar si ya tiene un ALTA activa (Status = 1)
+          const activeAlta = await getActiveAltaMovement(connection, employeeId);
+          
+          if (activeAlta) {
+            throw new Error(`El empleado ${employeeId} ya tiene un ALTA activa (MovementID: ${activeAlta.MovementID}). Debe realizar una BAJA primero.`);
+          }
+          
+          // Crear nuevo ALTA con Status = 1
+          await connection.execute(
+            `INSERT INTO employeeimssinfonavitmovements 
+             (BatchID, EmployeeID, BaseContractID, ProjectContractID, Status) 
+             VALUES (?, ?, ?, ?, 1)`,
+            [
+              BatchID,
+              employeeId,
+              baseContractId,
+              projectContractId
+            ]
+          );
+          
+        } else if (MovementType === 'BAJA') {
+          // Verificar si tiene un ALTA activa (Status = 1)
+          const activeAlta = await getActiveAltaMovement(connection, employeeId);
+          
+          if (!activeAlta) {
+            throw new Error(`El empleado ${employeeId} no tiene un ALTA activa. No se puede dar de BAJA.`);
+          }
+          
+          // 1. Actualizar el ALTA activa a Status = 0 (se vuelve inactiva)
+          await connection.execute(
+            `UPDATE employeeimssinfonavitmovements 
+             SET Status = 0 
+             WHERE MovementID = ?`,
+            [activeAlta.MovementID]
+          );
+          
+          // 2. Crear el registro de BAJA con Status = 0
+          await connection.execute(
+            `INSERT INTO employeeimssinfonavitmovements 
+             (BatchID, EmployeeID, BaseContractID, ProjectContractID, Status) 
+             VALUES (?, ?, ?, ?, 0)`,
+            [
+              BatchID,
+              employeeId,
+              baseContractId,
+              projectContractId
+            ]
+          );
+        }
         
         employeesToSave.push({ EmployeeID: employeeId });
       }
 
-      // CONFIRMAR LA TRANSACCIÓN PRIMERO
       await connection.commit();
 
-      // AHORA generar el PDF con una nueva conexión (los datos ya están en la BD)
       let fileUrl = null;
 
       try {
-        // Pequeña pausa para asegurar que la base de datos tenga el registro
         await new Promise(resolve => setTimeout(resolve, 200));
         
         const { fileUrl: pdfUrl } = await generateMovementPDF(BatchID, employeesToSave);
         fileUrl = pdfUrl;
         
-        // Actualizar el campo FileURL en la base de datos (usando nueva conexión)
         const updateConnection = await getConnection();
         try {
           await updateConnection.execute(
@@ -489,7 +519,6 @@ export async function POST(request: NextRequest) {
         }
       } catch (pdfError) {
         console.error('Error al generar/subir PDF:', pdfError);
-        // No revertimos la transacción principal, solo registramos el error
       }
       
       return NextResponse.json({
@@ -516,6 +545,10 @@ export async function POST(request: NextRequest) {
         errorMessage = 'ERROR: Uno o más empleados no existen o no tienen contrato activo';
       } else if (error.message.includes('date value')) {
         errorMessage = 'ERROR: Formato de fecha incorrecto';
+      } else if (error.message.includes('ya tiene un ALTA activa')) {
+        errorMessage = error.message;
+      } else if (error.message.includes('no tiene un ALTA activa')) {
+        errorMessage = error.message;
       } else if (error.message.includes('no tiene un contrato activo')) {
         errorMessage = error.message;
       } else {
