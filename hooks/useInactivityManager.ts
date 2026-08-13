@@ -10,7 +10,7 @@ export const useInactivityManager = () => {
     let lastRenew = 0;
 
     const RENEW_INTERVAL = 60 * 1000; 
-    const INACTIVITY_LIMIT = 15 * 60 * 1000; 
+    const INACTIVITY_LIMIT = 60 * 60 * 1000; 
 
     const renewSession = async () => {
       const now = Date.now();
