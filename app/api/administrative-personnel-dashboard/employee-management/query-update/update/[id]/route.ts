@@ -406,7 +406,7 @@ export async function PUT(
                SET CVFileURL = ?, ANFileURL = ?, CURPFileURL = ?, RFCFileURL = ?,
                    IMSSFileURL = ?, INEFileURL = ?, CDFileURL = ?, CEFileURL = ?,
                    CPFileURL = ?, LMFileURL = ?, ANPFileURL = ?, CRFileURL = ?,
-                   RIFileURL = ?, EMFileURL = ?, FotoFileURL = ?, FolletoFileURL = ?
+                   RIFileURL = ?, EMFileURL = ?, FotoFileURL = ?
                WHERE BasePersonnelID = ?`,
               [
                 documentacion.CVFileURL || null,
@@ -424,7 +424,6 @@ export async function PUT(
                 documentacion.RIFileURL || null,
                 documentacion.EMFileURL || null,
                 documentacion.FotoFileURL || null,
-                documentacion.FolletoFileURL || null,
                 basePersonnelId
               ]
             );
@@ -434,7 +433,7 @@ export async function PUT(
                (BasePersonnelID, CVFileURL, ANFileURL, CURPFileURL, RFCFileURL,
                 IMSSFileURL, INEFileURL, CDFileURL, CEFileURL, CPFileURL,
                 LMFileURL, ANPFileURL, CRFileURL, RIFileURL, EMFileURL,
-                FotoFileURL, FolletoFileURL) 
+                FotoFileURL) 
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 basePersonnelId,
@@ -452,8 +451,7 @@ export async function PUT(
                 documentacion.CRFileURL || null,
                 documentacion.RIFileURL || null,
                 documentacion.EMFileURL || null,
-                documentacion.FotoFileURL || null,
-                documentacion.FolletoFileURL || null
+                documentacion.FotoFileURL || null
               ]
             );
           }
@@ -679,7 +677,7 @@ export async function PUT(
                SET CVFileURL = ?, ANFileURL = ?, CURPFileURL = ?, RFCFileURL = ?,
                    IMSSFileURL = ?, INEFileURL = ?, CDFileURL = ?, CEFileURL = ?,
                    CPFileURL = ?, LMFileURL = ?, ANPFileURL = ?, CRFileURL = ?,
-                   RIFileURL = ?, EMFileURL = ?, FotoFileURL = ?, FolletoFileURL = ?
+                   RIFileURL = ?, EMFileURL = ?, FotoFileURL = ?
                WHERE ProjectPersonnelID = ?`,
               [
                 documentacion.CVFileURL || null,
@@ -697,7 +695,6 @@ export async function PUT(
                 documentacion.RIFileURL || null,
                 documentacion.EMFileURL || null,
                 documentacion.FotoFileURL || null,
-                documentacion.FolletoFileURL || null,
                 projectPersonnelId
               ]
             );
@@ -707,7 +704,7 @@ export async function PUT(
                (ProjectPersonnelID, CVFileURL, ANFileURL, CURPFileURL, RFCFileURL,
                 IMSSFileURL, INEFileURL, CDFileURL, CEFileURL, CPFileURL,
                 LMFileURL, ANPFileURL, CRFileURL, RIFileURL, EMFileURL,
-                FotoFileURL, FolletoFileURL) 
+                FotoFileURL) 
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 projectPersonnelId,
@@ -726,7 +723,6 @@ export async function PUT(
                 documentacion.RIFileURL || null,
                 documentacion.EMFileURL || null,
                 documentacion.FotoFileURL || null,
-                documentacion.FolletoFileURL || null
               ]
             );
           }
