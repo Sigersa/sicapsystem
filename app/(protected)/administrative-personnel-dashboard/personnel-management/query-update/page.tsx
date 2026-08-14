@@ -102,7 +102,6 @@ interface EmployeeDocuments {
   RIFileURL?: string | null;
   EMFileURL?: string | null;
   FotoFileURL?: string | null;
-  FolletoFileURL?: string | null;
 }
 
 // Interface para los archivos a subir
@@ -122,7 +121,6 @@ interface UploadFiles {
   retencionInfonavitFile: File | null;
   examenMedicoFile: File | null;
   fotoFile: File | null;
-  folletoFile: File | null;
 }
 
 // Interface para detalles de empleado
@@ -265,7 +263,6 @@ const fileToUrlKeyMap: Record<string, string> = {
   retencionInfonavitFile: 'RIFileURL',
   examenMedicoFile: 'EMFileURL',
   fotoFile: 'FotoFileURL',
-  folletoFile: 'FolletoFileURL'
 };
 
 type UploadFileKey = keyof UploadFiles;
@@ -374,7 +371,6 @@ export default function EmployeesListPage() {
     retencionInfonavitFile: null,
     examenMedicoFile: null,
     fotoFile: null,
-    folletoFile: null
   });
 
   const [existingUrls, setExistingUrls] = useState<EmployeeDocuments>({});
@@ -750,7 +746,7 @@ export default function EmployeesListPage() {
         comprobanteEstudiosFile: null, comprobanteCapacitacionFile: null,
         licenciaManejoFile: null, cartaAntecedentesFile: null,
         cartaRecomendacionFile: null, retencionInfonavitFile: null,
-        examenMedicoFile: null, fotoFile: null, folletoFile: null
+        examenMedicoFile: null, fotoFile: null
       };
       setUploadFiles(resetFiles);
       
@@ -967,9 +963,7 @@ export default function EmployeesListPage() {
         CRFileURL: finalUrls.CRFileURL,
         RIFileURL: finalUrls.RIFileURL,
         EMFileURL: finalUrls.EMFileURL,
-        FotoFileURL: finalUrls.FotoFileURL,
-        FolletoFileURL: finalUrls.FolletoFileURL
-      };
+        FotoFileURL: finalUrls.FotoFileURL      };
       
       const isEmployeeInactive = selectedEmployee.Status === 0;
       
@@ -1128,8 +1122,7 @@ export default function EmployeesListPage() {
       CRFileURL: 'Copia de carta de recomendación',
       RIFileURL: 'Copia de hoja de retención infonavit',
       EMFileURL: 'Copia de examen médico',
-      FotoFileURL: 'Fotografía',
-      FolletoFileURL: 'Folletos de inducción'
+      FotoFileURL: 'Fotografía'
     };
     return documentNamesMap[key] || key;
   };
@@ -1698,7 +1691,6 @@ export default function EmployeesListPage() {
                       <div><label className="block text-xs font-bold text-gray-700 mb-2 uppercase">Copia de Hoja de Retención Infonavit</label><input type="file" ref={el => { if (el) fileInputRefs.current.retencionInfonavitFile = el; }} onChange={(e) => handleFileChange(e, 'retencionInfonavitFile')} className="hidden" accept=".pdf"/><button type="button" onClick={() => triggerFileInput('retencionInfonavitFile')} className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded hover:border-[#3a6ea5] hover:bg-gray-50 transition-colors font-medium flex items-center justify-center"><Upload className="h-4 w-4 mr-2" />{uploadFiles.retencionInfonavitFile ? 'Cambiar archivo' : 'Seleccionar Archivo'}</button><FileDisplay tipo="retencionInfonavitFile" file={uploadFiles.retencionInfonavitFile} /></div>
                       <div><label className="block text-xs font-bold text-gray-700 mb-2 uppercase">Copia de Examen Médico</label><input type="file" ref={el => { if (el) fileInputRefs.current.examenMedicoFile = el; }} onChange={(e) => handleFileChange(e, 'examenMedicoFile')} className="hidden" accept=".pdf"/><button type="button" onClick={() => triggerFileInput('examenMedicoFile')} className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded hover:border-[#3a6ea5] hover:bg-gray-50 transition-colors font-medium flex items-center justify-center"><Upload className="h-4 w-4 mr-2" />{uploadFiles.examenMedicoFile ? 'Cambiar archivo' : 'Seleccionar Archivo'}</button><FileDisplay tipo="examenMedicoFile" file={uploadFiles.examenMedicoFile} /></div>
                       <div><label className="block text-xs font-bold text-gray-700 mb-2 uppercase">Fotografía</label><input type="file" ref={el => { if (el) fileInputRefs.current.fotoFile = el; }} onChange={(e) => handleFileChange(e, 'fotoFile')} className="hidden" accept=".jpg,.jpeg,.png"/><button type="button" onClick={() => triggerFileInput('fotoFile')} className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded hover:border-[#3a6ea5] hover:bg-gray-50 transition-colors font-medium flex items-center justify-center"><Upload className="h-4 w-4 mr-2" />{uploadFiles.fotoFile ? 'Cambiar archivo' : 'Seleccionar Archivo'}</button><FileDisplay tipo="fotoFile" file={uploadFiles.fotoFile} /></div>
-                      <div><label className="block text-xs font-bold text-gray-700 mb-2 uppercase">Folletos de Inducción</label><input type="file" ref={el => { if (el) fileInputRefs.current.folletoFile = el; }} onChange={(e) => handleFileChange(e, 'folletoFile')} className="hidden" accept=".pdf"/><button type="button" onClick={() => triggerFileInput('folletoFile')} className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded hover:border-[#3a6ea5] hover:bg-gray-50 transition-colors font-medium flex items-center justify-center"><Upload className="h-4 w-4 mr-2" />{uploadFiles.folletoFile ? 'Cambiar archivo' : 'Seleccionar Archivo'}</button><FileDisplay tipo="folletoFile" file={uploadFiles.folletoFile} /></div>
                     </div>
                     {uploadProgress > 0 && uploadProgress < 100 && (
                       <div className="mt-6"><div className="flex justify-between text-sm text-gray-600 mb-1"><span>Subiendo documentos...</span><span>{uploadProgress}%</span></div><div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-[#3a6ea5] h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div></div></div>
