@@ -28,7 +28,6 @@ interface Documentos {
   retencionInfonavit: string[];
   examenMedico: string[];
   foto: string[];
-  folleto: string[];
 }
 
 // Función para normalizar texto a mayúsculas manteniendo acentos
@@ -548,15 +547,14 @@ export async function POST(request: NextRequest) {
         const retencionInfonavitUrl = documentos.retencionInfonavit && documentos.retencionInfonavit.length > 0 ? documentos.retencionInfonavit[0] : null;
         const examenMedicoUrl = documentos.examenMedico && documentos.examenMedico.length > 0 ? documentos.examenMedico[0] : null;
         const fotoUrl = documentos.foto && documentos.foto.length > 0 ? documentos.foto[0] : null;
-        const folletoUrl = documentos.folleto && documentos.folleto.length > 0 ? documentos.folleto[0] : null;
 
         await connection.execute(
           `INSERT INTO basepersonneldocumentation 
            (BasePersonnelID, CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, 
             IMSSFileURL, INEFileURL, CDFileURL, CEFileURL, CPFileURL, 
             LMFileURL, ANPFileURL, CRFileURL, RIFileURL, EMFileURL, 
-            FotoFileURL, FolletoFileURL) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            FotoFileURL) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             basePersonnelId,
             cvUrl,
@@ -573,8 +571,7 @@ export async function POST(request: NextRequest) {
             cartaRecomendacionUrl,
             retencionInfonavitUrl,
             examenMedicoUrl,
-            fotoUrl,
-            folletoUrl
+            fotoUrl
           ]
         );
 
@@ -718,15 +715,14 @@ export async function POST(request: NextRequest) {
         const retencionInfonavitUrl = documentos.retencionInfonavit && documentos.retencionInfonavit.length > 0 ? documentos.retencionInfonavit[0] : null;
         const examenMedicoUrl = documentos.examenMedico && documentos.examenMedico.length > 0 ? documentos.examenMedico[0] : null;
         const fotoUrl = documentos.foto && documentos.foto.length > 0 ? documentos.foto[0] : null;
-        const folletoUrl = documentos.folleto && documentos.folleto.length > 0 ? documentos.folleto[0] : null;
 
         await connection.execute(
           `INSERT INTO projectpersonneldocumentation 
            (ProjectPersonnelID, CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, 
             IMSSFileURL, INEFileURL, CDFileURL, CEFileURL, CPFileURL, 
             LMFileURL, ANPFileURL, CRFileURL, RIFileURL, EMFileURL, 
-            FotoFileURL, FolletoFileURL) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            FotoFileURL) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             projectPersonnelId,
             cvUrl,
@@ -743,8 +739,7 @@ export async function POST(request: NextRequest) {
             cartaRecomendacionUrl,
             retencionInfonavitUrl,
             examenMedicoUrl,
-            fotoUrl,
-            folletoUrl
+            fotoUrl
           ]
         );
       }
