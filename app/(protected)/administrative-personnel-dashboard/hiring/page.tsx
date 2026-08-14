@@ -80,7 +80,6 @@ type Documentos = {
   retencionInfonavit: File[];
   examenMedico: File[];
   foto: File[];
-  folleto: File[];
 };
 
 // Tipo para proyectos (actualizado con AdminName)
@@ -166,7 +165,6 @@ const documentoNombres: Record<keyof Documentos, string> = {
   retencionInfonavit: 'Copia de Hoja de Retención Infonavit',
   examenMedico: 'Copia de Examen Médico',
   foto: 'Fotografía (JPG/PNG)',
-  folleto: 'Folletos de Inducción'
 };
 
 export default function SystemAdminDashboard() {
@@ -278,7 +276,6 @@ export default function SystemAdminDashboard() {
     retencionInfonavit: [],
     examenMedico: [],
     foto: [],
-    folleto: []
   });
 
   // Estado para verificar duplicados
@@ -808,7 +805,7 @@ export default function SystemAdminDashboard() {
       cv: [], actaNacimiento: [], curp: [], rfc: [], imss: [], ine: [],
       comprobanteDomicilio: [], comprobanteEstudios: [], comprobanteCapacitacion: [],
       licenciaManejo: [], cartaAntecedentes: [], cartaRecomendacion: [], retencionInfonavit: [],
-      examenMedico: [], foto: [], folleto: []
+      examenMedico: [], foto: []
     };
 
     let totalFiles = 0;
@@ -1016,8 +1013,7 @@ export default function SystemAdminDashboard() {
       cartaRecomendacion: [],
       retencionInfonavit: [],
       examenMedico: [],
-      foto: [],
-      folleto: []
+      foto: []
     });
 
     setSuccessMessage('');
@@ -1258,8 +1254,7 @@ export default function SystemAdminDashboard() {
           cartaRecomendacion: [],
           retencionInfonavit: [],
           examenMedico: [],
-          foto: [],
-          folleto: []
+          foto: []
         });
       } else {
         setErrorMessage(result.message || 'ERROR AL REGISTRAR EL EMPLEADO. POR FAVOR, INTENTE NUEVAMENTE.');
@@ -2148,7 +2143,6 @@ export default function SystemAdminDashboard() {
               <DocumentInput tipo="cartaRecomendacion" required />
               <DocumentInput tipo="retencionInfonavit" />
               <DocumentInput tipo="examenMedico" required />
-              <DocumentInput tipo="folleto" />
             </div>
 
             {/* Barra de progreso */}
