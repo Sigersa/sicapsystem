@@ -1619,7 +1619,6 @@ export default function SystemAdminDashboard() {
                     onChange={handleInputChange}
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                     placeholder="Ingrese el NCI"
-                    required
                   />
                 </div>
               </div>
