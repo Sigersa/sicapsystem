@@ -142,7 +142,7 @@ async function collectProjectPersonnelUrls(connection: any, projectPersonnelID: 
     const [docs] = await connection.execute(
       `SELECT CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, IMSSFileURL, 
               INEFileURL, CDFileURL, CEFileURL, CPFileURL, LMFileURL,
-              ANPFileURL, CRFileURL, RIFileURL, EMFileURL, FotoFileURL, FolletoFileURL
+              ANPFileURL, CRFileURL, RIFileURL, EMFileURL, FotoFileURL
        FROM projectpersonneldocumentation 
        WHERE ProjectPersonnelID = ?`,
       [projectPersonnelID]
@@ -200,7 +200,7 @@ async function collectBasePersonnelUrls(connection: any, employeeId: number): Pr
       const [docs] = await connection.execute(
         `SELECT CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, IMSSFileURL, 
                 INEFileURL, CDFileURL, CEFileURL, CPFileURL, LMFileURL,
-                ANPFileURL, CRFileURL, RIFileURL, EMFileURL, FotoFileURL, FolletoFileURL
+                ANPFileURL, CRFileURL, RIFileURL, EMFileURL, FotoFileURL
          FROM basepersonneldocumentation 
          WHERE BasePersonnelID = ?`,
         [basePersonnelID]
