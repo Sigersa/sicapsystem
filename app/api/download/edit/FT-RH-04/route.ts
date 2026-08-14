@@ -178,7 +178,6 @@ export async function GET(request: NextRequest) {
     ws.getCell("L22").value = yesNo(doc.RIFileURL);
     ws.getCell("L23").value = yesNo(doc.EMFileURL);
     ws.getCell("L24").value = yesNo(doc.FotoFileURL);
-    ws.getCell("L25").value = yesNo(doc.FolletoFileURL);
 
     ws.getCell("F45").value = fullName || "NO ESPECIFICADO";
 
