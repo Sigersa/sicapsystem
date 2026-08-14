@@ -182,7 +182,7 @@ export async function GET(
           SELECT 
             CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, IMSSFileURL, INEFileURL,
             CDFileURL, CEFileURL, CPFileURL, LMFileURL, ANPFileURL, CRFileURL,
-            RIFileURL, EMFileURL, FotoFileURL, FolletoFileURL
+            RIFileURL, EMFileURL, FotoFileURL
           FROM basepersonneldocumentation
           WHERE BasePersonnelID = ?
           LIMIT 1
@@ -379,7 +379,7 @@ export async function GET(
           SELECT 
             CVFileURL, ANFileURL, CURPFileURL, RFCFileURL, IMSSFileURL, INEFileURL,
             CDFileURL, CEFileURL, CPFileURL, LMFileURL, ANPFileURL, CRFileURL,
-            RIFileURL, EMFileURL, FotoFileURL, FolletoFileURL
+            RIFileURL, EMFileURL, FotoFileURL
           FROM projectpersonneldocumentation
           WHERE ProjectPersonnelID = ?
           LIMIT 1
