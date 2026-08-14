@@ -2142,13 +2142,13 @@ export default function SystemAdminDashboard() {
               <DocumentInput tipo="comprobanteDomicilio" required />
               <DocumentInput tipo="foto" required />
               <DocumentInput tipo="comprobanteEstudios" required />
-              <DocumentInput tipo="comprobanteCapacitacion" required />
+              <DocumentInput tipo="comprobanteCapacitacion" />
               <DocumentInput tipo="licenciaManejo" />
               <DocumentInput tipo="cartaAntecedentes" />
               <DocumentInput tipo="cartaRecomendacion" required />
-              <DocumentInput tipo="retencionInfonavit" required />
+              <DocumentInput tipo="retencionInfonavit" />
               <DocumentInput tipo="examenMedico" required />
-              <DocumentInput tipo="folleto" required />
+              <DocumentInput tipo="folleto" />
             </div>
 
             {/* Barra de progreso */}
