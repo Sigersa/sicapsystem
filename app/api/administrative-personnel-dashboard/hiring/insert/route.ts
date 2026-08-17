@@ -30,6 +30,11 @@ interface Documentos {
   foto: string[];
 }
 
+// Interface para el resultado de la consulta de empleados
+interface EmployeeResult {
+  EmployeeID: number;
+}
+
 // Función para normalizar texto a mayúsculas manteniendo acentos
 const normalizarMayusculas = (texto: string): string => {
   if (!texto) return '';
@@ -303,11 +308,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Validar jefe directo para personal base
-    if (formData.tipoPersonal === 'base') {
-      if (!formData.jefeDirectoId?.trim()) {
+    // Obtener conexión a la base de datos
+    connection = await getConnection();
+
+    // Validar jefe directo para personal base - AHORA ES OPCIONAL
+    if (formData.tipoPersonal === 'base' && formData.jefeDirectoId) {
+      const jefeDirectoId = parseInt(formData.jefeDirectoId);
+      
+      // Solo validar si se proporcionó un ID
+      const [jefeRows] = await connection.execute(
+        `SELECT EmployeeID FROM employees WHERE EmployeeID = ? AND Status = 1`,
+        [jefeDirectoId]
+      );
+      
+      if (!Array.isArray(jefeRows) || jefeRows.length === 0) {
+        await connection.release();
         return NextResponse.json(
-          { success: false, message: 'EL JEFE DIRECTO ES REQUERIDO PARA PERSONAL BASE' },
+          { success: false, message: 'EL JEFE DIRECTO SELECCIONADO NO EXISTE O NO ESTÁ ACTIVO' },
           { status: 400 }
         );
       }
@@ -365,27 +382,6 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-
-    // Obtener conexión a la base de datos
-    connection = await getConnection();
-    
-    // Verificar que el jefe directo exista (solo para personal base)
-    if (formData.tipoPersonal === 'base' && formData.jefeDirectoId) {
-      const jefeDirectoId = parseInt(formData.jefeDirectoId);
-      
-      const [jefeRows] = await connection.execute(
-        `SELECT EmployeeID FROM employees WHERE EmployeeID = ? AND Status = 1`,
-        [jefeDirectoId]
-      );
-      
-      if (!Array.isArray(jefeRows) || jefeRows.length === 0) {
-        await connection.release();
-        return NextResponse.json(
-          { success: false, message: 'EL JEFE DIRECTO SELECCIONADO NO EXISTE O NO ESTÁ ACTIVO' },
-          { status: 400 }
-        );
-      }
-    }
     
     // Verificar duplicados antes de iniciar la transacción
     const duplicateCheck = await checkDuplicatesBeforeInsert(
@@ -418,7 +414,9 @@ export async function POST(request: NextRequest) {
       let warningFileURL: string | null = null;
       let letterFileURL: string | null = null;
       let agreementFileURL: string | null = null;
-      const jefeDirectoId = formData.tipoPersonal === 'base' && formData.jefeDirectoId ? parseInt(formData.jefeDirectoId) : null;
+      let jefeDirectoId = formData.tipoPersonal === 'base' && formData.jefeDirectoId 
+        ? parseInt(formData.jefeDirectoId) 
+        : null;
 
       // Procesar según el tipo de personal
       if (formData.tipoPersonal === 'base') {
@@ -488,7 +486,7 @@ export async function POST(request: NextRequest) {
           ]
         );
 
-        // 5. Insertar en basecontracts
+        // 5. Insertar en basecontracts - jefeDirectoId puede ser NULL
         await connection.execute(
           `INSERT INTO basecontracts 
            (BasePersonnelID, StartDate, SalaryIMSS, ContractFileURL, WarningFileURL, LetterFileURL, AgreementFileURL, jefeDirectoId) 
@@ -652,8 +650,7 @@ export async function POST(request: NextRequest) {
           ]
         );
 
-        // 5. Insertar en projectcontracts - SIN jefeDirectoId (no existe en la tabla)
-        // NOTA: El jefe directo para proyecto es el Administrador del Proyecto (AdminProjectID en projects)
+        // 5. Insertar en projectcontracts
         await connection.execute(
           `INSERT INTO projectcontracts 
            (ProjectPersonnelID, SalaryIMSS, Position, Salary, WorkSchedule, ProjectID, 
