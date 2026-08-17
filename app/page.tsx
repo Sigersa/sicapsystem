@@ -177,7 +177,7 @@ export default function Login() {
             © 2026 Sigersa Innovaciones S.A. de C.V.
           </p>
           <p className="text-xs text-gray-400">
-            Versión 1.0.0
+            Versión 1.0.1
           </p>
         </div>
 
