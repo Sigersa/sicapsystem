@@ -368,7 +368,6 @@ export default function SystemAdminDashboard() {
     if (projectId) {
       const selectedProject = proyectos.find(p => p.ProjectID === parseInt(projectId));
       if (selectedProject) {
-        // Convertir fechas al formato YYYY-MM-DD para el input date
         const startDate = selectedProject.StartDate ? new Date(selectedProject.StartDate).toISOString().split('T')[0] : '';
         const endDate = selectedProject.EndDate ? new Date(selectedProject.EndDate).toISOString().split('T')[0] : '';
         
@@ -851,13 +850,8 @@ export default function SystemAdminDashboard() {
       'colonia', 'municipio', 'estado', 'codigoPostal'
     ];
 
-    // Para personal base, jefeDirectoId es requerido
-    if (activeTab === 'base') {
-      if (!formData.jefeDirectoId?.trim()) {
-        setErrorMessage('El Jefe Directo es requerido para personal base');
-        return false;
-      }
-    }
+    // ELIMINAR la validación de jefeDirectoId - AHORA ES OPCIONAL
+    // Ya no validamos jefeDirectoId aquí
 
     if (activeTab === 'proyecto') {
       const proyectoData = formData as FormDataProyecto;
@@ -1100,7 +1094,10 @@ export default function SystemAdminDashboard() {
 
         documentos: documentosUrls,
         
-        jefeDirectoId: activeTab === 'base' ? formData.jefeDirectoId : null
+        // jefeDirectoId: Si está vacío o es "SIN JEFE ASIGNADO", enviar null
+        jefeDirectoId: activeTab === 'base' && formData.jefeDirectoId 
+          ? parseInt(formData.jefeDirectoId) 
+          : null
       };
 
       if (activeTab === 'proyecto') {
@@ -1610,7 +1607,7 @@ export default function SystemAdminDashboard() {
 
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    NÚMERO DE CONVENIO DE INFONAVIT *
+                    NÚMERO DE CONVENIO DE INFONAVIT 
                   </label>
                   <input
                     type="text"
@@ -1879,12 +1876,13 @@ export default function SystemAdminDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    HORARIO LABORAL
+                    HORARIO LABORAL *
                   </label>
                   <select
                     name="horarioLaboral"
                     value={formData.horarioLaboral}
                     onChange={handleInputChange}
+                    required
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                   >
                     <option value="">Seleccione un tipo</option>
@@ -1893,11 +1891,11 @@ export default function SystemAdminDashboard() {
                   </select>
                 </div>
                 
-                {/* JEFE DIRECTO - SOLO PARA PERSONAL BASE */}
+                {/* JEFE DIRECTO - SOLO PARA PERSONAL BASE - OPCIONAL */}
                 {activeTab === 'base' && (
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                      JEFE DIRECTO *
+                      JEFE DIRECTO (OPCIONAL)
                     </label>
                     <div className="relative">
                       <select
@@ -1905,10 +1903,9 @@ export default function SystemAdminDashboard() {
                         value={formData.jefeDirectoId}
                         onChange={handleInputChange}
                         className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                        required
                         disabled={loadingJefes}
                       >
-                        <option value="">Seleccione un jefe directo</option>
+                        <option value="">SIN JEFE ASIGNADO</option>
                         {jefesDirectos.map((jefe) => (
                           <option key={jefe.id} value={jefe.id}>
                             {jefe.nombreCompleto} - {jefe.puesto}
@@ -1918,6 +1915,11 @@ export default function SystemAdminDashboard() {
                     </div>
                     {loadingJefes && (
                       <p className="text-xs text-gray-500 mt-1">Cargando jefes directos...</p>
+                    )}
+                    {jefesDirectos.length === 0 && !loadingJefes && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        No hay jefes directos registrados.
+                      </p>
                     )}
                   </div>
                 )}
