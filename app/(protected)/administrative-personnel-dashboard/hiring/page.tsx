@@ -1895,7 +1895,7 @@ export default function SystemAdminDashboard() {
                 {activeTab === 'base' && (
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                      JEFE DIRECTO (OPCIONAL)
+                      JEFE DIRECTO
                     </label>
                     <div className="relative">
                       <select
