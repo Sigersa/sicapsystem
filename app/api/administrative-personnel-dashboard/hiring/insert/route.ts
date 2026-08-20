@@ -276,7 +276,7 @@ export async function POST(request: NextRequest) {
     // Validación básica de campos requeridos
     const requiredFields = [
       'nombre', 'apellidoPaterno', 'nss', 'curp', 'rfc',
-      'fechaNacimiento', 'telefono', 'email', 'puesto',
+      'fechaNacimiento', 'puesto',
       'salario', 'calle', 'numeroExterior',
       'colonia', 'municipio', 'estado', 'codigoPostal'
     ];
