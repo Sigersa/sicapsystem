@@ -1501,7 +1501,7 @@ export default function SystemAdminDashboard() {
                 
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    TELÉFONO *
+                    TELÉFONO 
                   </label>
                   <input
                     type="text"
@@ -1510,13 +1510,12 @@ export default function SystemAdminDashboard() {
                     onChange={handleInputChange}
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                     placeholder="Ingrese el teléfono"
-                    required
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                    EMAIL *
+                    EMAIL 
                   </label>
                   <input
                     type="email"
@@ -1525,7 +1524,6 @@ export default function SystemAdminDashboard() {
                     onChange={handleInputChange}
                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                     placeholder="Ingrese el correo"
-                    required
                   />
                 </div>
               </div>
