@@ -845,7 +845,7 @@ export default function SystemAdminDashboard() {
 
     const requiredFieldsBase = [
       'nombre', 'apellidoPaterno', 'nss', 'curp', 'rfc',
-      'fechaNacimiento', 'telefono', 'email', 'puesto',
+      'fechaNacimiento', 'puesto',
       'salario', 'calle', 'numeroExterior',
       'colonia', 'municipio', 'estado', 'codigoPostal'
     ];
@@ -2139,7 +2139,7 @@ export default function SystemAdminDashboard() {
               <DocumentInput tipo="comprobanteCapacitacion" />
               <DocumentInput tipo="licenciaManejo" />
               <DocumentInput tipo="cartaAntecedentes" />
-              <DocumentInput tipo="cartaRecomendacion" required />
+              <DocumentInput tipo="cartaRecomendacion" />
               <DocumentInput tipo="retencionInfonavit" />
               <DocumentInput tipo="examenMedico" required />
             </div>
