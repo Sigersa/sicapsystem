@@ -27,22 +27,25 @@ export async function GET(request: NextRequest) {
 
     connection = await getConnection();
 
+    // CORREGIDO: Unir correctamente usando EmployeeID
     const [rows] = await connection.execute(
       `SELECT 
          su.SystemUserID,
          su.UserName,
          su.CreationDate,
          su.UserTypeID,
+         su.EmployeeID,
          bp.FirstName,
          bp.LastName,
          bp.MiddleName,
          pi.Email
        FROM sessions s
        INNER JOIN systemusers su ON su.SystemUserID = s.SystemUserID 
-       LEFT JOIN basepersonnel bp ON su.SystemUserID = bp.BasePersonnelID
+       LEFT JOIN employees e ON e.EmployeeID = su.EmployeeID
+       LEFT JOIN basepersonnel bp ON bp.EmployeeID = e.EmployeeID
        LEFT JOIN basepersonnelpersonalinfo pi ON bp.BasePersonnelID = pi.BasePersonnelID
        WHERE s.SessionID = ? AND s.ExpiresAt > NOW()`,
-      [sessionId] // Cambiado de 'session' a 'sessionId' para consistencia
+      [sessionId]
     );
 
     const users = rows as any[];
@@ -73,6 +76,7 @@ export async function GET(request: NextRequest) {
       user: {
         SystemUserID: userData.SystemUserID,
         UserName: userData.UserName,
+        EmployeeID: userData.EmployeeID,
         FirstName: userData.FirstName,
         LastName: userData.LastName,
         MiddleName: userData.MiddleName,
