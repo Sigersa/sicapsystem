@@ -389,7 +389,7 @@ export async function GET(request: NextRequest) {
     ws.getCell("P11").value = applicationYear;
     ws.getCell("C13").value = employeeName || "NO ESPECIFICADO";
     ws.getCell("C14").value = perm.AreaOrProject || "NO ESPECIFICADO";
-    ws.getCell("C15").value = perm.tipo || "NO ESPECIFICADO";
+    ws.getCell("C15").value = perm.Position || "NO ESPECIFICADO";
     ws.getCell("M13").value = departureTime;
     ws.getCell("M14").value = checkInTime;
     ws.getCell("M15").value = perm.DaysOfLeave ? perm.DaysOfLeave.toString() : "NO ESPECIFICADO";
