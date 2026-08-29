@@ -91,7 +91,7 @@ interface SuccessDetails {
 
 // Opciones para el select de Ocupación Específica
 const COURSE_NAME = [
-  { value: "IDENTIFICACIÓN DE PELIGROS Y EVALUACIÓN RIESGOS", label: "IDENTIFICACIÓN DE PELIGROS Y EVALUACIÓN RIESGOS" },
+  { value: "IDENTIFICACIÓN DE PELIGROS Y EVALUACIÓN DE RIESGOS", label: "IDENTIFICACIÓN DE PELIGROS Y EVALUACIÓN DE RIESGOS" },
   { value: "MANEJO DE SUSTANCIAS QUÍMICAS", label: "MANEJO DE SUSTANCIAS QUÍMICAS" },
   { value: "IDENTIFICACIÓN DE ASPECTOS AMBIENTALES", label: "IDENTIFICACIÓN DE ASPECTOS AMBIENTALES" },
   { value: "MANIOBRAS E IZAJE", label: "MANIOBRAS E IZAJE" },
@@ -99,7 +99,7 @@ const COURSE_NAME = [
   { value: "MANEJO DE LAS HERRAMIENTAS DE TRABAJO (MANUALES Y DE PODER)", label: "MANEJO DE LAS HERRAMIENTAS DE TRABAJO (MANUALES Y DE PODER)" },
   { value: "MONTACARGAS (USO Y MANEJO, PROCEDIMIENTOS DE SEGURIDAD)", label: "MONTACARGAS (USO Y MANEJO, PROCEDIMIENTOS DE SEGURIDAD)" },
   { value: "USO DE EQUIPO DE PROTECCIÓN PERSONAL (EPP)", label: "USO DE EQUIPO DE PROTECCIÓN PERSONAL (EPP)" },
-  { value: "CONDICIONES DE SEGURIDAD PARA REALIZAR TRBAJO EN ALTURA NOM-009-STPS-2011", label: "CONDICIONES DE SEGURIDAD PARA REALIZAR TRBAJO EN ALTURA NOM-009-STPS-2011" },
+  { value: "CONDICIONES DE SEGURIDAD PARA REALIZAR TRABAJO EN ALTURA NOM-009-STPS-2011", label: "CONDICIONES DE SEGURIDAD PARA REALIZAR TRABAJO EN ALTURA NOM-009-STPS-2011" },
   { value: "CONTROL DE ENERGÍAS PELIGROSAS SISTEMA LOTO", label: "CONTROL DE ENERGÍAS PELIGROSAS SISTEMA LOTO" },
   { value: "CONDICIONES DE SEGURIDAD PARA REALIZAR TRABAJOS EN ESPACIOS CONFINADOS NOM-033-STPS-2015", label: "CONDICIONES DE SEGURIDAD PARA REALIZAR TRABAJOS EN ESPACIOS CONFINADOS NOM-033-STPS-2015" },
   { value: "MANEJO MANUAL Y MECÁNICO DE CARGAS", label: "MANEJO MANUAL Y MECÁNICO DE CARGAS" },
@@ -1156,7 +1156,7 @@ export default function EmployeeDC3Page() {
                       <div className="relative">
                         <select
                           name="CourseName"
-                          value={formData.Area}
+                          value={formData.CourseName}
                           onChange={handleFormChange}
                           className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                         >
