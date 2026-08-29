@@ -54,7 +54,6 @@ async function generateDC3PDF(dc3Id: number): Promise<{ pdfBuffer: ArrayBuffer; 
       `SELECT 
         dc.DC3ID,
         dc.EmployeeID,
-        dc.SpecificOccupation,
         dc.CourseName,
         dc.StartDate,
         dc.EndDate,
@@ -162,7 +161,6 @@ async function generateDC3PDF(dc3Id: number): Promise<{ pdfBuffer: ArrayBuffer; 
     ws.getCell("A19").value = dc3Record.CourseName || "NO ESPECIFICADO";
     ws.getCell("A23").value = dc3Record.Area || "NO ESPECIFICADO";
     ws.getCell("B32").value = trainerName;
-    ws.getCell("H7").value = dc3Record.SpecificOccupation || "NO ESPECIFICADO";
     ws.getCell("A21").value = dc3Record.Duration || "NO ESPECIFICADO";
     ws.getCell("I21").value = startYear || "";
     ws.getCell("J21").value = startMonth || "";
@@ -264,7 +262,6 @@ export async function GET(
       `SELECT 
         dc.DC3ID,
         dc.EmployeeID,
-        dc.SpecificOccupation,
         dc.CourseName,
         dc.StartDate,
         dc.EndDate,
@@ -397,7 +394,6 @@ export async function PUT(
     const body = await request.json();
     const { 
       EmployeeID,
-      SpecificOccupation,
       CourseName,
       StartDate,
       EndDate,
@@ -521,7 +517,6 @@ export async function PUT(
       await connection.execute(
         `UPDATE employeedc3 SET 
           EmployeeID = ?,
-          SpecificOccupation = ?,
           CourseName = ?,
           StartDate = ?,
           EndDate = ?,
@@ -532,7 +527,6 @@ export async function PUT(
         WHERE DC3ID = ?`,
         [
           EmployeeID,
-          SpecificOccupation || null,
           CourseName,
           startDateFormatted,
           endDateFormatted,
