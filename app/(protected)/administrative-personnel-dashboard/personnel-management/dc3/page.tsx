@@ -93,62 +93,26 @@ interface SuccessDetails {
 }
 
 // Opciones para el select de Ocupación Específica
-const OCCUPATION_OPTIONS = [
-  { value: "01.1 AGRICULTURA Y SILVICULTURA", label: "01.1 AGRICULTURA Y SILVICULTURA" },
-  { value: "01.2 GANADERÍA", label: "01.2 GANADERÍA" },
-  { value: "01.3 PESCA Y ACUACULTURA", label: "01.3 PESCA Y ACUACULTURA" },
-  { value: "02.1 EXPLORACIÓN", label: "02.1 EXPLORACIÓN" },
-  { value: "02.2 EXTRACCIÓN", label: "02.2 EXTRACCIÓN" },
-  { value: "02.3 REFINACIÓN Y BENEFICIO", label: "02.3 REFINACIÓN Y BENEFICIO" },
-  { value: "02.4 PROVISIÓN DE ENERGÍA", label: "02.4 PROVISIÓN DE ENERGÍA" },
-  { value: "02.5 PROVISIÓN DE AGUA", label: "02.5 PROVISIÓN DE AGUA" },
-  { value: "03.1 PLANEACIÓN Y DIRECCIÓN DE OBRAS", label: "03.1 PLANEACIÓN Y DIRECCIÓN DE OBRAS" },
-  { value: "03.2 EDIFICACIÓN Y URBANIZACIÓN", label: "03.2 EDIFICACIÓN Y URBANIZACIÓN" },
-  { value: "03.3 ACABADO", label: "03.3 ACABADO" },
-  { value: "03.4 INSTALACIÓN Y MANTENIMIENTO", label: "03.4 INSTALACIÓN Y MANTENIMIENTO" },
-  { value: "04.1 MECÁNICA", label: "04.1 MECÁNICA" },
-  { value: "04.2 ELECTRICIDAD", label: "04.2 ELECTRICIDAD" },
-  { value: "04.3 ELECTRÓNICA", label: "04.3 ELECTRÓNICA" },
-  { value: "04.4 INFORMÁTICA", label: "04.4 INFORMÁTICA" },
-  { value: "04.5 TELECOMUNICACIONES", label: "04.5 TELECOMUNICACIONES" },
-  { value: "04.6 PROCESOS INDUSTRIALES", label: "04.6 PROCESOS INDUSTRIALES" },
-  { value: "05.1 MINERALES NO METÁLICOS", label: "05.1 MINERALES NO METÁLICOS" },
-  { value: "05.2 METALES", label: "05.2 METALES" },
-  { value: "05.3 ALIMENTOS Y BEBIDAS", label: "05.3 ALIMENTOS Y BEBIDAS" },
-  { value: "05.4 TEXTILES Y PRENDAS DE VESTIR", label: "05.4 TEXTILES Y PRENDAS DE VESTIR" },
-  { value: "05.5 MATERIA ORGÁNICA", label: "05.5 MATERIA ORGÁNICA" },
-  { value: "05.6 PRODUCTOS QUÍMICOS", label: "05.6 PRODUCTOS QUÍMICOS" },
-  { value: "05.7 PRODUCTOS METÁLICOS Y DE HULE Y DE PLÁSTICO", label: "05.7 PRODUCTOS METÁLICOS Y DE HULE Y DE PLÁSTICO" },
-  { value: "05.8 PRODUCTOS ELÉCTRICOS Y ELECTRÓNICOS", label: "05.8 PRODUCTOS ELÉCTRICOS Y ELECTRÓNICOS" },
-  { value: "05.9 PRODUCTOS IMPRESOS", label: "05.9 PRODUCTOS IMPRESOS" },
-  { value: "06.1 FERROVIARIO", label: "06.1 FERROVIARIO" },
-  { value: "06.2 AUTOTRANSPORTE", label: "06.2 AUTOTRANSPORTE" },
-  { value: "06.3 AÉREO", label: "06.3 AÉREO" },
-  { value: "06.4 MARÍTIMO Y FLUVIAL", label: "06.4 MARÍTIMO Y FLUVIAL" },
-  { value: "06.5 SERVICIOS DE APOYO", label: "06.5 SERVICIOS DE APOYO" },
-  { value: "07.1 COMERCIO", label: "07.1 COMERCIO" },
-  { value: "07.2 ALIMENTACIÓN Y HOSPEDAJE", label: "07.2 ALIMENTACIÓN Y HOSPEDAJE" },
-  { value: "07.3 TURISMO", label: "07.3 TURISMO" },
-  { value: "07.4 DEPORTE Y ESPARCIMIENTO", label: "07.4 DEPORTE Y ESPARCIMIENTO" },
-  { value: "07.5 SERVICIOS PERSONALES", label: "07.5 SERVICIOS PERSONALES" },
-  { value: "07.6 REPARACIÓN DE ARTÍCULOS DE USO DOMÉSTICO Y PERSONAL", label: "07.6 REPARACIÓN DE ARTÍCULOS DE USO DOMÉSTICO Y PERSONAL" },
-  { value: "07.7 LIMPIEZA", label: "07.7 LIMPIEZA" },
-  { value: "07.8 SERVICIO POSTAL Y MENSAJERÍA", label: "07.8 SERVICIO POSTAL Y MENSAJERÍA" },
-  { value: "08.1 BOLSA, BANCA Y SEGUROS", label: "08.1 BOLSA, BANCA Y SEGUROS" },
-  { value: "08.2 ADMINISTRACIÓN", label: "08.2 ADMINISTRACIÓN" },
-  { value: "08.3 SERVICIOS LEGALES", label: "08.3 SERVICIOS LEGALES" },
-  { value: "09.1 SERVICIOS MÉDICOS", label: "09.1 SERVICIOS MÉDICOS" },
-  { value: "09.2 INSPECCIÓN SANITARIA Y DEL MEDIO AMBIENTE", label: "09.2 INSPECCIÓN SANITARIA Y DEL MEDIO AMBIENTE" },
-  { value: "09.3 SEGURIDAD SOCIAL", label: "09.3 SEGURIDAD SOCIAL" },
-  { value: "09.4 PROTECCIÓN DE BIENES Y/O PERSONAS", label: "09.4 PROTECCIÓN DE BIENES Y/O PERSONAS" },
-  { value: "10.1 PUBLICACIÓN", label: "10.1 PUBLICACIÓN" },
-  { value: "10.2 RADIO, CINE, TELEVISIÓN Y TEATRO", label: "10.2 RADIO, CINE, TELEVISIÓN Y TEATRO" },
-  { value: "10.3 INTERPRETACIÓN ARTÍSTICA", label: "10.3 INTERPRETACIÓN ARTÍSTICA" },
-  { value: "10.4 TRADUCCIÓN E INTERPRETACIÓN LINGÜÍSTICA", label: "10.4 TRADUCCIÓN E INTERPRETACIÓN LINGÜÍSTICA" },
-  { value: "10.5 PUBLICIDAD, PROPAGANDA Y RELACIONES PÚBLICAS", label: "10.5 PUBLICIDAD, PROPAGANDA Y RELACIONES PÚBLICAS" },
-  { value: "11.1 INVESTIGACIÓN", label: "11.1 INVESTIGACIÓN" },
-  { value: "11.2 ENSEÑANZA", label: "11.2 ENSEÑANZA" },
-  { value: "11.3 DIFUSIÓN CULTURAL", label: "11.3 DIFUSIÓN CULTURAL" }
+const COURSE_NAME = [
+  { value: "IDENTIFICACIÓN DE PELIGROS Y EVALUACIÓN RIESGOS", label: "IDENTIFICACIÓN DE PELIGROS Y EVALUACIÓN RIESGOS" },
+  { value: "MANEJO DE SUSTANCIAS QUÍMICAS", label: "MANEJO DE SUSTANCIAS QUÍMICAS" },
+  { value: "IDENTIFICACIÓN DE ASPECTOS AMBIENTALES", label: "IDENTIFICACIÓN DE ASPECTOS AMBIENTALES" },
+  { value: "MANIOBRAS E IZAJE", label: "MANIOBRAS E IZAJE" },
+  { value: "USO Y MANEJO DE EXTINTORES", label: "USO Y MANEJO DE EXTINTORES" },
+  { value: "MANEJO DE LAS HERRAMIENTAS DE TRABAJO (MANUALES Y DE PODER)", label: "MANEJO DE LAS HERRAMIENTAS DE TRABAJO (MANUALES Y DE PODER)" },
+  { value: "MONTACARGAS (USO Y MANEJO, PROCEDIMIENTOS DE SEGURIDAD)", label: "MONTACARGAS (USO Y MANEJO, PROCEDIMIENTOS DE SEGURIDAD)" },
+  { value: "USO DE EQUIPO DE PROTECCIÓN PERSONAL (EPP)", label: "USO DE EQUIPO DE PROTECCIÓN PERSONAL (EPP)" },
+  { value: "CONDICIONES DE SEGURIDAD PARA REALIZAR TRBAJO EN ALTURA NOM-009-STPS-2011", label: "CONDICIONES DE SEGURIDAD PARA REALIZAR TRBAJO EN ALTURA NOM-009-STPS-2011" },
+  { value: "CONTROL DE ENERGÍAS PELIGROSAS SISTEMA LOTO", label: "CONTROL DE ENERGÍAS PELIGROSAS SISTEMA LOTO" },
+  { value: "CONDICIONES DE SEGURIDAD PARA REALIZAR TRABAJOS EN ESPACIOS CONFINADOS NOM-033-STPS-2015", label: "CONDICIONES DE SEGURIDAD PARA REALIZAR TRABAJOS EN ESPACIOS CONFINADOS NOM-033-STPS-2015" },
+  { value: "MANEJO MANUAL Y MECÁNICO DE CARGAS", label: "MANEJO MANUAL Y MECÁNICO DE CARGAS" },
+  { value: "ARMADO DE ANDAMIOS PROCEDIMIENTOS DE SEGURIDAD E HIGIENE", label: "ARMADO DE ANDAMIOS PROCEDIMIENTOS DE SEGURIDAD E HIGIENE" },
+  { value: "BRIGADAS DE EMERGENCIA Y EVALUACIÓN", label: "BRIGADAS DE EMERGENCIA Y EVALUACIÓN" },
+  { value: "LEGISLACIÓN AMBIENTAL", label: "LEGISLACIÓN AMBIENTAL" },
+  { value: "ANÁLISIS DE SEGURIDAD EN EL TRABAJO (AST)", label: "ANÁLISIS DE SEGURIDAD EN EL TRABAJO (AST)" },
+  { value: "NOM-027-STPS-2008 ACTIVIDADES DE SOLDADURA Y CORTE, CONDICIONES DE SEGURIDAD E HIGIENE (TRABAJOS EN CALIENTE)", label: "NOM-027-STPS-2008 ACTIVIDADES DE SOLDADURA Y CORTE, CONDICIONES DE SEGURIDAD E HIGIENE (TRABAJOS EN CALIENTE)" },
+  { value: "PRIMEROS AUXILIOS", label: "PRIMEROS AUXILIOS" },
+  { value: "PROTECCIÓN RESPIRATORIA", label: "PROTECCIÓN RESPIRATORIA" }
 ];
 
 // Opciones para el select de Área
@@ -1208,21 +1172,15 @@ export default function EmployeeDC3Page() {
                           required
                         />
                       </div>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                        OCUPACIÓN ESPECÍFICA (CATÁLOGO NACIONAL DE OCUPACIONES)* 
-                      </label>
                       <div className="relative">
                         <select
-                          name="SpecificOccupation"
-                          value={formData.SpecificOccupation}
+                          name="CourseName"
+                          value={formData.Area}
                           onChange={handleFormChange}
                           className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                         >
-                          <option value="">Seleccione una ocupación</option>
-                          {OCCUPATION_OPTIONS.map((option) => (
+                          <option value="">Seleccione un área</option>
+                          {COURSE_NAME.map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label}
                             </option>
