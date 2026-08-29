@@ -71,7 +71,6 @@ export async function GET(request: NextRequest) {
       `SELECT 
         dc.DC3ID,
         dc.EmployeeID,
-        dc.SpecificOccupation,
         dc.CourseName,
         dc.StartDate,
         dc.EndDate,
@@ -188,7 +187,6 @@ export async function GET(request: NextRequest) {
     ws.getCell("A19").value = dc3Record.CourseName || "NO ESPECIFICADO";
     ws.getCell("A23").value = dc3Record.Area || "NO ESPECIFICADO";
     ws.getCell("B32").value = trainerName;
-    ws.getCell("H7").value = dc3Record.SpecificOccupation || "NO ESPECIFICADO";
     ws.getCell("A21").value = dc3Record.Duration || "NO ESPECIFICADO";
     ws.getCell("I21").value = startYear || "";
     ws.getCell("J21").value = startMonth || "";
