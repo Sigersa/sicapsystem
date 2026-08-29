@@ -548,7 +548,7 @@ export async function POST(request: NextRequest) {
       const [result] = await connection.execute(
         `INSERT INTO employeedc3 
          (EmployeeID, CourseName, StartDate, EndDate, Area, TrainerID, ExternalTrainerName, Duration) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ? )`,
         [
           EmployeeID,
           CourseName,
