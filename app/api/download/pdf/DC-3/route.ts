@@ -74,7 +74,6 @@ export async function GET(request: NextRequest) {
         dc.CourseName,
         dc.StartDate,
         dc.EndDate,
-        dc.Area,
         dc.Duration,
         dc.TrainerID,
         dc.DocumentURL,
@@ -185,7 +184,6 @@ export async function GET(request: NextRequest) {
     ws.getCell("A5").value = employeeName || "NOMBRE NO ESPECIFICADO";
     ws.getCell("A9").value = dc3Record.Position || "NO ESPECIFICADO";
     ws.getCell("A19").value = dc3Record.CourseName || "NO ESPECIFICADO";
-    ws.getCell("A23").value = dc3Record.Area || "NO ESPECIFICADO";
     ws.getCell("B32").value = trainerName;
     ws.getCell("A21").value = dc3Record.Duration || "NO ESPECIFICADO";
     ws.getCell("I21").value = startYear || "";
