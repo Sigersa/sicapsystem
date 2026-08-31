@@ -14,7 +14,6 @@ interface EmployeeDC3 {
   CourseName: string | null;
   StartDate: string | null;
   EndDate: string | null;
-  Area: string | null;
   TrainerID: number | null;
   TrainerName: string | null;
   isExternalTrainer: boolean;
@@ -51,7 +50,6 @@ interface DC3FormData {
   CourseName: string;
   StartDate: string;
   EndDate: string;
-  Area: string;
   TrainerID: string;
   TrainerName: string;
   Duration: string;
@@ -83,7 +81,6 @@ interface SuccessDetails {
   StartDate: string;
   EndDate: string;
   Duration: number;
-  Area: string;
   fileUrl: string;
   pdfUrl: string;
   excelUrl: string;
@@ -110,19 +107,6 @@ const COURSE_NAME = [
   { value: "NOM-027-STPS-2008 ACTIVIDADES DE SOLDADURA Y CORTE, CONDICIONES DE SEGURIDAD E HIGIENE (TRABAJOS EN CALIENTE)", label: "NOM-027-STPS-2008 ACTIVIDADES DE SOLDADURA Y CORTE, CONDICIONES DE SEGURIDAD E HIGIENE (TRABAJOS EN CALIENTE)" },
   { value: "PRIMEROS AUXILIOS", label: "PRIMEROS AUXILIOS" },
   { value: "PROTECCIÓN RESPIRATORIA", label: "PROTECCIÓN RESPIRATORIA" }
-];
-
-// Opciones para el select de Área
-const AREA_OPTIONS = [
-  { value: "1000 PRODUCCIÓN", label: "1000 PRODUCCIÓN" },
-  { value: "2000 SERVICIOS", label: "2000 SERVICIOS" },
-  { value: "3000 ADMINISTRACIÓN, CONTABILIDAD Y ECONOMÍA", label: "3000 ADMINISTRACIÓN, CONTABILIDAD Y ECONOMÍA" },
-  { value: "4000 COMERCIALIZACIÓN", label: "4000 COMERCIALIZACIÓN" },
-  { value: "5000 MANTENIMIENTO Y REPARACIÓN", label: "5000 MANTENIMIENTO Y REPARACIÓN" },
-  { value: "6000 SEGURIDAD", label: "6000 SEGURIDAD" },
-  { value: "7000 DESARROLLO PERSONAL Y FAMILIAR", label: "7000 DESARROLLO PERSONAL Y FAMILIAR" },
-  { value: "8000 USO DE TECNOLOGÍAS DE LA INFORMACIÓN Y COMUNICACIÓN", label: "8000 USO DE TECNOLOGÍAS DE LA INFORMACIÓN Y COMUNICACIÓN" },
-  { value: "9000 PARTICIPACIÓN SOCIAL", label: "9000 PARTICIPACIÓN SOCIAL" }
 ];
 
 // Función para normalizar texto a mayúsculas
@@ -225,7 +209,6 @@ export default function EmployeeDC3Page() {
     CourseName: '',
     StartDate: '',
     EndDate: '',
-    Area: '',
     TrainerID: '',
     TrainerName: '',
     Duration: ''
@@ -421,7 +404,6 @@ export default function EmployeeDC3Page() {
       CourseName: '',
       StartDate: '',
       EndDate: '',
-      Area: '',
       TrainerID: '',
       TrainerName: '',
       Duration: ''
@@ -472,7 +454,6 @@ export default function EmployeeDC3Page() {
       CourseName: record.CourseName || '',
       StartDate: formatDateForInput(record.StartDate),
       EndDate: formatDateForInput(record.EndDate),
-      Area: record.Area || '',
       TrainerID: isExternal ? 'otro' : (record.TrainerID ? record.TrainerID.toString() : ''),
       TrainerName: isExternal ? trainerName : '',
       Duration: record.Duration?.toString() || ''
@@ -548,7 +529,6 @@ export default function EmployeeDC3Page() {
         CourseName: formData.CourseName,
         StartDate: formData.StartDate,
         EndDate: formData.EndDate,
-        Area: formData.Area || null,
         Duration: formData.Duration ? parseInt(formData.Duration) : null
       };
 
@@ -613,7 +593,6 @@ export default function EmployeeDC3Page() {
             StartDate: formData.StartDate,
             EndDate: formData.EndDate,
             Duration: parseInt(formData.Duration) || 0,
-            Area: formData.Area || 'N/A',
             fileUrl: pdfUrl,
             pdfUrl: pdfUrl,
             excelUrl: excelUrl
@@ -1218,27 +1197,6 @@ export default function EmployeeDC3Page() {
                           pattern="\d*"
                           required
                         />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                        ÁREA TEMÁTICA DEL CURSO *
-                      </label>
-                      <div className="relative">
-                        <select
-                          name="Area"
-                          value={formData.Area}
-                          onChange={handleFormChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                        >
-                          <option value="">Seleccione un área</option>
-                          {AREA_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
                       </div>
                     </div>
 
