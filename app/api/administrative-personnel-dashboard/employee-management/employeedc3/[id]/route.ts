@@ -57,7 +57,6 @@ async function generateDC3PDF(dc3Id: number): Promise<{ pdfBuffer: ArrayBuffer; 
         dc.CourseName,
         dc.StartDate,
         dc.EndDate,
-        dc.Area,
         dc.Duration,
         dc.TrainerID,
         dc.ExternalTrainerName,
@@ -159,7 +158,6 @@ async function generateDC3PDF(dc3Id: number): Promise<{ pdfBuffer: ArrayBuffer; 
     ws.getCell("A5").value = employeeName || "NOMBRE NO ESPECIFICADO";
     ws.getCell("A9").value = dc3Record.Position || "NO ESPECIFICADO";
     ws.getCell("A19").value = dc3Record.CourseName || "NO ESPECIFICADO";
-    ws.getCell("A23").value = dc3Record.Area || "NO ESPECIFICADO";
     ws.getCell("B32").value = trainerName;
     ws.getCell("A21").value = dc3Record.Duration || "NO ESPECIFICADO";
     ws.getCell("I21").value = startYear || "";
@@ -265,7 +263,6 @@ export async function GET(
         dc.CourseName,
         dc.StartDate,
         dc.EndDate,
-        dc.Area,
         dc.TrainerID,
         dc.ExternalTrainerName,
         dc.Duration,
@@ -397,7 +394,6 @@ export async function PUT(
       CourseName,
       StartDate,
       EndDate,
-      Area,
       TrainerID,
       TrainerName,
       Duration
@@ -520,7 +516,6 @@ export async function PUT(
           CourseName = ?,
           StartDate = ?,
           EndDate = ?,
-          Area = ?,
           TrainerID = ?,
           ExternalTrainerName = ?,
           Duration = ?
@@ -530,7 +525,6 @@ export async function PUT(
           CourseName,
           startDateFormatted,
           endDateFormatted,
-          Area || null,
           finalTrainerId,
           externalTrainerName,
           Duration || null,
