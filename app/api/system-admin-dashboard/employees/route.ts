@@ -20,12 +20,15 @@ export async function GET(req: NextRequest) {
 
     connection = await getConnection();
 
-    // Obtener empleados base personnel que no tienen usuario (solo base personnel, sin proyectos)
+    // Obtener empleados base personnel que no tienen usuario 
     const [rows]: any = await connection.execute(`
       SELECT 
-    e.EmployeeID,
-    CONCAT(bp.FirstName, ' ', bp.LastName, ' ', IFNULL(bp.MiddleName, '')) AS FullName,
-    bpi.Email
+        e.EmployeeID,
+        bp.FirstName, 
+        bp.LastName,
+        bp.MiddleName,
+        CONCAT(bp.FirstName, ' ', bp.LastName, ' ', IFNULL(bp.MiddleName, '')) AS FullName,
+        bpi.Email
       FROM employees e
       INNER JOIN basepersonnel bp 
           ON e.EmployeeID = bp.EmployeeID  
@@ -34,9 +37,9 @@ export async function GET(req: NextRequest) {
       LEFT JOIN systemusers su 
           ON e.EmployeeID = su.EmployeeID
       WHERE su.SystemUserID IS NULL
-          AND e.EmployeeType = 'BASE'  -- Filtramos solo empleados de tipo BASE
+          AND e.EmployeeType = 'BASE' 
       ORDER BY bp.LastName, bp.FirstName;
-          `);
+    `);
 
     return NextResponse.json(rows, { status: 200 });
 
