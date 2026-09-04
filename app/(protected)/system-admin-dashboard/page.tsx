@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import AppHeader from '@/components/header/1/1';
 import Footer from '@/components/footer';
-import { User, Lock, AlertTriangle, X, Search, RefreshCw, Edit2, Trash2, UserMinus, UserX, Users, CheckCircle, AlertCircle } from 'lucide-react';
+import { User, Lock, AlertTriangle, X, Search, RefreshCw, Edit2, Trash2, UserMinus, UserX, CheckCircle, AlertCircle } from 'lucide-react';
 import { useSessionManager } from '@/hooks/useSessionManager/1';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useUserData } from '@/hooks/useUserData';
@@ -26,6 +26,9 @@ type Employee = {
   EmployeeID: number;
   FullName: string;
   Email: string;
+  FirstName: string;
+  LastName: string;
+  MiddleName: string;
 };
 
 const emptyForm = {
@@ -68,16 +71,57 @@ const getUserTypeColor = (userTypeID: number) => {
   }
 };
 
-const generateUsername = (employeeID: number): string => {
-  const randomNumbers = Math.floor(100 + Math.random() * 900).toString();
-  return `EMP${employeeID.toString().padStart(3, '0')}${randomNumbers}`;
+// Generar usuario con nombre sin espacios
+const generateUsername = (employeeData: { FirstName: string, LastName: string, MiddleName: string }): string => {
+  // Limpiar nombres: eliminar espacios y tomar solo la primera letra
+  const firstNameClean = employeeData.FirstName.trim();
+  const lastNameClean = employeeData.LastName.trim();
+  const middleNameClean = employeeData.MiddleName ? employeeData.MiddleName.trim() : '';
+  
+  // Tomar primera letra del nombre 
+  const firstNameInitial = firstNameClean.split(' ')[0].charAt(0).toUpperCase();
+  
+  // Tomar primera letra del apellido paterno
+  const lastNameInitial = lastNameClean.charAt(0).toUpperCase();
+  
+  // Apellido materno completo 
+  const middleName = middleNameClean.replace(/\s/g, '');
+  
+  // Construir base del username
+  let usernameBase = firstNameInitial + lastNameInitial + middleName;
+  
+  // Asegurar que tenga al menos 3 caracteres
+  if (usernameBase.length < 3) {
+    usernameBase = usernameBase.padEnd(3, 'X');
+  }
+  
+  // Generar 2 números aleatorios
+  const randomNumbers = Math.floor(10 + Math.random() * 90).toString();
+  
+  // Generar 1 letra minúscula aleatoria
+  const letters = 'abcdefghijklmnopqrstuvwxyz';
+  const randomLetter = letters.charAt(Math.floor(Math.random() * letters.length));
+  
+  return usernameBase + randomNumbers + randomLetter;
 };
 
-const generatePassword = (employeeID: number): string => {
+// Generar contraseña con mayúsculas
+const generatePassword = (employeeData: { FirstName: string, LastName: string }): string => {
+  // Limpiar nombres
+  const firstName = employeeData.FirstName.trim().split(' ')[0];
+  const lastName = employeeData.LastName.trim();
+  
+  // 2 números aleatorios
+  const randomNumbers = Math.floor(10 + Math.random() * 90).toString();
+  
+  // Símbolo aleatorio
   const symbols = '!@#$%^&*';
-  const randomSymbol = symbols[Math.floor(Math.random() * symbols.length)];
-  const randomNumbers = Math.floor(1000 + Math.random() * 9000).toString();
-  return `EMP${employeeID}${randomSymbol}${randomNumbers}`;
+  const randomSymbol = symbols.charAt(Math.floor(Math.random() * symbols.length));
+  
+  // Letra minúscula aleatoria
+  const letters = 'abcdefghijklmnopqrstuvwxyz';
+  const randomLetter = letters.charAt(Math.floor(Math.random() * letters.length));
+  return `${firstName}.${lastName}.${randomNumbers}${randomSymbol}${randomLetter}`;
 };
 
 export default function SystemAdminDashboard() {
@@ -113,6 +157,7 @@ export default function SystemAdminDashboard() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showPasswordField, setShowPasswordField] = useState(false);
   const [newGeneratedPassword, setNewGeneratedPassword] = useState<string>('');
+  const [selectedEmployeeData, setSelectedEmployeeData] = useState<Employee | null>(null);
 
   useEffect(() => {
     const fetchEmployees = async () => {
@@ -147,15 +192,26 @@ export default function SystemAdminDashboard() {
     if (name === 'EmployeeID' && value && !editingUser) {
       const employeeID = parseInt(value);
       if (employeeID > 0) {
-        const username = generateUsername(employeeID);
-        const password = generatePassword(employeeID);
-        
-        setGeneratedCredentials({ username, password });
-        setFormData((prev: typeof formData) => ({
-          ...prev,
-          UserName: username,
-          Password: password
-        }));
+        const employee = employees.find(emp => emp.EmployeeID === employeeID);
+        if (employee) {
+          setSelectedEmployeeData(employee);
+          const username = generateUsername({
+            FirstName: employee.FirstName,
+            LastName: employee.LastName,
+            MiddleName: employee.MiddleName
+          });
+          const password = generatePassword({
+            FirstName: employee.FirstName,
+            LastName: employee.LastName
+          });
+          
+          setGeneratedCredentials({ username, password });
+          setFormData((prev: typeof formData) => ({
+            ...prev,
+            UserName: username,
+            Password: password
+          }));
+        }
       }
     }
   };
@@ -166,12 +222,17 @@ export default function SystemAdminDashboard() {
     setGeneratedCredentials(null);
     setShowPasswordField(false);
     setNewGeneratedPassword('');
+    setSelectedEmployeeData(null);
     setShowModal(true);
     setError(null);
   };
 
   const openEdit = (u: UserData) => {
     setEditingUser(u);
+    // Buscar el empleado para obtener sus datos completos
+    const employee = employees.find(emp => emp.EmployeeID === u.EmployeeID);
+    setSelectedEmployeeData(employee || null);
+    
     setFormData({
       EmployeeID: u.EmployeeID,
       UserName: u.UserName,
@@ -218,13 +279,23 @@ export default function SystemAdminDashboard() {
     setDeactivateLoading(false);
   };
 
+  // Generar nueva contraseña para edición
   const generateNewPassword = () => {
     if (!formData.EmployeeID) {
       setError('Por favor seleccione un empleado primero');
       return;
     }
 
-    const newPassword = generatePassword(formData.EmployeeID);
+    const employee = employees.find(emp => emp.EmployeeID === formData.EmployeeID);
+    if (!employee) {
+      setError('No se encontraron datos del empleado');
+      return;
+    }
+
+    const newPassword = generatePassword({
+      FirstName: employee.FirstName,
+      LastName: employee.LastName
+    });
     setNewGeneratedPassword(newPassword);
     setFormData((prev: typeof formData) => ({
       ...prev,
@@ -233,6 +304,7 @@ export default function SystemAdminDashboard() {
     setShowPasswordField(true);
   };
 
+  // Manejar el submit correctamente
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -247,23 +319,25 @@ export default function SystemAdminDashboard() {
         throw new Error('Por favor seleccione un tipo de usuario');
       }
 
-      let submitData = { ...formData };
+      let submitData: any = {
+        EmployeeID: formData.EmployeeID,
+        UserTypeID: formData.UserTypeID,
+        UserName: formData.UserName,
+      };
       
       if (!editingUser) {
+        // Creación
         if (!generatedCredentials) {
           throw new Error('Por favor seleccione un empleado para generar las credenciales');
         }
-        
         submitData.UserName = generatedCredentials.username;
         submitData.Password = generatedCredentials.password;
       } else {
+        // Edición
         if (newGeneratedPassword) {
           submitData.Password = newGeneratedPassword;
-        }
-        
-        if (!submitData.Password || submitData.Password.trim() === '') {
-          const { Password, ...dataWithoutPassword } = submitData;
-          submitData = dataWithoutPassword;
+        } else if (formData.Password && formData.Password.trim() !== '') {
+          submitData.Password = formData.Password;
         }
       }
 
@@ -285,20 +359,15 @@ export default function SystemAdminDashboard() {
         throw new Error(data.error || `Error al ${editingUser ? 'actualizar' : 'crear'} el usuario`);
       }
 
-      // Cerrar modal inmediatamente
       setShowModal(false);
       setFormData(emptyForm);
       setGeneratedCredentials(null);
       setNewGeneratedPassword('');
       setShowPasswordField(false);
+      setSelectedEmployeeData(null);
       
-      // Mostrar mensaje de éxito fuera del modal
       setSuccessMessage(editingUser ? '¡USUARIO ACTUALIZADO EXITOSAMENTE!' : '¡USUARIO CREADO EXITOSAMENTE!');
-      
-      // Recargar usuarios
       await refreshData();
-      
-      // Limpiar mensaje después de 3 segundos
       setTimeout(() => setSuccessMessage(null), 3000);
 
     } catch (err: any) {
@@ -326,16 +395,9 @@ export default function SystemAdminDashboard() {
         throw new Error(data.error || 'Error al eliminar el usuario');
       }
 
-      // Cerrar modal inmediatamente
       closeDeleteModal();
-      
-      // Mostrar mensaje de éxito fuera del modal
       setSuccessMessage('¡USUARIO ELIMINADO EXITOSAMENTE!');
-      
-      // Recargar usuarios
       await refreshData();
-      
-      // Limpiar mensaje después de 3 segundos
       setTimeout(() => setSuccessMessage(null), 3000);
       
     } catch (err: any) {
@@ -367,19 +429,12 @@ export default function SystemAdminDashboard() {
         throw new Error(data.error || 'Error al actualizar el estado del usuario');
       }
 
-      // Cerrar modal inmediatamente
       closeDeactivateModal();
-      
-      // Mostrar mensaje de éxito fuera del modal
       setSuccessMessage(userToDeactivate.UserTypeID === 0 
         ? '¡USUARIO REACTIVADO EXITOSAMENTE!' 
         : '¡USUARIO DADO DE BAJA EXITOSAMENTE!'
       );
-      
-      // Recargar usuarios
       await refreshData();
-      
-      // Limpiar mensaje después de 3 segundos
       setTimeout(() => setSuccessMessage(null), 3000);
       
     } catch (err: any) {
@@ -425,12 +480,9 @@ export default function SystemAdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* HEADER - Fixed */}
-      <AppHeader 
-        title="PANEL DE CONTROL DEL SISTEMA"
-      />
+      <AppHeader title="PANEL DE CONTROL DEL SISTEMA" />
 
-      {/* MODAL PARA CREAR/EDITAR USUARIO - Estilo actualizado */}
+      {/* MODAL PARA CREAR/EDITAR USUARIO */}
       {showModal && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
@@ -456,6 +508,7 @@ export default function SystemAdminDashboard() {
                   setNewGeneratedPassword('');
                   setShowPasswordField(false);
                   setFormData(emptyForm);
+                  setSelectedEmployeeData(null);
                 }}
                 className="p-2 hover:bg-gray-100 rounded-full transition-colors"
                 aria-label="Cerrar modal"
@@ -470,9 +523,7 @@ export default function SystemAdminDashboard() {
                   <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
                     <div className="flex items-center">
                       <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
-                      <p className="text-sm font-medium text-gray-600 leading-5">
-                        {error}
-                      </p>
+                      <p className="text-sm font-medium text-gray-600 leading-5">{error}</p>
                     </div>
                   </div>
                 )}
@@ -674,6 +725,7 @@ export default function SystemAdminDashboard() {
                     setNewGeneratedPassword('');
                     setShowPasswordField(false);
                     setFormData(emptyForm);
+                    setSelectedEmployeeData(null);
                   }}
                   className="bg-gray-200 text-black font-bold py-2.5 px-6 rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center whitespace-nowrap"
                   disabled={loading}
@@ -702,7 +754,7 @@ export default function SystemAdminDashboard() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMACIÓN PARA DAR DE BAJA/REACTIVAR - Estilo actualizado */}
+      {/* MODAL DE CONFIRMACIÓN PARA DAR DE BAJA/REACTIVAR */}
       {showDeactivateModal && userToDeactivate && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
@@ -727,9 +779,7 @@ export default function SystemAdminDashboard() {
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
                   <div className="flex items-center">
                     <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
-                    <p className="text-sm font-medium text-gray-600 leading-5">
-                      {deactivateError}
-                    </p>
+                    <p className="text-sm font-medium text-gray-600 leading-5">{deactivateError}</p>
                   </div>
                 </div>
               )}
@@ -839,7 +889,7 @@ export default function SystemAdminDashboard() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMACIÓN PARA ELIMINAR - Estilo actualizado */}
+      {/* MODAL DE CONFIRMACIÓN PARA ELIMINAR */}
       {showDeleteModal && userToDelete && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70"
@@ -861,9 +911,7 @@ export default function SystemAdminDashboard() {
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
                   <div className="flex items-center">
                     <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
-                    <p className="text-sm font-medium text-gray-600 leading-5">
-                      {deleteError}
-                    </p>
+                    <p className="text-sm font-medium text-gray-600 leading-5">{deleteError}</p>
                   </div>
                 </div>
               )}
@@ -943,7 +991,7 @@ export default function SystemAdminDashboard() {
         </div>
       )}
 
-      {/* CONTENT - Ajustado para header y footer fijos */}
+      {/* CONTENT */}
       <main className="pt-[72px] pb-[80px] min-h-screen bg-gray-100">
         <div className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 max-w-7xl mx-auto">
           <div className="mb-6 sm:mb-8">
@@ -956,14 +1004,11 @@ export default function SystemAdminDashboard() {
               </div>
             </div>
 
-            {/* MENSAJES DE ÉXITO - AHORA FUERA DEL MODAL */}
             {successMessage && (
               <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in">
                 <div className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-                  <p className="text-sm font-medium text-gray-600 leading-5">
-                    {successMessage}
-                  </p>
+                  <p className="text-sm font-medium text-gray-600 leading-5">{successMessage}</p>
                 </div>
               </div>
             )}
@@ -972,9 +1017,7 @@ export default function SystemAdminDashboard() {
               <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
                 <div className="flex items-center">
                   <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
-                  <p className="text-sm font-medium text-gray-600 leading-5">
-                    {dataError}
-                  </p>
+                  <p className="text-sm font-medium text-gray-600 leading-5">{dataError}</p>
                 </div>
               </div>
             )}
@@ -1050,7 +1093,7 @@ export default function SystemAdminDashboard() {
                     ) : (
                       filteredUsers.map((u) => (
                         <tr key={u.SystemUserID} className="hover:bg-gray-50 transition-colors border-b border-gray-300">
-                          <td className="py-3 px-4 text-sm text-gray-800 font-medium">EMP{u.EmployeeID.toString().padStart(3, '0')}</td>
+                          <td className="py-3 px-4 text-sm text-gray-800 font-medium">{u.EmployeeID}</td>
                           <td className="py-3 px-4 text-sm text-gray-800">{u.EmployeeName}</td>
                           <td className="py-3 px-4 text-sm text-gray-800 font-mono">{u.UserName}</td>
                           <td className="py-3 px-4 text-sm text-gray-600 max-w-xs truncate">{u.EmployeeEmail}</td>
@@ -1106,10 +1149,8 @@ export default function SystemAdminDashboard() {
         </div>
       </main>
 
-      {/* FOOTER - Fixed */}
       <Footer />
 
-      {/* Estilos globales para animaciones y layout */}
       <style jsx global>{`
         @keyframes fade-in {
           from {
