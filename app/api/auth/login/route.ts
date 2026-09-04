@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { getConnection } from '@/lib/db';
 
-const SESSION_DURATION_MINUTES = 15;
+const SESSION_DURATION_MINUTES = 60;
 
 export async function POST(request: NextRequest) {
   let connection;
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
         redirectTo = '/project-manager-dashboard';
         break;
       case 4:
-        redirectTo = '/project-manager-dashboard';
+        redirectTo = '/executive-dashboard';
         break;
     }
 
