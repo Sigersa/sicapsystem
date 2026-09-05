@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@types/react-datepicker": "^6.2.0",
     "@uploadthing/react": "^7.3.3",
     "bcryptjs": "^3.0.3",
     "convertapi": "^1.15.0",
@@ -22,6 +23,7 @@
     "pdfkit": "^0.17.2",
     "puppeteer": "^24.36.1",
     "react": "19.2.1",
+    "react-datepicker": "^9.1.0",
     "react-dom": "19.2.1",
     "react-hook-form": "^7.68.0",
     "uploadthing": "^7.7.4",
