@@ -84,7 +84,7 @@ export default function AppHeader({
   const handleGoToMain = () => {
     // Redirige al dashboard principal basado en el tipo de usuario
     if (userData?.UserTypeID === 4) {
-      window.location.href = '/executive-manager-dashboard';
+      window.location.href = '/executive-dashboard';
     } 
   };
 
