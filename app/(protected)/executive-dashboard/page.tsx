@@ -73,27 +73,20 @@ export default function Page() {
     },
     {
       id: 2,
-      title: 'GESTIÓN DE RESPALDOS',
-      description: 'Sistema de respaldo y recuperación de archivos (archivo comprimido ZIP)',
-      icon: <Users className="h-6 w-6" />,
-      href: '/executive-dashboard/modules/backup'
-    },
-    {
-      id: 3,
       title: 'GESTIÓN DE CLIENTES',
       description: 'Administración integral de la información de clientes',
       icon: <FileText className="h-6 w-6" />,
       href: '/executive-dashboard/modules/clients'
     },
     {
-      id: 4,
+      id: 3,
       title: 'VALIDACIÓN Y CONTROL DE GASTOS',
       description: 'Validación y control de registros de gastos por proyecto',
       icon: <ToolCase className="h-6 w-6" />,
       href: '/executive-dashboard/modules/validation'
     },
     {
-      id: 5,
+      id: 4,
       title: 'GESTIÓN DE PROYECTOS',
       description: 'Asignación y conclusión de proyectos corporativos',
       icon: <ToolCase className="h-6 w-6" />,
