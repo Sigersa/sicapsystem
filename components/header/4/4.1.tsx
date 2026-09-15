@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { LogOut, User, ChevronDown, Home } from 'lucide-react';
+import NotificationBell from '@/components/NotificationBell'; // Ajusta la ruta según tu estructura
 
 type AppHeaderProps = {
   title: string;
@@ -124,6 +125,12 @@ export default function AppHeader({
 
         {/* Botón Principal, Notificaciones y usuario */}
         <div className="flex items-center space-x-4">
+
+          {/* NOTIFICACIONES - Integración del componente */}
+          <NotificationBell disabled={loading} />
+          
+          {/* Separador */}
+          <div className="h-6 w-px bg-white/50" />
 
           {/* Botón Principal */}
           <button
