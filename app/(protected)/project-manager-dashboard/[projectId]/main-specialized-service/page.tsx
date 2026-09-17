@@ -45,7 +45,6 @@ interface ProjectData {
   projectName: string
 }
 
-// ✅ CAMBIO 1: params ahora es una Promise en Next.js 15
 interface PageProps {
   params: Promise<{
     projectId: string
@@ -57,7 +56,6 @@ export default function Page({ params }: PageProps) {
   const { user, loading: sessionLoading } = useSessionManager()
   useInactivityManager()
 
-  // ✅ CAMBIO 2: Desempaquetar params con React.use()
   const { projectId } = React.use(params)
 
   const [userData, setUserData] = useState<UserData>({
