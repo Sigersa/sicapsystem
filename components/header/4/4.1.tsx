@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { LogOut, User, ChevronDown, Home } from 'lucide-react';
-import NotificationBell from '@/components/NotificationBell'; // Ajusta la ruta según tu estructura
+import NotificationBell from '@/components/NotificationBell'; 
 
 type AppHeaderProps = {
   title: string;
