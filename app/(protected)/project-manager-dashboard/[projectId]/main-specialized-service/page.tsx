@@ -526,7 +526,7 @@ export default function Page({ params }: PageProps) {
               />
 
               <DashboardCard
-                title="Traslados de personal"
+                title="Traslados de personal a sitio"
                 icon={
                   <svg
                     className="h-6 w-6 text-white"
