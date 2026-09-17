@@ -10,7 +10,8 @@ export async function validateAndRenewSession(sessionId: string) {
         s.SessionID,
         u.SystemUserID,
         u.UserName,
-        u.UserTypeID
+        u.UserTypeID,
+        u.EmployeeID
       FROM sessions s
       JOIN systemusers u ON u.SystemUserID = s.SystemUserID
       WHERE s.SessionID = ?
