@@ -651,7 +651,7 @@ export default function Page({ params }: PageProps) {
               />
 
               <DashboardCard
-                title="Combustibles locales"
+                title="Combustibles de transportación local"
                 icon={
                   <svg
                     className="h-6 w-6 text-white"
@@ -667,7 +667,7 @@ export default function Page({ params }: PageProps) {
                     />
                   </svg>
                 }
-                description="Gestión de combustible local"
+                description="Gestión de combustibles de transportación local"
                 linkText="Ver combustibles"
                 href={`/project-manager-dashboard/projects/${projectId}/local-transportation-fuel`}
                 disabled={disableDashboards}
@@ -676,7 +676,7 @@ export default function Page({ params }: PageProps) {
               />
 
               <DashboardCard
-                title="Financiamiento (cliente)"
+                title="Servicios de financiamiento (cliente)"
                 icon={
                   <svg
                     className="h-6 w-6 text-white"
@@ -692,7 +692,7 @@ export default function Page({ params }: PageProps) {
                     />
                   </svg>
                 }
-                description="Gestión de financiamiento (cliente)"
+                description="Gestión de servicios de financiamiento (cliente)"
                 linkText="Ver servicios"
                 href={`/project-manager-dashboard/projects/${projectId}/financing-services(client)`}
                 disabled={disableDashboards}
