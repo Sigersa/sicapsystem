@@ -73,7 +73,7 @@ export async function GET(request: Request) {
     let queryParams: any[] = [];
 
     // Para usuarios tipo 4 (ejecutivos), solo ver sus proyectos
-    if (user.UserTypeID === 4) {
+    if (user.UserTypeID === 5) {
       userCondition = ' AND p.CreatedBy = ?';
       queryParams = [user.SystemUserID];
     }
@@ -356,7 +356,7 @@ export async function PUT(request: Request) {
 
     try {
       // Verificar permisos para usuarios tipo 4 (ejecutivos)
-      if (user.UserTypeID === 4) {
+      if (user.UserTypeID === 5) {
         const verifyOwnershipQuery = `
           SELECT COUNT(*) as canUpdate 
           FROM ${tableConfig.table} t 
