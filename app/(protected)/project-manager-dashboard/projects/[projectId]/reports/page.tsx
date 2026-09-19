@@ -697,7 +697,6 @@ export default function ReportsPage({ params }: PageProps) {
             
             <div className="p-6 border-b border-gray-300 bg-gray-50">
               <div className="flex items-center">
-                <FileText className="h-6 w-6 text-[#3a6ea5] mr-3" />
                 <div>
                   <h2 className="text-lg font-bold text-gray-900 tracking-tight">
                     GENERAR REPORTE
