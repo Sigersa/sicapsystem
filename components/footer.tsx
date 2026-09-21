@@ -5,9 +5,6 @@ export default function Footer() {
         <p className="text-xs text-gray-600">
           SICAP v1.0.1 • © 2026 Sigersa Innovaciones S.A. de C.V.
         </p>
-        <p className="text-xs text-gray-500 mt-1">
-          Para asistencia técnica contacte al soporte: tics@gersainnovaciones.com
-        </p>
       </div>
     </footer>
   );
