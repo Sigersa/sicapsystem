@@ -579,7 +579,7 @@ const EditModal: React.FC<EditModalProps> = ({
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2 flex items-center">
                   DETALLES DE PAGO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       MÉTODO DE PAGO *
@@ -613,7 +613,53 @@ const EditModal: React.FC<EditModalProps> = ({
                       required
                     />
                   </div>
+
+                  {/* Subir nuevos archivos */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                  ADJUNTAR ARCHIVOS (MÁX. 3)
+                </label>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx"
+                    multiple
+                    onChange={handleFileChange}
+                    ref={fileInputRef}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-lg hover:border-[#3a6ea5] transition-colors flex items-center justify-center text-gray-500 hover:text-[#3a6ea5] text-sm"
+                  >
+                    <Upload className="h-5 w-5 mr-2" />
+                    SELECCIONAR 
+                  </button>
                 </div>
+              </div>
+            </div>
+
+            
+                {archivos.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {archivos.map((file, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
+                        <div className="flex items-center truncate">
+                          <FileIcon type={file.type} size={5} />
+                          <span className="ml-3 text-sm truncate font-medium text-gray-700">{file.name}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(index)}
+                          className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Archivos existentes */}
@@ -649,50 +695,7 @@ const EditModal: React.FC<EditModalProps> = ({
                 </div>
               )}
 
-              {/* Subir nuevos archivos */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                  AGREGAR ARCHIVOS (MÁX. 3)
-                </h3>
-                <div className="relative">
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx"
-                    multiple
-                    onChange={handleFileChange}
-                    ref={fileInputRef}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-[#3a6ea5] transition-colors flex items-center justify-center text-gray-500 hover:text-[#3a6ea5]"
-                  >
-                    <Upload className="h-5 w-5 mr-2" />
-                    SELECCIONAR ARCHIVOS
-                  </button>
-                </div>
-
-                {archivos.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {archivos.map((file, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
-                        <div className="flex items-center truncate">
-                          <FileIcon type={file.type} size={5} />
-                          <span className="ml-3 text-sm truncate font-medium text-gray-700">{file.name}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeFile(index)}
-                          className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              
 
               {/* Observaciones */}
               <div className="bg-gray-50 rounded-lg p-4">
