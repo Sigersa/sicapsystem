@@ -541,7 +541,7 @@ const EditModal: React.FC<EditModalProps> = ({
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
                   INFORMACIÓN DEL REGISTRO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       FECHA *
@@ -569,7 +569,15 @@ const EditModal: React.FC<EditModalProps> = ({
                       required
                     />
                   </div>
+                </div>
+              </div>
 
+              {/* Detalles de pago */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
+                  DETALLES DE PAGO
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       MÉTODO DE PAGO *
@@ -589,15 +597,7 @@ const EditModal: React.FC<EditModalProps> = ({
                       ))}
                     </select>
                   </div>
-                </div>
-              </div>
 
-              {/* Detalles de pago */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                  DETALLES DE PAGO
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       TOTAL ($) *
@@ -614,7 +614,7 @@ const EditModal: React.FC<EditModalProps> = ({
 
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                      ADJUNTAR ARCHIVOS
+                      ADJUNTAR ARCHIVOS (MÁX. 3)
                     </label>
                     <div className="relative">
                       <input
@@ -944,7 +944,7 @@ const AddAdministrativeConsumableModal: React.FC<AddAdministrativeConsumableModa
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
                   INFORMACIÓN DEL REGISTRO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       FECHA *
@@ -975,7 +975,16 @@ const AddAdministrativeConsumableModal: React.FC<AddAdministrativeConsumableModa
                       required
                     />
                   </div>
+                </div>
+              </div>
 
+              {/* Detalles de pago */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
+                  DETALLES DE PAGO
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       MÉTODO DE PAGO *
@@ -995,15 +1004,7 @@ const AddAdministrativeConsumableModal: React.FC<AddAdministrativeConsumableModa
                       ))}
                     </select>
                   </div>
-                </div>
-              </div>
 
-              {/* Detalles de pago */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                  DETALLES DE PAGO
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       TOTAL ($) *
