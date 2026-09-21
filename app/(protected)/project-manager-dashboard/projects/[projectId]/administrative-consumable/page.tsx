@@ -7,19 +7,7 @@ import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useUploadThing } from '@/lib/uploadthing';
 import { useState, useRef, useEffect, useCallback, ChangeEvent, FormEvent, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Search, 
-  Edit, 
-  Trash2, 
-  X, 
-  RefreshCw, 
-  CheckCircle, 
-  AlertCircle, 
-  FileText,
-  Image as ImageIcon,
-  FileSpreadsheet,
-  Upload
-} from 'lucide-react';
+import { Search, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Image as ImageIcon,FileSpreadsheet, Upload } from 'lucide-react';
 
 // ============ INTERFACES ============
 
@@ -1740,7 +1728,6 @@ export default function AdministrativeConsumablePage({ params }: PageProps) {
                     <div key={weekRange}>
                       <div className="px-4 py-3 bg-[#3a6ea5] border-b border-gray-300">
                         <h3 className="text-sm font-bold text-white flex items-center">
-                          <FileText className="w-4 h-4 mr-2" />
                           SEMANA {weekRange}
                         </h3>
                       </div>
