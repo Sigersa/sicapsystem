@@ -525,7 +525,7 @@ const EditModal: React.FC<EditModalProps> = ({
         <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto animate-fade-in relative z-[10000]">
           <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
             <div>
-              <h2 className="text-lg font-bold text-gray-900 tracking-tight">EDITAR REGISTRO DE SERVICIO DE FINANCIAMIENTO</h2>
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight">EDITAR REGISTRO</h2>
               <p className="text-gray-600 mt-1 text-sm">Modifique la información del registro.</p>
             </div>
             <button
