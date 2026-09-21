@@ -1482,7 +1482,6 @@ export default function AdministrativeConsumablePage({ params }: PageProps) {
           });
         }
 
-        await sendNotification(administrativeConsumableId);
         await fetchRegistros();
         
         showModal('Éxito', '¡REGISTRO DE CONSUMIBLE ADMINISTRATIVO GUARDADO EXITOSAMENTE!', 'success');
@@ -1496,18 +1495,6 @@ export default function AdministrativeConsumablePage({ params }: PageProps) {
       showModal('Error', 'Error al conectar con el servidor', 'error');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const sendNotification = async (administrativeConsumableId: number, isUpdate: boolean = false) => {
-    try {
-      await fetch('/api/notifications/notifications-administrative-consumable', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, administrativeConsumableId, isUpdate })
-      });
-    } catch (error) {
-      console.error('Error al enviar notificación:', error);
     }
   };
 
@@ -1572,7 +1559,6 @@ export default function AdministrativeConsumablePage({ params }: PageProps) {
       });
 
       if (response.ok) {
-        await sendNotification(data.id, true);
         await fetchRegistros();
         showModal('Éxito', '¡REGISTRO ACTUALIZADO EXITOSAMENTE!', 'success');
       } else {
