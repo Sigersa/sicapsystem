@@ -1636,7 +1636,7 @@ export default function AdministrativeConsumablePage({ params }: PageProps) {
           <div className="mb-6">
             <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5]">
               <h1 className="text-xl font-bold text-white tracking-tight">
-                GESTIÓN DE CONSUMIBLES ADMINISTRATIVOS
+                CONSUMIBLES ADMINISTRATIVOS
               </h1>
               <p className="text-sm text-gray-200 mt-1">
                 Administre y visualice todos los registros de consumibles administrativos del proyecto.
