@@ -7,19 +7,7 @@ import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useUploadThing } from '@/lib/uploadthing';
 import { useState, useRef, useEffect, useCallback, ChangeEvent, FormEvent, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Search, 
-  Edit, 
-  Trash2, 
-  X, 
-  RefreshCw, 
-  CheckCircle, 
-  AlertCircle, 
-  FileText,
-  Image as ImageIcon,
-  FileSpreadsheet,
-  Upload
-} from 'lucide-react';
+import { Search, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Image as ImageIcon, FileSpreadsheet, Upload } from 'lucide-react';
 
 // ============ INTERFACES ============
 
@@ -553,7 +541,7 @@ const EditModal: React.FC<EditModalProps> = ({
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
                   INFORMACIÓN DEL REGISTRO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       FECHA *
@@ -586,6 +574,28 @@ const EditModal: React.FC<EditModalProps> = ({
                       <option value="EQUIPOS ESPECIALES">EQUIPOS ESPECIALES</option>
                     </select>
                   </div>
+                </div>
+              </div>
+
+              {/* Detalles de pago */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
+                  DETALLES DE PAGO
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      TOTAL ($) *
+                    </label>
+                    <input
+                      type="text"
+                      name="total"
+                      value={editData.formattedTotal || ''}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                    />
+                  </div>
 
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
@@ -605,28 +615,6 @@ const EditModal: React.FC<EditModalProps> = ({
                         </option>
                       ))}
                     </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Detalles de pago */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                  DETALLES DE PAGO
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                      TOTAL ($) *
-                    </label>
-                    <input
-                      type="text"
-                      name="total"
-                      value={editData.formattedTotal || ''}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                      required
-                    />
                   </div>
 
                   <div>
@@ -943,7 +931,7 @@ const AddToolsEquipmentModal: React.FC<AddToolsEquipmentModalProps> = ({
         <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto animate-fade-in relative z-[10000]">
           <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
             <div>
-              <h2 className="text-lg font-bold text-gray-900 tracking-tight">NUEVO REGISTRO DE HERRAMIENTAS Y/O EQUIPOS</h2>
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight">NUEVA HERRAMIENTA Y/O EQUIPO</h2>
               <p className="text-gray-600 mt-1 text-sm">Complete la información del registro.</p>
             </div>
             <button
@@ -961,7 +949,7 @@ const AddToolsEquipmentModal: React.FC<AddToolsEquipmentModalProps> = ({
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
                   INFORMACIÓN DEL REGISTRO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       FECHA *
@@ -997,7 +985,29 @@ const AddToolsEquipmentModal: React.FC<AddToolsEquipmentModalProps> = ({
                       <option value="EQUIPOS ESPECIALES">EQUIPOS ESPECIALES</option>
                     </select>
                   </div>
+                </div>
+              </div>
 
+              {/* Detalles de pago */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
+                  DETALLES DE PAGO
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      TOTAL ($) *
+                    </label>
+                    <input
+                      type="text"
+                      name="total"
+                      value={toolsEquipmentData.formattedTotal || ''}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                    />
+                  </div>
+                  
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       MÉTODO DE PAGO *
@@ -1016,28 +1026,6 @@ const AddToolsEquipmentModal: React.FC<AddToolsEquipmentModalProps> = ({
                         </option>
                       ))}
                     </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Detalles de pago */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                  DETALLES DE PAGO
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                      TOTAL ($) *
-                    </label>
-                    <input
-                      type="text"
-                      name="total"
-                      value={toolsEquipmentData.formattedTotal || ''}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                      required
-                    />
                   </div>
 
                   <div>
@@ -1492,7 +1480,6 @@ export default function ToolsEquipmentPage({ params }: PageProps) {
           });
         }
 
-        await sendNotification(toolsEquipmentId);
         await fetchRegistros();
         
         showModal('Éxito', '¡REGISTRO DE HERRAMIENTAS Y/O EQUIPOS GUARDADO EXITOSAMENTE!', 'success');
@@ -1506,18 +1493,6 @@ export default function ToolsEquipmentPage({ params }: PageProps) {
       showModal('Error', 'Error al conectar con el servidor', 'error');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const sendNotification = async (toolsEquipmentId: number, isUpdate: boolean = false) => {
-    try {
-      await fetch('/api/notifications/notifications-tools', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, toolExpenseId: toolsEquipmentId, isUpdate })
-      });
-    } catch (error) {
-      console.error('Error al enviar notificación:', error);
     }
   };
 
@@ -1582,7 +1557,6 @@ export default function ToolsEquipmentPage({ params }: PageProps) {
       });
 
       if (response.ok) {
-        await sendNotification(data.id, true);
         await fetchRegistros();
         showModal('Éxito', '¡REGISTRO ACTUALIZADO EXITOSAMENTE!', 'success');
       } else {
@@ -1672,7 +1646,7 @@ export default function ToolsEquipmentPage({ params }: PageProps) {
           <div className="mb-6">
             <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5]">
               <h1 className="text-xl font-bold text-white tracking-tight">
-                GESTIÓN DE HERRAMIENTAS Y/O EQUIPOS
+                HERRAMIENTAS Y/O EQUIPOS
               </h1>
               <p className="text-sm text-gray-200 mt-1">
                 Administre y visualice todos los registros de herramientas y/o equipos del proyecto.
@@ -1764,7 +1738,6 @@ export default function ToolsEquipmentPage({ params }: PageProps) {
                     <div key={weekRange}>
                       <div className="px-4 py-3 bg-[#3a6ea5] border-b border-gray-300">
                         <h3 className="text-sm font-bold text-white flex items-center">
-                          <FileText className="w-4 h-4 mr-2" />
                           SEMANA {weekRange}
                         </h3>
                       </div>
