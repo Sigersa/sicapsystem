@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
     const templatePath = path.join(
       process.cwd(),
       "public",
-      "administrative-personnel-dashboard",
+      "human-resources-dashboard",
       "personnel-management",
       "DC-3.xlsx"
     );
