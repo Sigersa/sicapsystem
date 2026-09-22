@@ -118,7 +118,7 @@ export default function UserProfilePage() {
     <div className="min-h-screen bg-gray-100">
       {/* HEADER */}
       <AppHeader 
-        title="PANEL ADMINISTRATIVO"
+        title="PANEL DE RECURSOS HUMANOS"
       />
 
       {/* CONTENIDO PRINCIPAL */}
