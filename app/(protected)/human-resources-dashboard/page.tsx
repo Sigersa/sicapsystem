@@ -25,28 +25,28 @@ export default function SystemAdminDashboard() {
       title: 'INGRESO / CONTRATACIÓN',
       description: 'Gestión de nuevos empleados y contratos',
       icon: <UserPlus className="h-6 w-6" />,
-      href: '/administrative-personnel-dashboard/hiring'
+      href: '/human-resources-dashboard/hiring'
     },
     {
       id: 2,
       title: 'GESTIÓN DEL PERSONAL',
       description: 'Administración de empleados activos',
       icon: <Users className="h-6 w-6" />,
-      href: '/administrative-personnel-dashboard/personnel-management'
+      href: '/human-resources-dashboard/personnel-management'
     },
     {
       id: 3,
       title: 'BAJA / TERMINACIÓN LABORAL',
       description: 'Procesos de terminación laboral',
       icon: <FileText className="h-6 w-6" />,
-      href: '/administrative-personnel-dashboard/job-termination'
+      href: '/human-resources-dashboard/job-termination'
     },
     {
       id: 4,
       title: 'GESTIÓN DE PROYECTOS',
       description: 'Administración de proyectos',
       icon: <ToolCase className="h-6 w-6" />,
-      href: '/administrative-personnel-dashboard/projects'
+      href: '/human-resources-dashboard/projects'
     }
   ];
 
