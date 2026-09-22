@@ -20,12 +20,6 @@ interface Project extends RowDataPacket {
   CreatedBy: number | null;
 }
 
-interface SystemUser extends RowDataPacket {
-  SystemUserID: number;
-  UserName: string;
-  EmployeeID: number | null;
-}
-
 interface Employee extends RowDataPacket {
   EmployeeID: number;
   EmployeeType: string;
@@ -103,19 +97,6 @@ async function checkInvalidRecords(projectId: string, connection: Connection) {
     invalidRecords,
     invalidTables: invalidRecords.map(r => `${r.table} (${r.count})`).join(', ')
   };
-}
-
-async function deleteProjectNotifications(projectId: string, connection: Connection) {
-  try {
-    await connection.query(
-      `DELETE FROM notification WHERE ProjectID = ?`,
-      [projectId]
-    );
-    
-    console.log(`Notificaciones eliminadas para el proyecto ${projectId}`);
-  } catch (error) {
-    console.error('Error al eliminar notificaciones del proyecto:', error);
-  }
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -443,45 +424,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const newProject = projectRows[0];
 
-     // Crear notificación para el usuario asignado al proyecto
-    if (AdminProjectID) {
-      // Buscar el SystemUserID asociado al EmployeeID
-      const [systemUserRows] = await connection.query<SystemUser[]>(
-        'SELECT SystemUserID FROM systemusers WHERE EmployeeID = ?',
-        [AdminProjectID]
-      );
-
-      if (systemUserRows.length > 0) {
-        const createdByUserId = user.SystemUserID;
-        
-        if (createdByUserId) {
-          const [notificationResult] = await connection.query<ResultSetHeader>(
-            `INSERT INTO notification 
-             (UserID, Title, Message, RelatedEntity, EntityID, ProjectID, Type)
-             VALUES (?, ?, ?, ?, ?, ?, 2)`,
-            [
-              createdByUserId,  // Usuario que crea la notificación (emisor)
-              'Nuevo proyecto asignado',
-              `Se te ha asignado el proyecto "${NameProject}"`,
-              'project',
-              result.insertId,
-              result.insertId
-            ]
-          );
-
-          await connection.query(
-            `INSERT INTO usernotification 
-             (NotificationID, UserID, IsRead)
-             VALUES (?, ?, 0)`,
-            [
-              notificationResult.insertId,
-              systemUserRows[0].SystemUserID  // Usuario receptor
-            ]
-          );
-        }
-      }
-    }
-
     return NextResponse.json(newProject, { status: 201 });
   } catch (error) {
     console.error('Error al crear proyecto:', error);
@@ -598,8 +540,6 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
           { status: 400 }
         );
       }
-
-      await deleteProjectNotifications(projectId, connection);
 
       return NextResponse.json(
         { success: true, message: 'Proyecto marcado como concluido correctamente' },
@@ -728,39 +668,6 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
 
       const updatedProject = updatedProjectRows[0];
 
-      if (ProjectBudget !== null && ProjectBudget !== project.ProjectBudget && updatedProject.AdminProjectID) {
-        const [systemUserRows] = await connection.query<SystemUser[]>(
-          'SELECT SystemUserID FROM systemusers WHERE EmployeeID = ?',
-          [updatedProject.AdminProjectID]
-        );
-
-        if (systemUserRows.length > 0) {
-          const [notificationResult] = await connection.query<ResultSetHeader>(
-            `INSERT INTO notification 
-             (UserID, Title, Message, RelatedEntity, EntityID, ProjectID, Type)
-             VALUES (?, ?, ?, ?, ?, ?, 2)`,
-            [
-              user.UserID,
-              'Presupuesto actualizado',
-              `El presupuesto del proyecto ${updatedProject.NameProject} ha sido actualizado`,
-              'project',
-              updatedProject.ProjectID,
-              projectId
-            ]
-          );
-
-          await connection.query(
-            `INSERT INTO usernotification 
-             (NotificationID, UserID, IsRead)
-             VALUES (?, ?, 0)`,
-            [
-              notificationResult.insertId,
-              systemUserRows[0].SystemUserID
-            ]
-          );
-        }
-      }
-
       return NextResponse.json(updatedProject, { status: 200 });
     }
   } catch (error) {
@@ -842,8 +749,6 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    await deleteProjectNotifications(projectId, connection);
-
     const [result] = await connection.query<ResultSetHeader>(
       'DELETE FROM projects WHERE ProjectID = ?',
       [projectId]
@@ -857,7 +762,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     }
 
     return NextResponse.json(
-      { success: true, message: 'Proyecto y notificaciones relacionadas eliminados correctamente' },
+      { success: true, message: 'Proyecto eliminado correctamente' },
       { status: 200 }
     );
   } catch (error) {
