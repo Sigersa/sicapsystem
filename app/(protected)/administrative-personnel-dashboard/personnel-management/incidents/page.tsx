@@ -65,6 +65,10 @@ interface Filters {
     search: string;
 }
 
+const INCIDENCE_DESCRIPTIONS = [
+    { value: 'FALTA O RETARDO', label: 'FALTA O RETARDO' }
+];
+
 // Función para normalizar texto a mayúsculas
 const normalizarMayusculas = (texto: string): string => {
     return texto.toUpperCase();
@@ -609,7 +613,7 @@ export default function EmployeeIncidencePage() {
 
     return (
         <div className="min-h-screen bg-gray-100">
-            <AppHeader title="PANEL ADMINISTRATIVO" />
+            <AppHeader title="PANEL DE RECURSOS HUMANOS" />
 
             {/* Modal de confirmación para eliminar */}
             {confirmDelete.show && (
@@ -952,14 +956,19 @@ export default function EmployeeIncidencePage() {
                                                                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                                                                     DESCRIPCIÓN *
                                                                 </label>
-                                                                <input
-                                                                    type="text"
+                                                                <select
+                                                                    name="description"
                                                                     value={inc.Description}
                                                                     onChange={(e) => updateIncidence(inc.id, 'Description', normalizarMayusculas(e.target.value))}
-                                                                    placeholder="Descripción de los hechos"
-                                                                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                                                                    required
-                                                                />
+                                                                    className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                                                                >
+                                                                    <option value="">Seleccione una opción</option>
+                                                                    {INCIDENCE_DESCRIPTIONS.map((option) => (
+                                                                        <option key={option.value} value={option.value}>
+                                                                            {option.label}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
                                                             </div>
                                                             <div>
                                                                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
