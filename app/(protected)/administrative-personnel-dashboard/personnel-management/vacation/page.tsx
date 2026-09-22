@@ -1007,7 +1007,7 @@ export default function SystemAdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <AppHeader title="PANEL ADMINISTRATIVO" />
+      <AppHeader title="PANEL DE RECURSOS HUMANOS" />
 
       {/* MODAL DE ÉXITO CON VISTA PREVIA DEL PDF */}
       {showSuccessModal && successDetails && (
