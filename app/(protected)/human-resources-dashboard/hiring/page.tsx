@@ -398,7 +398,7 @@ export default function SystemAdminDashboard() {
     setCheckingDuplicates(true);
 
     try {
-      const response = await fetch('/api/administrative-personnel-dashboard/hiring/check-duplicates', {
+      const response = await fetch('/api/human-resources-dashboard/hiring/check-duplicates', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -441,7 +441,7 @@ export default function SystemAdminDashboard() {
     agreementFileURL?: string;
   }> => {
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/hiring/document-urls/${employeeId}`);
+      const response = await fetch(`/api/human-resources-dashboard/hiring/document-urls/${employeeId}`);
       const data = await response.json();
       
       if (response.ok && data.success) {
@@ -1107,7 +1107,7 @@ export default function SystemAdminDashboard() {
       }
 
       setUploadProgress(75);
-      const response = await fetch('/api/administrative-personnel-dashboard/hiring/insert', {
+      const response = await fetch('/api/human-resources-dashboard/hiring/insert', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
