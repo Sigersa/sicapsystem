@@ -126,7 +126,7 @@ export default function SystemAdminDashboard() {
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/administrative-personnel-dashboard/projects');
+      const response = await fetch('/api/human-resources-dashboard/projects');
       if (response.ok) {
         const data = await response.json();
         setProjects(data);
@@ -208,7 +208,7 @@ export default function SystemAdminDashboard() {
 
     setLoading(true);
     try {
-      const url = isEditing ? `/api/administrative-personnel-dashboard/projects/${editingId}` : '/api/administrative-personnel-dashboard/projects';
+      const url = isEditing ? `/api/human-resources-dashboard/projects/${editingId}` : '/api/human-resources-dashboard/projects';
       const method = isEditing ? 'PUT' : 'POST';
 
       const datosEnviar = {
@@ -254,7 +254,7 @@ export default function SystemAdminDashboard() {
   const handleComplete = async (id: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/projects/${id}`, {
+      const response = await fetch(`/api/human-resources-dashboard/projects/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -300,7 +300,7 @@ export default function SystemAdminDashboard() {
   const handleDelete = async (id: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/projects/${id}`, {
+      const response = await fetch(`/api/human-resources-dashboard/projects/${id}`, {
         method: 'DELETE',
       });
 
