@@ -1,4 +1,3 @@
-// app/api/administrative-personnel-dashboard/employee-management/employeeincidence/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -95,7 +94,7 @@ async function generateIncidencePDF(
         const templatePath = path.join(
             process.cwd(),
             "public",
-            "administrative-personnel-dashboard",
+            "human-resources-dashboard",
             "personnel-management",
             "FT-RH-27.xlsx"
         );
