@@ -34,56 +34,56 @@ export default function SystemAdminDashboard() {
       title: 'CONSULTA / ACTUALIZACIÓN',
       description: 'Consulta y actualización de empleados base y proyectos',
       icon: <Users className="h-6 w-6" />,
-      href: '/administrative-personnel-dashboard/personnel-management/query-update'
+      href: '/human-resources-dashboard/personnel-management/query-update'
     },
     {
       id: 2,
       title: 'PRÉSTAMOS',
       description: 'Gestión de préstamos',
       icon: <HandCoins className="h-6 w-6" />,
-      href: '/administrative-personnel-dashboard/personnel-management/loans'
+      href: '/human-resources-dashboard/personnel-management/loans'
     },
     {
       id: 3,
       title: 'PERMISOS',
       description: 'Gestión de permisos',
       icon: <CalendarClock className="h-6 w-6" />,
-      href: '/administrative-personnel-dashboard/personnel-management/work-permits'
+      href: '/human-resources-dashboard/personnel-management/work-permits'
     },
     {
       id: 4,
       title: 'VACACIONES',
       description: 'Gestión de vacaciones',
       icon: <FileCheck className="h-6 w-6" />,
-      href: '/administrative-personnel-dashboard/personnel-management/vacation'
+      href: '/human-resources-dashboard/personnel-management/vacation'
     },
     {
       id: 5,
       title: 'INCIDENCIAS',
       description: 'Gestión de incidencias',
       icon: <AlertCircle className="h-6 w-6" />,
-      href: '/administrative-personnel-dashboard/personnel-management/incidents'
+      href: '/human-resources-dashboard/personnel-management/incidents'
     },
     {
       id: 6,
       title: 'MOVIMIENTOS DE PERSONAL',
       description: 'Gestión de movimientos de personal',
       icon: <UserCog className="h-6 w-6" />,
-      href: '/administrative-personnel-dashboard/personnel-management/personnel-movements'
+      href: '/human-resources-dashboard/personnel-management/personnel-movements'
     },
     {
       id: 7,
       title: 'MOVIMIENTOS IMSS / INFONAVIT',
       description: 'Gestión de movimientos imss / infonavit',
       icon: <Building2 className="h-6 w-6" />,
-      href: '/administrative-personnel-dashboard/personnel-management/imss-infonavit-movements'
+      href: '/human-resources-dashboard/personnel-management/imss-infonavit-movements'
     },
     {
       id: 8,
       title: 'DC3',
       description: 'Gestión de DC3',
       icon: <FileText className="h-6 w-6" />,
-      href: '/administrative-personnel-dashboard/personnel-management/dc3'
+      href: '/human-resources-dashboard/personnel-management/dc3'
     },
   ];
 
