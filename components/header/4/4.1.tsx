@@ -2,7 +2,6 @@
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { LogOut, User, ChevronDown, Home } from 'lucide-react';
-import NotificationBell from '@/components/NotificationBell'; 
 
 type AppHeaderProps = {
   title: string;
@@ -123,11 +122,8 @@ export default function AppHeader({
           </div>
         </div>
 
-        {/* Botón Principal, Notificaciones y usuario */}
+        {/* Botón Principal */}
         <div className="flex items-center space-x-4">
-
-          {/* NOTIFICACIONES - Integración del componente */}
-          <NotificationBell disabled={loading} />
           
           {/* Separador */}
           <div className="h-6 w-px bg-white/50" />
