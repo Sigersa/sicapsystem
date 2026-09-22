@@ -6,16 +6,7 @@ import { useSessionManager } from '@/hooks/useSessionManager/3';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useState, useEffect, useCallback, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { 
-  FileText, 
-  X, 
-  AlertCircle, 
-  CheckCircle, 
-  Eye,
-  Download,
-  Filter,
-  RefreshCw
-} from 'lucide-react';
+import { X, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
 
 // ============ INTERFACES ============
 
@@ -49,7 +40,6 @@ interface CategoryDetail {
   columnas: string[];
 }
 
-// ✅ CORREGIDO: Estructura correcta según el módulo de proyectos
 interface PaymentMethod {
   methodId: number;
   methodName: string;
@@ -60,12 +50,6 @@ interface PageProps {
     projectId: string;
   }>;
 }
-
-// ============ FUNCIONES AUXILIARES ============
-
-const normalizarMayusculas = (texto: string): string => {
-  return texto.toUpperCase();
-};
 
 // ============ COMPONENTES DE MODALES ============
 
@@ -338,7 +322,6 @@ const PreviewModal: React.FC<PreviewModalProps> = ({ isOpen, onClose, previewDat
         <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
           <div>
             <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
-              <Eye className="h-5 w-5 text-[#3a6ea5] mr-2" />
               VISTA PREVIA DEL REPORTE
             </h2>
             <p className="text-gray-600 mt-1 text-sm">Revise los datos antes de descargar el reporte.</p>
@@ -488,7 +471,6 @@ export default function ReportsPage({ params }: PageProps) {
       const response = await fetch('/api/project-manager/projects/payment-methods');
       if (response.ok) {
         const methods = await response.json();
-        // ✅ Validación defensiva por si la API cambia
         const normalizedMethods: PaymentMethod[] = Array.isArray(methods)
           ? methods.map((m: any) => ({
               methodId: m.methodId ?? m.id ?? 0,
@@ -665,13 +647,8 @@ export default function ReportsPage({ params }: PageProps) {
                 REPORTES DE GASTOS
               </h1>
               <p className="text-sm text-gray-200 mt-1">
-                Genere un reporte en Excel con todos los gastos registrados del proyecto actual.
+                Genere un reporte en Excel con todos los gastos registrados que han sido aprovados enel proyecto actual.
               </p>
-              {projectId && (
-                <p className="text-xs text-gray-300 mt-1">
-                  Proyecto ID: {projectId}
-                </p>
-              )}
             </div>
           </div>
 
@@ -729,7 +706,6 @@ export default function ReportsPage({ params }: PageProps) {
 
               <div className="bg-gray-50 rounded-lg p-4 mb-6">
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2 flex items-center">
-                  <Filter className="h-4 w-4 mr-2" />
                   FILTROS
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -783,7 +759,6 @@ export default function ReportsPage({ params }: PageProps) {
                     </>
                   ) : (
                     <>
-                      <Eye className="h-4 w-4 mr-2" />
                       VISTA PREVIA
                     </>
                   )}
@@ -805,7 +780,6 @@ export default function ReportsPage({ params }: PageProps) {
                     </>
                   ) : (
                     <>
-                      <Download className="h-4 w-4 mr-2" />
                       DESCARGAR REPORTE
                     </>
                   )}
