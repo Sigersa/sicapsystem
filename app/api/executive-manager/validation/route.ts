@@ -443,22 +443,6 @@ export async function PUT(request: Request) {
         ]);
       }
 
-      // 3. Actualizar notificaciones
-      const updateNotificationsQuery = `
-        UPDATE usernotification un
-        JOIN notification n ON un.NotificationID = n.NotificationID
-        SET un.IsRead = 1
-        WHERE un.UserID = ? 
-          AND n.RelatedEntity = ? 
-          AND n.EntityID = ? 
-          AND un.IsRead = 0
-      `;
-
-      const [notificationResult]: any = await connection.query(
-        updateNotificationsQuery, 
-        [userId, type, id]
-      );
-
       await connection.commit();
 
       return NextResponse.json(
@@ -469,8 +453,7 @@ export async function PUT(request: Request) {
             id: id,
             newStatus: status,
             approvedBy: status === 1 ? userId : null,
-            rejectionReason: status === 2 ? rejectionReason : null,
-            notificationsUpdated: notificationResult.affectedRows
+            rejectionReason: status === 2 ? rejectionReason : null
           }
         },
         { status: 200 }
