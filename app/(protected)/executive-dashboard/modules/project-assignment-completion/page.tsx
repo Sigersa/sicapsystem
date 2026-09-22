@@ -1635,7 +1635,7 @@ export default function ProjectsPage() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
-      <AppHeader title="PANEL DE PROYECTOS" />
+      <AppHeader title="PANEL EJECUTIVO" />
 
       <main className="pt-[72px] pb-[80px] min-h-screen bg-gray-100">
         <div className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 max-w-7xl mx-auto">
