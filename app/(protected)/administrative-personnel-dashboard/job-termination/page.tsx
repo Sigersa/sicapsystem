@@ -738,7 +738,8 @@ export default function EmployeesListPage() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <AppHeader title="PANEL ADMINISTRATIVO" />
+      <AppHeader 
+      title="PANEL DE RECURSOS HUMANOS" />
 
       {/* Modal de confirmación de baja */}
       {confirmTermination.show && confirmTermination.employee && (
