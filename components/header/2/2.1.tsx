@@ -122,7 +122,7 @@ export default function AppHeader({
           </div>
         </div>
 
-        {/* Botón Principal, Notificaciones y usuario */}
+        {/* Botón Principal */}
         <div className="flex items-center space-x-4">
 
           {/* Botón Principal */}
