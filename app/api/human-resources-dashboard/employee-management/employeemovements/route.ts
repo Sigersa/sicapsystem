@@ -1,4 +1,3 @@
-// app/api/administrative-personnel-dashboard/employee-management/employeemovements/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -114,7 +113,7 @@ async function generateMovementPDF(
     const templatePath = path.join(
       process.cwd(),
       "public",
-      "administrative-personnel-dashboard",
+      "human-resources-dashboard",
       "personnel-management",
       "FT-RH-10.xlsx"
     );
