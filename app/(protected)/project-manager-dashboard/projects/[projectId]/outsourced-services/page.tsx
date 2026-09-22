@@ -7,25 +7,7 @@ import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useUploadThing } from '@/lib/uploadthing';
 import { useState, useRef, useEffect, useCallback, ChangeEvent, FormEvent, use } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  Edit,
-  Trash2,
-  X,
-  RefreshCw,
-  CheckCircle,
-  AlertCircle,
-  FileText,
-  Image as ImageIcon,
-  FileSpreadsheet,
-  Upload,
-  Handshake,
-  Calendar,
-  DollarSign,
-  Briefcase
-} from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Image as ImageIcon, FileSpreadsheet, Upload } from 'lucide-react';
 
 // ============ INTERFACES ============
 
@@ -543,7 +525,7 @@ const EditModal: React.FC<EditModalProps> = ({
         <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto animate-fade-in relative z-[10000]">
           <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
             <div>
-              <h2 className="text-lg font-bold text-gray-900 tracking-tight">EDITAR REGISTRO DE SERVICIOS SUBCONTRATADOS</h2>
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight">EDITAR REGISTRO</h2>
               <p className="text-gray-600 mt-1 text-sm">Modifique la información del registro.</p>
             </div>
             <button
@@ -559,7 +541,6 @@ const EditModal: React.FC<EditModalProps> = ({
               {/* Información principal */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2 flex items-center">
-                  <Handshake className="h-4 w-4 mr-2" />
                   INFORMACIÓN DEL REGISTRO
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -605,10 +586,9 @@ const EditModal: React.FC<EditModalProps> = ({
               {/* Detalles de pago */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2 flex items-center">
-                  <DollarSign className="h-4 w-4 mr-2" />
                   DETALLES DE PAGO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       MÉTODO DE PAGO *
@@ -642,7 +622,52 @@ const EditModal: React.FC<EditModalProps> = ({
                       required
                     />
                   </div>
+
+                  {/* Subir nuevos archivos */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      ADJUNTAR ARCHIVOS (MÁX. 3)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx"
+                        multiple
+                        onChange={handleFileChange}
+                        ref={fileInputRef}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-lg hover:border-[#3a6ea5] transition-colors flex items-center justify-center text-gray-500 hover:text-[#3a6ea5] text-sm"
+                      >
+                        <Upload className="h-5 w-5 mr-2" />
+                        SELECCIONAR 
+                      </button>
+                    </div>
+                  </div>
                 </div>
+
+                    {archivos.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {archivos.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
+                            <div className="flex items-center truncate">
+                              <FileIcon type={file.type} size={5} />
+                              <span className="ml-3 text-sm truncate font-medium text-gray-700">{file.name}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeFile(index)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
               </div>
 
               {/* Archivos existentes */}
@@ -677,51 +702,6 @@ const EditModal: React.FC<EditModalProps> = ({
                   </div>
                 </div>
               )}
-
-              {/* Subir nuevos archivos */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                  AGREGAR ARCHIVOS (MÁX. 3)
-                </h3>
-                <div className="relative">
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx"
-                    multiple
-                    onChange={handleFileChange}
-                    ref={fileInputRef}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-[#3a6ea5] transition-colors flex items-center justify-center text-gray-500 hover:text-[#3a6ea5]"
-                  >
-                    <Upload className="h-5 w-5 mr-2" />
-                    SELECCIONAR ARCHIVOS
-                  </button>
-                </div>
-
-                {archivos.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {archivos.map((file, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
-                        <div className="flex items-center truncate">
-                          <FileIcon type={file.type} size={5} />
-                          <span className="ml-3 text-sm truncate font-medium text-gray-700">{file.name}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeFile(index)}
-                          className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
 
               {/* Observaciones */}
               <div className="bg-gray-50 rounded-lg p-4">
@@ -958,7 +938,7 @@ const AddOutsourcedServiceModal: React.FC<AddOutsourcedServiceModalProps> = ({
         <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto animate-fade-in relative z-[10000]">
           <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
             <div>
-              <h2 className="text-lg font-bold text-gray-900 tracking-tight">NUEVO REGISTRO DE SERVICIOS SUBCONTRATADOS</h2>
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight">NUEVO SERVICIO SUBCONTRATADO</h2>
               <p className="text-gray-600 mt-1 text-sm">Complete la información del servicio subcontratado.</p>
             </div>
             <button
@@ -974,7 +954,6 @@ const AddOutsourcedServiceModal: React.FC<AddOutsourcedServiceModalProps> = ({
               {/* Información principal */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2 flex items-center">
-                  <Handshake className="h-4 w-4 mr-2" />
                   INFORMACIÓN DEL REGISTRO
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1023,7 +1002,6 @@ const AddOutsourcedServiceModal: React.FC<AddOutsourcedServiceModalProps> = ({
               {/* Detalles de pago */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2 flex items-center">
-                  <DollarSign className="h-4 w-4 mr-2" />
                   DETALLES DE PAGO
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1519,7 +1497,6 @@ export default function OutsourcedServicesPage({ params }: PageProps) {
           });
         }
 
-        await sendNotification(outsourcedServicesId);
         await fetchRegistros();
 
         showModal('Éxito', '¡REGISTRO DE SERVICIOS SUBCONTRATADOS GUARDADO EXITOSAMENTE!', 'success');
@@ -1533,18 +1510,6 @@ export default function OutsourcedServicesPage({ params }: PageProps) {
       showModal('Error', 'Error al conectar con el servidor', 'error');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const sendNotification = async (outsourcedServiceId: number, isUpdate: boolean = false) => {
-    try {
-      await fetch('/api/notifications/notifications-outsourced-services', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, outsourcedServiceId, isUpdate })
-      });
-    } catch (error) {
-      console.error('Error al enviar notificación:', error);
     }
   };
 
@@ -1609,7 +1574,6 @@ export default function OutsourcedServicesPage({ params }: PageProps) {
       });
 
       if (response.ok) {
-        await sendNotification(data.id, true);
         await fetchRegistros();
         showModal('Éxito', '¡REGISTRO ACTUALIZADO EXITOSAMENTE!', 'success');
       } else {
@@ -1716,8 +1680,7 @@ export default function OutsourcedServicesPage({ params }: PageProps) {
           <div className="mb-6">
             <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5]">
               <h1 className="text-xl font-bold text-white tracking-tight flex items-center">
-                <Handshake className="h-5 w-5 mr-2" />
-                GESTIÓN DE SERVICIOS SUBCONTRATADOS
+                SERVICIOS SUBCONTRATADOS
               </h1>
               <p className="text-sm text-gray-200 mt-1">
                 Administre y visualice todos los registros de servicios subcontratados del proyecto.
@@ -1809,7 +1772,6 @@ export default function OutsourcedServicesPage({ params }: PageProps) {
                     <div key={weekRange}>
                       <div className="px-4 py-3 bg-[#3a6ea5] border-b border-gray-300">
                         <h3 className="text-sm font-bold text-white flex items-center">
-                          <Calendar className="w-4 h-4 mr-2" />
                           SEMANA {weekRange}
                         </h3>
                       </div>
@@ -1908,7 +1870,7 @@ export default function OutsourcedServicesPage({ params }: PageProps) {
                 </>
               ) : (
                 <div className="py-12 text-center">
-                  <Handshake className="mx-auto h-12 w-12 text-gray-400" />
+                  <FileText className="mx-auto h-12 w-12 text-gray-400" />
                   <h3 className="mt-2 text-sm font-bold text-gray-900">NO HAY REGISTROS</h3>
                   <p className="mt-1 text-sm text-gray-500">
                     {searchTerm
