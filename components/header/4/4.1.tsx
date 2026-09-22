@@ -195,13 +195,6 @@ export default function AppHeader({
                 
                 {/* Opciones del menú */}
                 <div className="py-1">
-                  <a
-                    href="/administrative-personnel-dashboard/profile"
-                    className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                  >
-                    <User className="w-4 h-4 mr-2 text-gray-500" />
-                    Mi perfil
-                  </a>
                   <button
                     onClick={handleLogout}
                     className="flex items-center w-full text-left px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 border-t border-gray-100"
