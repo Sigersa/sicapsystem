@@ -186,7 +186,7 @@ async function generateMovementPDF(
     const templatePath = path.join(
       process.cwd(),
       "public",
-      "administrative-personnel-dashboard",
+      "human-resources-dashboard",
       "personnel-management",
       "FT-RH-05.xlsx"
     );
