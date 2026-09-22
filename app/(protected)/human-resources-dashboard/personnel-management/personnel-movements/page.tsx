@@ -1,4 +1,3 @@
-// app/administrative-personnel-dashboard/personnel-management/personnel-movements/page.tsx
 'use client';
 
 import AppHeader from '@/components/header/2/2.1';
@@ -250,7 +249,7 @@ export default function EmployeeMovementsPage() {
       setLoading(true);
       setError('');
 
-      const response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeemovements');
+      const response = await fetch('/api/human-resources-dashboard/employee-management/employeemovements');
       
       if (!response.ok) {
         throw new Error('Error al cargar movimientos de empleados');
@@ -318,7 +317,7 @@ export default function EmployeeMovementsPage() {
       setEmployeeNotFound(false);
       setError('');
 
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeemovements/search?term=${encodeURIComponent(id)}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeemovements/search?term=${encodeURIComponent(id)}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -408,7 +407,7 @@ export default function EmployeeMovementsPage() {
     setRecordToEdit(record);
     
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeemovements/search?term=${record.EmployeeID}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeemovements/search?term=${record.EmployeeID}`);
       if (response.ok) {
         const data = await response.json();
         const employeeData = data.employees.find((emp: EmployeeSearchResult) => emp.EmployeeID === record.EmployeeID);
@@ -461,7 +460,7 @@ export default function EmployeeMovementsPage() {
   const handleDeleteRecord = async (id: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeemovements/${id}`, {
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeemovements/${id}`, {
         method: 'DELETE'
       });
 
@@ -580,7 +579,7 @@ export default function EmployeeMovementsPage() {
       let response;
       
       if (modalMode === 'create') {
-        response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeemovements', {
+        response = await fetch('/api/human-resources-dashboard/employee-management/employeemovements', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -588,7 +587,7 @@ export default function EmployeeMovementsPage() {
           body: JSON.stringify(recordData)
         });
       } else {
-        response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeemovements/${recordToEdit?.MovementID}`, {
+        response = await fetch(`/api/human-resources-dashboard/employee-management/employeemovements/${recordToEdit?.MovementID}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json'
