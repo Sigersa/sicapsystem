@@ -273,7 +273,7 @@ export default function EmployeeDC3Page() {
       setLoading(true);
       setError('');
 
-      const response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeedc3');
+      const response = await fetch('/api/human-resources-dashboard/employee-management/employeedc3');
       
       if (!response.ok) {
         throw new Error('Error al cargar registros DC3');
@@ -340,7 +340,7 @@ export default function EmployeeDC3Page() {
       setEmployeeNotFound(false);
       setError('');
 
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeedc3/search?term=${encodeURIComponent(id)}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeedc3/search?term=${encodeURIComponent(id)}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -429,7 +429,7 @@ export default function EmployeeDC3Page() {
     setRecordToEdit(record);
     
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeedc3/search?term=${record.EmployeeID}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeedc3/search?term=${record.EmployeeID}`);
       if (response.ok) {
         const data = await response.json();
         const employeeData = data.employees.find((emp: EmployeeSearchResult) => emp.EmployeeID === record.EmployeeID);
@@ -548,7 +548,7 @@ export default function EmployeeDC3Page() {
       let response;
       
       if (modalMode === 'create') {
-        response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeedc3', {
+        response = await fetch('/api/human-resources-dashboard/employee-management/employeedc3', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -563,7 +563,7 @@ export default function EmployeeDC3Page() {
           updateData.TrainerID = null;
         }
         
-        response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeedc3/${recordToEdit?.DC3ID}`, {
+        response = await fetch(`/api/human-resources-dashboard/employee-management/employeedc3/${recordToEdit?.DC3ID}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json'
@@ -628,7 +628,7 @@ export default function EmployeeDC3Page() {
   const handleDeleteRecord = async (id: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeedc3/${id}`, {
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeedc3/${id}`, {
         method: 'DELETE'
       });
 
