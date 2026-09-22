@@ -1,4 +1,3 @@
-// app/administrative-personnel-dashboard/employee-management/vacations/page.tsx
 'use client';
 import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
@@ -311,7 +310,7 @@ export default function SystemAdminDashboard() {
       
       for (const employee of filteredEmployees) {
         // Obtener períodos de vacaciones para este empleado
-        const vacationsResponse = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeevacations?action=get&employeeId=${employee.EmployeeID}`, {
+        const vacationsResponse = await fetch(`/api/human-resources-dashboard/employee-management/employeevacations?action=get&employeeId=${employee.EmployeeID}`, {
           method: 'PUT'
         });
         
@@ -468,7 +467,7 @@ export default function SystemAdminDashboard() {
       setEmployeeNotFound(false);
       setError('');
 
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeemovements/search?term=${encodeURIComponent(id)}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeemovements/search?term=${encodeURIComponent(id)}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -511,7 +510,7 @@ export default function SystemAdminDashboard() {
   // Función para obtener la antigüedad del empleado
   const fetchEmployeeSeniority = async (employeeId: number) => {
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeevacations?action=get&employeeId=${employeeId}`, {
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeevacations?action=get&employeeId=${employeeId}`, {
         method: 'PUT'
       });
       
@@ -532,7 +531,7 @@ export default function SystemAdminDashboard() {
   // Función para obtener los días totales usados en vacaciones
   const fetchTotalUsedDays = async (employeeId: number) => {
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeevacations?action=get&employeeId=${employeeId}`, {
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeevacations?action=get&employeeId=${employeeId}`, {
         method: 'PUT'
       });
       
@@ -568,7 +567,7 @@ export default function SystemAdminDashboard() {
   const fetchEmployees = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeevacations');
+      const response = await fetch('/api/human-resources-dashboard/employee-management/employeevacations');
       if (response.ok) {
         const data = await response.json();
         setEmployees(data);
@@ -588,7 +587,7 @@ export default function SystemAdminDashboard() {
   const fetchVacationRecords = async (employeeId: number) => {
     setLoadingVacations(true);
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeevacations?action=get&employeeId=${employeeId}`, {
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeevacations?action=get&employeeId=${employeeId}`, {
         method: 'PUT'
       });
       
@@ -659,7 +658,7 @@ export default function SystemAdminDashboard() {
       setCurrentEditRecord(record);
       
       try {
-        const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeemovements/search?term=${record.EmployeeID}`);
+        const response = await fetch(`/api/human-resources-dashboard/employee-management/employeemovements/search?term=${record.EmployeeID}`);
         if (response.ok) {
           const data = await response.json();
           const employee = data.employees?.find((emp: EmployeeSearchResult) => 
@@ -774,7 +773,7 @@ export default function SystemAdminDashboard() {
     }
 
     try {
-      let url = '/api/administrative-personnel-dashboard/employee-management/employeevacations';
+      let url = '/api/human-resources-dashboard/employee-management/employeevacations';
       let method = 'POST';
       let body: any = {
         EmployeeID: selectedEmployeeData.EmployeeID,
@@ -792,7 +791,7 @@ export default function SystemAdminDashboard() {
           StartDate: formData.StartDate,
           Observations: formData.Observations.trim()
         };
-        url = `/api/administrative-personnel-dashboard/employee-management/employeevacations?action=updatefull`;
+        url = `/api/human-resources-dashboard/employee-management/employeevacations?action=updatefull`;
       }
 
       const response = await fetch(url, {
@@ -883,7 +882,7 @@ export default function SystemAdminDashboard() {
   const handleDeleteVacation = async (vacationId: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeevacations?id=${vacationId}`, {
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeevacations?id=${vacationId}`, {
         method: 'DELETE'
       });
 
