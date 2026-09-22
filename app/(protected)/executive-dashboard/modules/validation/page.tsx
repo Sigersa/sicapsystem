@@ -442,42 +442,6 @@ export default function ValidationPage() {
     }
   };
 
-  const sendNotification = async (validationId: number, type: string, status: number, projectId?: number, rejectionReason?: string) => {
-    try {
-      const expenseData = pendingValidations[`${type}s`]?.find(item => item.id === validationId);
-      
-      if (!expenseData) {
-        console.error('No se pudo encontrar la información del gasto para la notificación');
-        return;
-      }
-
-      const notificationData = {
-        validationId,
-        type,
-        status,
-        projectId: projectId || expenseData.ProjectID,
-        concept: expenseData.Concept || getTypeLabel(type),
-        total: expenseData.Total,
-        rejectionReason: rejectionReason || ''
-      };
-
-      const response = await fetch('/api/executive-manager/notifications/notifications-validations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(notificationData)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Error al enviar notificación:', errorData);
-      }
-    } catch (error) {
-      console.error('Error sending notification:', error);
-    }
-  };
-
   const updateValidationStatus = async (id: number, type: string, status: number, projectId?: number, concept?: string, total?: number, rejectionReason?: string) => {
     try {
       if (!id || isNaN(id)) {
@@ -510,9 +474,7 @@ export default function ValidationPage() {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Error al actualizar el estado');
       }
-
-      await sendNotification(id, type, status, projectId, rejectionReason);
-      
+            
       await fetchPendingValidations();
       setModal({
         isOpen: true,
@@ -1020,7 +982,7 @@ export default function ValidationPage() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
-      <AppHeader title="VALIDACIÓN DE GASTOS" />
+      <AppHeader title="EJECUTIVO" />
 
       <main className="pt-[72px] pb-[80px] min-h-screen bg-gray-100">
         <div className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 max-w-7xl mx-auto">
