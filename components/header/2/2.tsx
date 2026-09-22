@@ -31,7 +31,6 @@ export default function AppHeader({
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const userMenuRef = useRef<HTMLDivElement>(null);
-  const notificationsRef = useRef<HTMLDivElement>(null);
 
   // Obtener datos del usuario al cargar el componente
   useEffect(() => {
@@ -127,7 +126,7 @@ export default function AppHeader({
           </div>
         </div>
 
-        {/* Botón Principal, Notificaciones y usuario */}
+        {/* Botón Principal */}
         <div className="flex items-center space-x-4">
           {/* Usuario */}
           <div className="relative" ref={userMenuRef}>
