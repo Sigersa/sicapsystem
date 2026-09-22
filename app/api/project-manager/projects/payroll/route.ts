@@ -171,26 +171,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ]
     );
 
-    // 🔥 URL absoluta para notificaciones
-    const baseUrl = new URL(request.url).origin;
-
-    // Llamar a la API de notificaciones para crear una nueva notificación
-    try {
-      await fetch(`${baseUrl}/api/notifications/notifications-payroll`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          projectId,
-          payrollId: result.insertId,
-          isUpdate: false
-        }),
-      });
-    } catch (error) {
-      console.error('Error al crear notificación:', error);
-    }
-
     return NextResponse.json({
       message: 'Registro de nómina creado correctamente',
       id: result.insertId
@@ -313,28 +293,6 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         id
       ]
     );
-
-    // 🔥 URL absoluta para notificaciones
-    const baseUrl = new URL(request.url).origin;
-
-    // Llamar a la API de notificaciones solo si hubo cambios
-    if (result.affectedRows > 0) {
-      try {
-        await fetch(`${baseUrl}/api/notifications/notifications-payroll`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            projectId: payroll.ProjectID,
-            payrollId: parseInt(id),
-            isUpdate: true
-          }),
-        });
-      } catch (error) {
-        console.error('Error al crear notificación de actualización:', error);
-      }
-    }
 
     return NextResponse.json({
       message: 'Registro de nómina actualizado correctamente',
