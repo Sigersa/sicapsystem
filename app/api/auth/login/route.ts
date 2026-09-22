@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
         redirectTo = '/system-admin-dashboard';
         break;
       case 2:
-        redirectTo = '/administrative-personnel-dashboard';
+        redirectTo = '/human-resources-dashboard';
         break;
       case 3:
         redirectTo = '/project-manager-dashboard';
