@@ -1,4 +1,3 @@
-// app/api/administrative-personnel-dashboard/employee-management/employeevacations/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
