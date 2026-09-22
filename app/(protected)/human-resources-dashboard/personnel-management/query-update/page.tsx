@@ -477,7 +477,7 @@ export default function EmployeesListPage() {
     try {
       setLoading(true);
       setError('');
-      const response = await fetch('/api/administrative-personnel-dashboard/employee-management/query-update/query');
+      const response = await fetch('/api/human-resources-dashboard/employee-management/query-update/query');
       if (!response.ok) throw new Error('Error al cargar empleados');
       const data = await response.json();
       if (data.success) {
@@ -750,7 +750,7 @@ export default function EmployeesListPage() {
       };
       setUploadFiles(resetFiles);
       
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/query-update/query/details/${employee.EmployeeID}?tipo=${employee.tipo}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/query-update/query/details/${employee.EmployeeID}?tipo=${employee.tipo}`);
       if (!response.ok) throw new Error('Error al cargar detalles');
       const data = await response.json();
       
@@ -1033,7 +1033,7 @@ export default function EmployeesListPage() {
         }
       };
       
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/query-update/update/${selectedEmployee.EmployeeID}`, {
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/query-update/update/${selectedEmployee.EmployeeID}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData),
