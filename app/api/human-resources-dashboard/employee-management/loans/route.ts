@@ -1,5 +1,3 @@
-// app/api/administrative-personnel-dashboard/employee-management/loans/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -407,7 +405,7 @@ export async function POST(request: NextRequest) {
         const templatePath = path.join(
           process.cwd(),
           "public",
-          "administrative-personnel-dashboard",
+          "human-resources-dashboard",
           "personnel-management",
           "FT-RH-21.xlsx"
         );
