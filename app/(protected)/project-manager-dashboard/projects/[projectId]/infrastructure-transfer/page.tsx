@@ -647,7 +647,7 @@ const EditModal: React.FC<EditModalProps> = ({
 
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                      ADJUNTAR ARCHIVOS
+                      ADJUNTAR ARCHIVOS (MÁX. 3)
                     </label>
                     <div className="relative">
                       <input
