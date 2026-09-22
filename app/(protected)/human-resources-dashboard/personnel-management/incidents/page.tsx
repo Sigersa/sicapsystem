@@ -1,11 +1,10 @@
-// app/administrative-personnel-dashboard/employee-management/incidents/page.tsx
 'use client';
 
 import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
-import { useState, useEffect, ChangeEvent, useRef, KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, Download, Eye, FileText, Plus } from 'lucide-react';
 
 // Interface para lote de incidencias
@@ -182,7 +181,7 @@ export default function EmployeeIncidencePage() {
             setLoading(true);
             setError('');
 
-            const response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeeincidence');
+            const response = await fetch('/api/human-resources-dashboard/employee-management/employeeincidence');
 
             if (!response.ok) {
                 throw new Error('Error al cargar incidencias');
@@ -242,7 +241,7 @@ export default function EmployeeIncidencePage() {
             setEmployeeNotFound(false);
             setError('');
 
-            const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeeincidence/search?term=${encodeURIComponent(id)}`);
+            const response = await fetch(`/api/human-resources-dashboard/employee-management/employeeincidence/search?term=${encodeURIComponent(id)}`);
 
             if (response.ok) {
                 const data = await response.json();
@@ -362,7 +361,7 @@ export default function EmployeeIncidencePage() {
             setLoading(true);
             setError('');
 
-            const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeeincidence/${batchId}`);
+            const response = await fetch(`/api/human-resources-dashboard/employee-management/employeeincidence/${batchId}`);
 
             if (response.ok) {
                 const data = await response.json();
@@ -428,7 +427,7 @@ export default function EmployeeIncidencePage() {
     const handleDeleteRecord = async (id: number) => {
         setLoading(true);
         try {
-            const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeeincidence/${id}`, {
+            const response = await fetch(`/api/human-resources-dashboard/employee-management/employeeincidence/${id}`, {
                 method: 'DELETE'
             });
 
@@ -488,7 +487,7 @@ export default function EmployeeIncidencePage() {
             let response;
 
             if (modalMode === 'create') {
-                response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeeincidence', {
+                response = await fetch('/api/human-resources-dashboard/employee-management/employeeincidence', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -496,7 +495,7 @@ export default function EmployeeIncidencePage() {
                     body: JSON.stringify(recordData)
                 });
             } else {
-                response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeeincidence/${recordToEdit?.BatchID}`, {
+                response = await fetch(`/api/human-resources-dashboard/employee-management/employeeincidence/${recordToEdit?.BatchID}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json'
