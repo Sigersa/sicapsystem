@@ -193,7 +193,7 @@ export default function EmployeeLoansPage() {
       setLoading(true);
       setError('');
 
-      const response = await fetch('/api/administrative-personnel-dashboard/employee-management/loans');
+      const response = await fetch('/api/human-resources-dashboard/employee-management/loans');
       
       if (!response.ok) {
         throw new Error('Error al cargar préstamos');
@@ -259,7 +259,7 @@ export default function EmployeeLoansPage() {
       setEmployeeNotFound(false);
       setError('');
 
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/loans/search?term=${encodeURIComponent(id)}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/loans/search?term=${encodeURIComponent(id)}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -344,7 +344,7 @@ export default function EmployeeLoansPage() {
     setLoanToEdit(loan);
     
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/loans/search?term=${loan.EmployeeID}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/loans/search?term=${loan.EmployeeID}`);
       if (response.ok) {
         const data = await response.json();
         const employeeData = data.employees.find((emp: EmployeeSearchResult) => emp.EmployeeID === loan.EmployeeID);
@@ -385,7 +385,7 @@ export default function EmployeeLoansPage() {
   const handleDeleteLoan = async (id: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/loans/${id}`, {
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/loans/${id}`, {
         method: 'DELETE'
       });
 
@@ -435,9 +435,6 @@ export default function EmployeeLoansPage() {
       }
     }
   };
-
-  // En tu componente (app/administrative-personnel-dashboard/employee-management/loans/page.tsx)
-// Agrega esta función para manejar la edición con actualización de documento
 
 // Función para guardar préstamo (edición)
 const handleSaveLoan = async () => {
@@ -497,7 +494,7 @@ const handleSaveLoan = async () => {
     let response;
     
     if (modalMode === 'create') {
-      response = await fetch('/api/administrative-personnel-dashboard/employee-management/loans', {
+      response = await fetch('/api/human-resources-dashboard/employee-management/loans', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -505,7 +502,7 @@ const handleSaveLoan = async () => {
         body: JSON.stringify(loanData)
       });
     } else {
-      response = await fetch(`/api/administrative-personnel-dashboard/employee-management/loans/${loanToEdit?.LoanID}`, {
+      response = await fetch(`/api/human-resources-dashboard/employee-management/loans/${loanToEdit?.LoanID}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
