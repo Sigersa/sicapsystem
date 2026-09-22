@@ -832,7 +832,7 @@ export default function EmployeePermissionsPage() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <AppHeader title="PANEL ADMINISTRATIVO" />
+      <AppHeader title="PANEL DE RECURSOS HUMANOS" />
 
       {/* MODAL DE CONFIRMACIÓN PARA ELIMINAR */}
       {confirmDelete.show && (
