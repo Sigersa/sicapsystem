@@ -1,5 +1,3 @@
-// app/api/administrative-personnel-dashboard/employee-management/employeepermissions/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -299,7 +297,7 @@ async function generatePermissionPDF(
     const templatePath = path.join(
       process.cwd(),
       "public",
-      "administrative-personnel-dashboard",
+      "human-resources-dashboard",
       "personnel-management",
       "FT-RH-09.xlsx"
     );
