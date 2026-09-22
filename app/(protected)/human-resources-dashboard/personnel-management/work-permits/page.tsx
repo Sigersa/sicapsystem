@@ -1,4 +1,3 @@
-// app/administrative-personnel-dashboard/employee-management/employeepermissions/page.tsx
 'use client';
 
 import AppHeader from '@/components/header/2/2.1';
@@ -354,7 +353,7 @@ export default function EmployeePermissionsPage() {
       setLoading(true);
       setError('');
 
-      const response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeepermissions');
+      const response = await fetch('/api/human-resources-dashboard/employee-management/employeepermissions');
       
       if (!response.ok) {
         throw new Error('Error al cargar permisos de empleados');
@@ -423,7 +422,7 @@ export default function EmployeePermissionsPage() {
       setEmployeeNotFound(false);
       setError('');
 
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeepermissions/search?term=${encodeURIComponent(id)}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeepermissions/search?term=${encodeURIComponent(id)}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -512,7 +511,7 @@ export default function EmployeePermissionsPage() {
     setRecordToEdit(record);
     
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeepermissions/search?term=${record.EmployeeID}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeepermissions/search?term=${record.EmployeeID}`);
       if (response.ok) {
         const data = await response.json();
         const employeeData = data.employees.find((emp: EmployeeSearchResult) => emp.EmployeeID === record.EmployeeID);
@@ -560,7 +559,7 @@ export default function EmployeePermissionsPage() {
   const handleDeleteRecord = async (id: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeepermissions/${id}`, {
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeepermissions/${id}`, {
         method: 'DELETE'
       });
 
@@ -690,7 +689,7 @@ export default function EmployeePermissionsPage() {
       let response;
       
       if (modalMode === 'create') {
-        response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeepermissions', {
+        response = await fetch('/api/human-resources-dashboard/employee-management/employeepermissions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -698,7 +697,7 @@ export default function EmployeePermissionsPage() {
           body: JSON.stringify(recordData)
         });
       } else {
-        response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeepermissions/${recordToEdit?.PermissionID}`, {
+        response = await fetch(`/api/human-resources-dashboard/employee-management/employeepermissions/${recordToEdit?.PermissionID}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json'
