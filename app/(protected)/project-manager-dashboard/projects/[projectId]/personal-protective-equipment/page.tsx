@@ -7,19 +7,7 @@ import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useUploadThing } from '@/lib/uploadthing';
 import { useState, useRef, useEffect, useCallback, ChangeEvent, FormEvent, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Search, 
-  Edit, 
-  Trash2, 
-  X, 
-  RefreshCw, 
-  CheckCircle, 
-  AlertCircle, 
-  FileText,
-  Image as ImageIcon,
-  FileSpreadsheet,
-  Upload
-} from 'lucide-react';
+import { Search, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Image as ImageIcon, FileSpreadsheet, Upload } from 'lucide-react';
 
 // ============ INTERFACES ============
 
@@ -553,7 +541,7 @@ const EditModal: React.FC<EditModalProps> = ({
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
                   INFORMACIÓN DEL REGISTRO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       FECHA *
@@ -596,6 +584,28 @@ const EditModal: React.FC<EditModalProps> = ({
                       <option value="Otros">Otros</option>
                     </select>
                   </div>
+                </div>
+              </div>
+
+              {/* Detalles de pago */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
+                  DETALLES DE PAGO
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      TOTAL ($) *
+                    </label>
+                    <input
+                      type="text"
+                      name="total"
+                      value={editData.formattedTotal || ''}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                    />
+                  </div>
 
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
@@ -615,28 +625,6 @@ const EditModal: React.FC<EditModalProps> = ({
                         </option>
                       ))}
                     </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Detalles de pago */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                  DETALLES DE PAGO
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                      TOTAL ($) *
-                    </label>
-                    <input
-                      type="text"
-                      name="total"
-                      value={editData.formattedTotal || ''}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                      required
-                    />
                   </div>
 
                   <div>
@@ -953,7 +941,7 @@ const AddEppModal: React.FC<AddEppModalProps> = ({
         <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto animate-fade-in relative z-[10000]">
           <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
             <div>
-              <h2 className="text-lg font-bold text-gray-900 tracking-tight">NUEVO REGISTRO DE EPP</h2>
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight">NUEVO EPP</h2>
               <p className="text-gray-600 mt-1 text-sm">Complete la información del Equipo de Protección Personal.</p>
             </div>
             <button
@@ -971,7 +959,7 @@ const AddEppModal: React.FC<AddEppModalProps> = ({
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
                   INFORMACIÓN DEL REGISTRO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       FECHA *
@@ -1017,6 +1005,28 @@ const AddEppModal: React.FC<AddEppModalProps> = ({
                       <option value="Otros">Otros</option>
                     </select>
                   </div>
+                </div>
+              </div>
+
+              {/* Detalles de pago */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
+                  DETALLES DE PAGO
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      TOTAL ($) *
+                    </label>
+                    <input
+                      type="text"
+                      name="total"
+                      value={eppData.formattedTotal || ''}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                    />
+                  </div>
 
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
@@ -1036,28 +1046,6 @@ const AddEppModal: React.FC<AddEppModalProps> = ({
                         </option>
                       ))}
                     </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Detalles de pago */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                  DETALLES DE PAGO
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                      TOTAL ($) *
-                    </label>
-                    <input
-                      type="text"
-                      name="total"
-                      value={eppData.formattedTotal || ''}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                      required
-                    />
                   </div>
 
                   <div>
@@ -1512,7 +1500,6 @@ export default function EppPage({ params }: PageProps) {
           });
         }
 
-        await sendNotification(eppId);
         await fetchRegistros();
         
         showModal('Éxito', '¡REGISTRO DE EPP GUARDADO EXITOSAMENTE!', 'success');
@@ -1526,18 +1513,6 @@ export default function EppPage({ params }: PageProps) {
       showModal('Error', 'Error al conectar con el servidor', 'error');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const sendNotification = async (eppId: number, isUpdate: boolean = false) => {
-    try {
-      await fetch('/api/notifications/notifications-epp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, eppId, isUpdate })
-      });
-    } catch (error) {
-      console.error('Error al enviar notificación:', error);
     }
   };
 
@@ -1602,7 +1577,6 @@ export default function EppPage({ params }: PageProps) {
       });
 
       if (response.ok) {
-        await sendNotification(data.id, true);
         await fetchRegistros();
         showModal('Éxito', '¡REGISTRO ACTUALIZADO EXITOSAMENTE!', 'success');
       } else {
@@ -1692,7 +1666,7 @@ export default function EppPage({ params }: PageProps) {
           <div className="mb-6">
             <div className="bg-[#3a6ea5] p-4 rounded-lg shadow border border-[#3a6ea5]">
               <h1 className="text-xl font-bold text-white tracking-tight">
-                GESTIÓN DE EQUIPO DE PROTECCIÓN PERSONAL
+                EQUIPO DE PROTECCIÓN PERSONAL
               </h1>
               <p className="text-sm text-gray-200 mt-1">
                 Administre y visualice todos los registros de EPP del proyecto.
@@ -1784,7 +1758,6 @@ export default function EppPage({ params }: PageProps) {
                     <div key={weekRange}>
                       <div className="px-4 py-3 bg-[#3a6ea5] border-b border-gray-300">
                         <h3 className="text-sm font-bold text-white flex items-center">
-                          <FileText className="w-4 h-4 mr-2" />
                           SEMANA {weekRange}
                         </h3>
                       </div>
