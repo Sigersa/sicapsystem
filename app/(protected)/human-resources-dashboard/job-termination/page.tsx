@@ -183,7 +183,7 @@ export default function EmployeesListPage() {
       setError('');
       setErrorDetails('');
 
-      const response = await fetch('/api/administrative-personnel-dashboard/job-termination');
+      const response = await fetch('/api/human-resources-dashboard/job-termination');
       
       if (!response.ok) {
         throw new Error('Error al cargar empleados');
@@ -223,7 +223,7 @@ export default function EmployeesListPage() {
 
   const getSavedDocumentUrls = async (empleadoId: string): Promise<any> => {
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?action=getDocumentUrls&employeeId=${empleadoId}`);
+      const response = await fetch(`/api/human-resources-dashboard/job-termination?action=getDocumentUrls&employeeId=${empleadoId}`);
       const data = await response.json();
       
       if (data.success && data.urls) {
@@ -238,7 +238,7 @@ export default function EmployeesListPage() {
 
   const fetchEmployeeInfo = async (employeeId: number): Promise<any> => {
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/job-termination?employeeId=${employeeId}`);
+      const response = await fetch(`/api/human-resources-dashboard/job-termination?employeeId=${employeeId}`);
       const data = await response.json();
       
       if (response.ok && data.success) {
@@ -314,7 +314,7 @@ export default function EmployeesListPage() {
       setErrorDetails('');
       setSuccessMessage('');
 
-      const response = await fetch('/api/administrative-personnel-dashboard/job-termination', {
+      const response = await fetch('/api/human-resources-dashboard/job-termination', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -394,7 +394,7 @@ export default function EmployeesListPage() {
       setErrorDetails('');
       setSuccessMessage('');
 
-      const response = await fetch('/api/administrative-personnel-dashboard/job-termination', {
+      const response = await fetch('/api/human-resources-dashboard/job-termination', {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
