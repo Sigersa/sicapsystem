@@ -1,5 +1,3 @@
-// app/api/administrative-personnel-dashboard/employee-management/loans/[id]/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
@@ -228,7 +226,7 @@ async function generateUpdatedFT_RH_21_PDF(
     const templatePath = path.join(
       process.cwd(),
       "public",
-      "administrative-personnel-dashboard",
+      "human-resources-dashboard",
       "personnel-management",
       "FT-RH-21.xlsx"
     );
