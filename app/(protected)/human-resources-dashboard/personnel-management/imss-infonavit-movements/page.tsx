@@ -180,7 +180,7 @@ export default function EmployeeMovementsPage() {
       setLoading(true);
       setError('');
 
-      const response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeeimssinfonavit');
+      const response = await fetch('/api/human-resources-dashboard/employee-management/employeeimssinfonavit');
       
       if (!response.ok) {
         throw new Error('Error al cargar movimientos de empleados');
@@ -243,7 +243,7 @@ export default function EmployeeMovementsPage() {
       setEmployeeNotFound(false);
       setError('');
 
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeeimssinfonavit/search?term=${encodeURIComponent(id)}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeeimssinfonavit/search?term=${encodeURIComponent(id)}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -345,7 +345,7 @@ export default function EmployeeMovementsPage() {
       setLoading(true);
       setError('');
 
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeeimssinfonavit/${batchId}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeeimssinfonavit/${batchId}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -405,7 +405,7 @@ export default function EmployeeMovementsPage() {
   const handleDeleteRecord = async (id: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeeimssinfonavit/${id}`, {
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeeimssinfonavit/${id}`, {
         method: 'DELETE'
       });
 
@@ -481,7 +481,7 @@ export default function EmployeeMovementsPage() {
       let response;
       
       if (modalMode === 'create') {
-        response = await fetch('/api/administrative-personnel-dashboard/employee-management/employeeimssinfonavit', {
+        response = await fetch('/api/human-resources-dashboard/employee-management/employeeimssinfonavit', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -489,7 +489,7 @@ export default function EmployeeMovementsPage() {
           body: JSON.stringify(recordData)
         });
       } else {
-        response = await fetch(`/api/administrative-personnel-dashboard/employee-management/employeeimssinfonavit/${recordToEdit?.BatchID}`, {
+        response = await fetch(`/api/human-resources-dashboard/employee-management/employeeimssinfonavit/${recordToEdit?.BatchID}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json'
