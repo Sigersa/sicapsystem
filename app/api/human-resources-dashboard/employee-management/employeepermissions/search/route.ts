@@ -1,5 +1,3 @@
-// app/api/administrative-personnel-dashboard/employee-management/employeepermissions/search/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
