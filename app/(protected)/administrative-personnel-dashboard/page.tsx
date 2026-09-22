@@ -75,7 +75,7 @@ export default function SystemAdminDashboard() {
     <div className="min-h-screen bg-gray-100">
       {/* HEADER - Fixed */}
       <AppHeader 
-        title="PANEL ADMINISTRATIVO"
+        title="PANEL DE RECURSOS HUMANOS"
       />
 
       {/* CONTENT - Ajustado para header y footer fijos */}
