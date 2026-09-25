@@ -72,6 +72,9 @@ export async function POST(request: NextRequest) {
       case 4:
         redirectTo = '/executive-dashboard';
         break;
+      case 5:
+        redirectTo = '/administrative-dashboard';
+        break;
     }
 
     const response = NextResponse.json(
