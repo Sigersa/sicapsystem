@@ -1,0 +1,21 @@
+import { NextRequest, NextResponse } from 'next/server';
+
+export function proxy(req: NextRequest) {
+  const session = req.cookies.get('session')?.value;
+
+  if (!session) {
+    return NextResponse.redirect(new URL('/', req.url));
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    '/system-admin-dashboard/:path*',
+    '/human-resources-dashboard/:path*',
+    '/project-manager-dashboard/:path*',
+    '/executive-dashboard/:path*',
+    '/administrative-dashboard/:path*'
+  ]
+};
