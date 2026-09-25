@@ -15,6 +15,7 @@ export const config = {
     '/system-admin-dashboard/:path*',
     '/human-resources-dashboard/:path*',
     '/project-manager-dashboard/:path*',
-    '/executive-dashboard/:path*'
+    '/executive-dashboard/:path*',
+    '/administrative-dashboard/:path*'
   ]
 };
