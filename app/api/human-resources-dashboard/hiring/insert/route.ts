@@ -221,7 +221,7 @@ async function generateFT_RH_29_PDF(empleadoId: string): Promise<ArrayBuffer> {
 async function getProjectDates(connection: any, projectId: number): Promise<{ startDate: string | null, endDate: string | null }> {
   try {
     const [projectRows] = await connection.execute(
-      `SELECT StartDate, EndDate FROM projects WHERE ProjectID = ? AND Status = 1`,
+      `SELECT StartDate, EndDate FROM projects WHERE ProjectID = ? AND Status = 0`,
       [projectId]
     );
     
