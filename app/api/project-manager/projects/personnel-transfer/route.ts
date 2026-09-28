@@ -4,7 +4,8 @@ import { validateAndRenewSession } from '@/lib/auth';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { UTApi } from 'uploadthing/server';
 
-// Interfaces para tipado seguro
+// ============ INTERFACES ============
+
 interface PersonnelTransfer extends RowDataPacket {
   PersonnelTransferID: number;
   ProjectID: number;
@@ -17,6 +18,8 @@ interface PersonnelTransfer extends RowDataPacket {
   Archivos: string;
   Observations: string;
   Status: number;
+  ProjectPersonnelID: number | null;
+  VoucherType: string | null;
 }
 
 interface Project extends RowDataPacket {
@@ -28,6 +31,15 @@ interface Project extends RowDataPacket {
 interface PaymentMethod extends RowDataPacket {
   MethodID: number;
   MethodName: string;
+}
+
+interface ProjectEmployee extends RowDataPacket {
+  ProjectPersonnelID: number;
+  FirstName: string;
+  LastName: string;
+  MiddleName: string;
+  EmployeeID: number;
+  Position: string | null;
 }
 
 interface ArchivoAdjunto {
@@ -54,7 +66,7 @@ async function getAuthenticatedUser(request: NextRequest) {
   return await validateAndRenewSession(sessionId);
 }
 
-// GET - Obtener traslados por proyecto
+// ============ GET - Obtener traslados por proyecto ============
 export async function GET(request: NextRequest): Promise<NextResponse> {
   let connection;
 
@@ -66,6 +78,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
+    const includeEmployees = searchParams.get('includeEmployees') === 'true';
 
     if (!projectId) {
       return NextResponse.json(
@@ -76,6 +89,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     connection = await getConnection();
 
+    // 1. Traer los traslados del proyecto
     const [registros] = await connection.execute<(PersonnelTransfer & PaymentMethod)[]>(
       `SELECT 
           pt.PersonnelTransferID,
@@ -89,7 +103,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           pt.Total,
           pt.Archivos,
           pt.Observations,
-          pt.Status
+          pt.Status,
+          pt.ProjectPersonnelID,
+          pt.VoucherType
         FROM personneltransfer pt
         INNER JOIN paymentmethods pm ON pt.MethodID = pm.MethodID
         WHERE pt.ProjectID = ?
@@ -97,7 +113,39 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       [projectId]
     );
 
-    return NextResponse.json(registros);
+    // 2. Si se solicitan, traer los empleados de proyecto asignados a este proyecto
+    let employees: ProjectEmployee[] = [];
+    if (includeEmployees) {
+      const [empRows] = await connection.execute<ProjectEmployee[]>(
+        `SELECT DISTINCT
+            pp.ProjectPersonnelID,
+            pp.FirstName,
+            pp.LastName,
+            pp.MiddleName,
+            pp.EmployeeID,
+            pc.Position
+          FROM projectpersonnel pp
+          INNER JOIN employees e ON e.EmployeeID = pp.EmployeeID
+          INNER JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
+          WHERE pc.ProjectID = ?
+            AND e.EmployeeType = 'PROJECT'
+            AND (e.Status = 1 OR e.Status IS NULL)
+            AND (pc.Status = 1 OR pc.Status IS NULL)
+          ORDER BY pp.FirstName, pp.LastName`,
+        [projectId]
+      );
+      employees = empRows;
+    }
+
+    // Si se pidió solo los empleados, devolver solo eso (útil para selects)
+    if (includeEmployees && searchParams.get('onlyEmployees') === 'true') {
+      return NextResponse.json({ employees });
+    }
+
+    return NextResponse.json({
+      registros,
+      employees
+    });
   } catch (error) {
     console.error('Error al obtener registros de traslado:', error);
     return NextResponse.json(
@@ -109,7 +157,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-// POST - Crear nuevo registro de traslado
+// ============ POST - Crear nuevo registro ============
 export async function POST(request: NextRequest): Promise<NextResponse> {
   let connection;
 
@@ -128,6 +176,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       total,
       observations,
       methodId,
+      projectPersonnelId,
+      voucherType,
       archivos = []
     } = await request.json();
 
@@ -135,6 +185,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!projectId || !date || !meansOfTransportation || !startingPoint || !arrivalPoint || !total || !methodId) {
       return NextResponse.json(
         { message: 'Faltan campos requeridos' },
+        { status: 400 }
+      );
+    }
+
+    // Validar VoucherType
+    const VALID_VOUCHER_TYPES = ['FACTURA', 'TICKET', 'S/C'];
+    if (voucherType && !VALID_VOUCHER_TYPES.includes(voucherType)) {
+      return NextResponse.json(
+        { message: 'Tipo de comprobante no válido' },
         { status: 400 }
       );
     }
@@ -161,11 +220,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ message: 'Método de pago no válido' }, { status: 400 });
     }
 
-    // Crear el registro en la base de datos
+    // Verificar que el ProjectPersonnelID existe y está asignado al proyecto
+    if (projectPersonnelId) {
+      const [empRows] = await connection.execute<RowDataPacket[]>(
+        `SELECT pp.ProjectPersonnelID
+         FROM projectpersonnel pp
+         INNER JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
+         WHERE pp.ProjectPersonnelID = ? AND pc.ProjectID = ?`,
+        [projectPersonnelId, projectId]
+      );
+      if (empRows.length === 0) {
+        return NextResponse.json(
+          { message: 'El empleado seleccionado no está asignado a este proyecto' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Insertar
     const [result] = await connection.execute<ResultSetHeader>(
       `INSERT INTO personneltransfer 
-       (ProjectID, Date, MeansOfTransportation, StartingPoint, ArrivalPoint, MethodID, Total, Observations, Status, Archivos) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+       (ProjectID, Date, MeansOfTransportation, StartingPoint, ArrivalPoint, MethodID, Total, Observations, Status, Archivos, ProjectPersonnelID, VoucherType) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
       [
         projectId,
         formatDate(date),
@@ -175,7 +251,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         methodId,
         total,
         observations || null,
-        JSON.stringify(archivos)
+        JSON.stringify(archivos),
+        projectPersonnelId || null,
+        voucherType || null
       ]
     );
 
@@ -194,7 +272,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-// PUT - Actualizar registro de traslado existente
+// ============ PUT - Actualizar ============
 export async function PUT(request: NextRequest): Promise<NextResponse> {
   let connection;
 
@@ -222,12 +300,22 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       total,
       observations,
       methodId,
+      projectPersonnelId,
+      voucherType,
       archivos = []
     } = await request.json();
 
+    // Validar VoucherType
+    const VALID_VOUCHER_TYPES = ['FACTURA', 'TICKET', 'S/C'];
+    if (voucherType && !VALID_VOUCHER_TYPES.includes(voucherType)) {
+      return NextResponse.json(
+        { message: 'Tipo de comprobante no válido' },
+        { status: 400 }
+      );
+    }
+
     connection = await getConnection();
 
-    // Verificar que el registro existe
     const [transferRows] = await connection.execute<PersonnelTransfer[]>(
       `SELECT * FROM personneltransfer WHERE PersonnelTransferID = ?`,
       [id]
@@ -239,7 +327,6 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
 
     const transfer = transferRows[0];
 
-    // Verificar que el método de pago existe
     const [methodRows] = await connection.execute<PaymentMethod[]>(
       `SELECT MethodID FROM paymentmethods WHERE MethodID = ?`,
       [methodId]
@@ -249,7 +336,23 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ message: 'Método de pago no válido' }, { status: 400 });
     }
 
-    // Verificar si hay cambios reales
+    // Verificar empleado si se especificó
+    if (projectPersonnelId) {
+      const [empRows] = await connection.execute<RowDataPacket[]>(
+        `SELECT pp.ProjectPersonnelID
+         FROM projectpersonnel pp
+         INNER JOIN projectcontracts pc ON pc.ProjectPersonnelID = pp.ProjectPersonnelID
+         WHERE pp.ProjectPersonnelID = ? AND pc.ProjectID = ?`,
+        [projectPersonnelId, transfer.ProjectID]
+      );
+      if (empRows.length === 0) {
+        return NextResponse.json(
+          { message: 'El empleado seleccionado no está asignado a este proyecto' },
+          { status: 400 }
+        );
+      }
+    }
+
     const fechaFormateada = formatDate(date);
     const oldFechaFormateada = formatDate(transfer.Date);
 
@@ -261,6 +364,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       transfer.Total !== total ||
       transfer.Observations !== (observations || null) ||
       transfer.MethodID !== methodId ||
+      transfer.ProjectPersonnelID !== (projectPersonnelId || null) ||
+      transfer.VoucherType !== (voucherType || null) ||
       JSON.stringify(JSON.parse(transfer.Archivos || '[]')) !== JSON.stringify(archivos || []);
 
     if (!hasChanges) {
@@ -270,7 +375,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    // Eliminar archivos antiguos si es necesario
+    // Eliminar archivos antiguos
     if (transfer.Archivos && archivos.length > 0) {
       const archivosAntiguos: ArchivoAdjunto[] = JSON.parse(transfer.Archivos);
       const filesToRemove = archivosAntiguos
@@ -284,7 +389,6 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // Actualizar el registro
     const [result] = await connection.execute<ResultSetHeader>(
       `UPDATE personneltransfer SET
         Date = ?,
@@ -295,6 +399,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         Observations = ?,
         MethodID = ?,
         Archivos = ?,
+        ProjectPersonnelID = ?,
+        VoucherType = ?,
         Status = 0
        WHERE PersonnelTransferID = ?`,
       [
@@ -306,6 +412,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         observations || null,
         methodId,
         JSON.stringify(archivos),
+        projectPersonnelId || null,
+        voucherType || null,
         id
       ]
     );
@@ -325,7 +433,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-// DELETE - Eliminar registro de traslado
+// ============ DELETE ============
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
   let connection;
 
@@ -347,7 +455,6 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
 
     connection = await getConnection();
 
-    // Obtener el registro para eliminar archivos asociados
     const [transferRows] = await connection.execute<PersonnelTransfer[]>(
       `SELECT PersonnelTransferID, Archivos FROM personneltransfer WHERE PersonnelTransferID = ?`,
       [id]
@@ -360,7 +467,6 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     const transfer = transferRows[0];
     let deleteSuccess = true;
 
-    // Eliminar archivos de UploadThing si existen
     if (transfer.Archivos) {
       const archivos: ArchivoAdjunto[] = JSON.parse(transfer.Archivos);
       const filesToRemove = archivos
@@ -377,7 +483,6 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // Eliminar el registro de la base de datos
     const [result] = await connection.execute<ResultSetHeader>(
       `DELETE FROM personneltransfer WHERE PersonnelTransferID = ?`,
       [id]
