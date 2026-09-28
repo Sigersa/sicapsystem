@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       FROM projects p
       LEFT JOIN employees e ON e.EmployeeID = p.AdminProjectID
       LEFT JOIN basepersonnel bp ON bp.EmployeeID = e.EmployeeID
-      WHERE p.Status = 1
+      WHERE p.Status = 0
       ORDER BY p.NameProject ASC`
     );
 
