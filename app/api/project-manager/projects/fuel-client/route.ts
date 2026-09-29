@@ -16,6 +16,9 @@ interface FuelClient extends RowDataPacket {
   Observations: string;
   Status: number;
   Archivos: string;
+  VoucherType: string;
+  Establisment: string;
+  FuelType: number;
 }
 
 interface Project extends RowDataPacket {
@@ -49,7 +52,6 @@ function formatDate(date: string | Date): string {
 // Función para calcular total TRUNCANDO a 2 decimales
 function calculateTotal(liters: number, litersCost: number): number {
   const total = liters * litersCost;
-  // Truncar a 2 decimales (no redondear)
   return Math.floor(total * 100) / 100;
 }
 
@@ -94,7 +96,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           pm.MethodName,
           fc.Observations,
           fc.Status,
-          fc.Archivos
+          fc.Archivos,
+          fc.VoucherType,
+          fc.Establisment,
+          fc.FuelType
         FROM fuelclient fc
         INNER JOIN paymentmethods pm ON fc.MethodID = pm.MethodID
         WHERE fc.ProjectID = ?
@@ -132,11 +137,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       total,
       methodId,
       observations,
+      voucherType,
+      establisment,
+      fuelType,
       archivos = []
     } = await request.json();
 
     // Validación de campos requeridos
-    if (!projectId || !date || !liters || !litersCost || !total || !methodId) {
+    if (!projectId || !date || !liters || !litersCost || !total || !methodId || !fuelType) {
       return NextResponse.json(
         { message: 'Faltan campos requeridos' },
         { status: 400 }
@@ -171,8 +179,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Crear el registro en la base de datos
     const [result] = await connection.execute<ResultSetHeader>(
       `INSERT INTO fuelclient 
-       (ProjectID, Date, Liters, LitersCost, Total, MethodID, Observations, Status, Archivos) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+       (ProjectID, Date, Liters, LitersCost, Total, MethodID, Observations, Status, Archivos, VoucherType, Establisment, FuelType) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
       [
         projectId,
         formatDate(date),
@@ -180,8 +188,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         litersCost,
         totalTruncado,
         methodId,
-        observations || null,
-        JSON.stringify(archivos)
+        observations ?? null,
+        JSON.stringify(archivos),
+        voucherType ?? null,
+        establisment ?? null,
+        fuelType ?? null
       ]
     );
 
@@ -227,6 +238,9 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       total,
       methodId,
       observations,
+      voucherType,
+      establisment,
+      fuelType,
       archivos = []
     } = await request.json();
 
@@ -263,8 +277,11 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       fuel.Liters !== liters ||
       fuel.LitersCost !== litersCost ||
       fuel.Total !== total ||
-      fuel.Observations !== (observations || null) ||
+      fuel.Observations !== (observations ?? null) ||
       fuel.MethodID !== methodId ||
+      fuel.VoucherType !== (voucherType ?? null) ||
+      fuel.Establisment !== (establisment ?? null) ||
+      fuel.FuelType !== (fuelType ?? null) ||
       JSON.stringify(JSON.parse(fuel.Archivos || '[]')) !== JSON.stringify(archivos || []);
 
     if (!hasChanges) {
@@ -301,6 +318,9 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         MethodID = ?,
         Observations = ?,
         Archivos = ?,
+        VoucherType = ?,
+        Establisment = ?,
+        FuelType = ?,
         Status = 0
        WHERE FuelClientID = ?`,
       [
@@ -309,8 +329,11 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         litersCost,
         totalTruncado,
         methodId,
-        observations || null,
+        observations ?? null,
         JSON.stringify(archivos),
+        voucherType ?? null,
+        establisment ?? null,
+        fuelType ?? null,
         id
       ]
     );
