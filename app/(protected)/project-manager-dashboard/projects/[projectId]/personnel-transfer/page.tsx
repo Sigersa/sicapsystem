@@ -630,13 +630,29 @@ const EditModal: React.FC<EditModalProps> = ({
             <div className="space-y-6">
               <div className="bg-gray-50 rounded-lg p-4">
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                  INFORMACIÓN DEL TRASLADO
+                  INFORMACIÓN DEL REGISTRO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">FECHA *</label>
                     <input type="date" name="date" value={formatDateForInput(editData.date)}
                       onChange={handleDateChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">PUNTO DE PARTIDA *</label>
+                    <input type="text" name="startingPoint" value={editData.startingPoint}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">PUNTO DE LLEGADA *</label>
+                    <input type="text" name="arrivalPoint" value={editData.arrivalPoint}
+                      onChange={handleInputChange}
                       className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                       required />
                   </div>
@@ -655,35 +671,13 @@ const EditModal: React.FC<EditModalProps> = ({
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">PUNTO DE PARTIDA *</label>
-                    <input type="text" name="startingPoint" value={editData.startingPoint}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                      required />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">PUNTO DE LLEGADA *</label>
-                    <input type="text" name="arrivalPoint" value={editData.arrivalPoint}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                      required />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                  ASIGNACIÓN
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <EmployeeSelect
                     value={editData.projectPersonnelId}
                     onChange={(v) => setEditData({ ...editData, projectPersonnelId: v })}
                     employees={employees}
                     loading={isLoadingEmployees}
                   />
+                  
                   <VoucherSelect
                     value={editData.voucherType}
                     onChange={(v) => setEditData({ ...editData, voucherType: v })}
@@ -930,7 +924,7 @@ const AddTransferModal: React.FC<AddTransferModalProps> = ({
           <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
             <div>
               <h2 className="text-lg font-bold text-gray-900 tracking-tight">NUEVO TRASLADO DE PERSONAL A SITIO</h2>
-              <p className="text-gray-600 mt-1 text-sm">Complete la información del traslado de personal a sitio.</p>
+              <p className="text-gray-600 mt-1 text-sm">Complete la información del registro.</p>
             </div>
             <button onClick={handleClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
               <X className="h-5 w-5 text-gray-500" />
@@ -943,7 +937,7 @@ const AddTransferModal: React.FC<AddTransferModalProps> = ({
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
                   INFORMACIÓN DEL REGISTRO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">FECHA *</label>
                     <input type="date" name="date"
@@ -952,6 +946,22 @@ const AddTransferModal: React.FC<AddTransferModalProps> = ({
                         const date = e.target.value ? new Date(e.target.value) : null;
                         handleDateChange(date);
                       }}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">PUNTO DE PARTIDA *</label>
+                    <input type="text" name="startingPoint" value={transferData.startingPoint}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">PUNTO DE LLEGADA *</label>
+                    <input type="text" name="arrivalPoint" value={transferData.arrivalPoint}
+                      onChange={handleInputChange}
                       className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                       required />
                   </div>
@@ -971,35 +981,13 @@ const AddTransferModal: React.FC<AddTransferModalProps> = ({
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">PUNTO DE PARTIDA *</label>
-                    <input type="text" name="startingPoint" value={transferData.startingPoint}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                      required />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">PUNTO DE LLEGADA *</label>
-                    <input type="text" name="arrivalPoint" value={transferData.arrivalPoint}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                      required />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2">
-                  ASIGNACIÓN
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <EmployeeSelect
                     value={transferData.projectPersonnelId}
                     onChange={(v) => setTransferData(prev => ({ ...prev, projectPersonnelId: v }))}
                     employees={employees}
                     loading={isLoadingEmployees}
                   />
+
                   <VoucherSelect
                     value={transferData.voucherType}
                     onChange={(v) => setTransferData(prev => ({ ...prev, voucherType: v }))}
