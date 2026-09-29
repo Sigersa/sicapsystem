@@ -536,7 +536,7 @@ const EditModal: React.FC<EditModalProps> = ({
         [name]: parseCurrency(formattedValue),
         formattedTotal: formattedValue
       });
-    } else if (name === 'concepto' || name === 'observaciones') {
+    } else if (name === 'concepto' || name === 'observaciones' || name === 'establisment') {
       setEditData({
         ...editData,
         [name]: normalizarMayusculas(value)
@@ -739,7 +739,7 @@ const EditModal: React.FC<EditModalProps> = ({
                     />
                   </div>
 
-                   <div>
+                  <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       ESTABLECIMIENTO *
                     </label>
@@ -825,26 +825,25 @@ const EditModal: React.FC<EditModalProps> = ({
                   </div>
                 </div>
 
-                    {archivos.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {archivos.map((file, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
-                            <div className="flex items-center truncate">
-                              <FileIcon type={file.type} size={5} />
-                              <span className="ml-3 text-sm truncate font-medium text-gray-700">{file.name}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeFile(index)}
-                              className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        ))}
+                {archivos.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {archivos.map((file, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
+                        <div className="flex items-center truncate">
+                          <FileIcon type={file.type} size={5} />
+                          <span className="ml-3 text-sm truncate font-medium text-gray-700">{file.name}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(index)}
+                          className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                       </div>
-                    )}
-
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Archivos existentes */}
@@ -1045,7 +1044,7 @@ const AddWaterIceModal: React.FC<AddWaterIceModalProps> = ({
         [name]: parseCurrency(formattedValue),
         formattedTotal: formattedValue
       }));
-    } else if (name === 'concepto' || name === 'observaciones') {
+    } else if (name === 'concepto' || name === 'observaciones' || name === 'establisment') {
       setWaterIceData(prev => ({
         ...prev,
         [name]: normalizarMayusculas(value)
@@ -1395,7 +1394,7 @@ export default function WaterIcePage({ params }: PageProps) {
     isOpen: false
   });
 
-    const [downloadRangeModal, setDownloadRangeModal] = useState({ isOpen: false });
+  const [downloadRangeModal, setDownloadRangeModal] = useState({ isOpen: false });
 
   // Upload hook
   const { startUpload } = useUploadThing('waterIceFiles', {
@@ -1541,14 +1540,17 @@ export default function WaterIcePage({ params }: PageProps) {
       if (response.ok) {
         const data = await response.json();
 
+        // ✅ CORREGIDO: Se mapean correctamente voucherType y establisment
         setRegistros(data.map((registro: any) => ({
           id: registro.WaterIceID,
           fecha: registro.Date,
           concepto: registro.Concept,
-          metodoPago: registro.MethodID?.toString() || registro.PaymentMethod,
+          metodoPago: registro.MethodID?.toString() || '',
           total: parseFloat(registro.Total) || 0,
           observaciones: registro.Observations || '',
           status: registro.Status || 0,
+          voucherType: registro.VoucherType || '',
+          establisment: registro.Establisment || '',
           archivos: registro.Archivos ? JSON.parse(registro.Archivos) : []
         })));
       } else {
@@ -1640,7 +1642,6 @@ export default function WaterIcePage({ params }: PageProps) {
     setAddWaterIceModal({ isOpen: false });
   };
 
-    // NUEVO: Abrir modal de descarga por rango
   const openDownloadRangeModal = () => {
     setDownloadRangeModal({ isOpen: true });
   };
@@ -1649,7 +1650,6 @@ export default function WaterIcePage({ params }: PageProps) {
     setDownloadRangeModal({ isOpen: false });
   };
 
-  // NUEVO: Manejar descarga por rango de fechas
   const handleDownloadByRange = async (startDate: string, endDate: string) => {
     if (!projectId) {
       showModal('Error', 'No se ha identificado el proyecto', 'error');
@@ -1696,6 +1696,7 @@ export default function WaterIcePage({ params }: PageProps) {
     }
   };
 
+  // ============ HANDLER: CREAR REGISTRO (CORREGIDO) ============
   const handleAddWaterIce = async (data: WaterIceData) => {
     if (!projectId) {
       showModal('Error', 'No se ha identificado el proyecto asociado', 'error');
@@ -1712,10 +1713,22 @@ export default function WaterIcePage({ params }: PageProps) {
       return;
     }
 
+    if (!data.establisment) {
+      showModal('Error', 'El establecimiento es requerido', 'error');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const fechaFormateada = data.fecha.toISOString().split('T')[0];
 
+      // ✅ PASO 1: Subir archivos primero (si existen)
+      let archivosSubidos: ArchivoAdjunto[] = [];
+      if (data.archivos.length > 0) {
+        archivosSubidos = await uploadFiles(data.archivos);
+      }
+
+      // ✅ PASO 2: Un solo POST con TODOS los campos (incluyendo voucherType, establisment y archivos)
       const response = await fetch('/api/project-manager/projects/water-ice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1725,34 +1738,14 @@ export default function WaterIcePage({ params }: PageProps) {
           concept: data.concepto,
           methodId: data.metodoPago,
           total: data.total,
-          observations: data.observaciones
+          observations: data.observaciones,
+          voucherType: data.voucherType,       // ✅ AHORA SÍ SE ENVÍA
+          establisment: data.establisment,     // ✅ AHORA SÍ SE ENVÍA
+          archivos: archivosSubidos            // ✅ AHORA SÍ SE ENVÍA
         })
       });
 
       if (response.ok) {
-        const newWaterIce = await response.json();
-        const waterIceId = newWaterIce.id;
-
-        let archivosSubidos: ArchivoAdjunto[] = [];
-        if (data.archivos.length > 0) {
-          archivosSubidos = await uploadFiles(data.archivos);
-
-          await fetch(`/api/project-manager/projects/water-ice?id=${waterIceId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              date: fechaFormateada,
-              concept: data.concepto,
-              methodId: data.metodoPago,
-              total: data.total,
-              observations: data.observaciones,
-              voucherType: data.voucherType,
-              establisment: data.establisment,
-              archivos: archivosSubidos
-            })
-          });
-        }
-
         await fetchRegistros();
 
         showModal('Éxito', '¡REGISTRO DE AGUA Y HIELO GUARDADO EXITOSAMENTE!', 'success');
@@ -1808,6 +1801,7 @@ export default function WaterIcePage({ params }: PageProps) {
     }
   };
 
+  // ============ HANDLER: ACTUALIZAR REGISTRO (CORREGIDO) ============
   const handleUpdate = async (data: RegistroWaterIce) => {
     setEditModal(prev => ({ ...prev, isSaving: true }));
 
@@ -1825,6 +1819,8 @@ export default function WaterIcePage({ params }: PageProps) {
           methodId: data.metodoPago,
           total: data.total,
           observations: data.observaciones,
+          voucherType: data.voucherType,       // ✅ AHORA SÍ SE ENVÍA
+          establisment: data.establisment,     // ✅ AHORA SÍ SE ENVÍA
           archivos: data.archivos
         })
       });
@@ -1850,14 +1846,16 @@ export default function WaterIcePage({ params }: PageProps) {
     const concepto = (registro.concepto || '').toLowerCase();
     const observaciones = (registro.observaciones || '').toLowerCase();
     const metodoPago = (registro.metodoPago || '').toLowerCase();
+    const establisment = (registro.establisment || '').toLowerCase();
+    const voucherType = (registro.voucherType || '').toLowerCase();
     const term = searchTerm.toLowerCase();
-    (registro.establisment || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (registro.voucherType || '').toLowerCase().includes(searchTerm.toLowerCase())
-  
+
     return (
       concepto.includes(term) ||
       observaciones.includes(term) ||
-      metodoPago.includes(term)
+      metodoPago.includes(term) ||
+      establisment.includes(term) ||
+      voucherType.includes(term)
     );
   });
 
@@ -1920,7 +1918,7 @@ export default function WaterIcePage({ params }: PageProps) {
         paymentMethods={paymentMethods}
       />
 
-      {/* NUEVO: Modal de descarga por rango de fechas */}
+      {/* Modal de descarga por rango de fechas */}
       <DownloadRangeModal
         isOpen={downloadRangeModal.isOpen}
         onClose={closeDownloadRangeModal}
@@ -2012,7 +2010,6 @@ export default function WaterIcePage({ params }: PageProps) {
               ACTUALIZAR
             </button>
             
-            {/* BOTÓN MODIFICADO: Abre el modal de descarga por rango */}
             <button
               onClick={openDownloadRangeModal}
               disabled={isDownloading}
