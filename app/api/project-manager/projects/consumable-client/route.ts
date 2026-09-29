@@ -17,6 +17,8 @@ interface ConsumableClient extends RowDataPacket {
   Observations: string;
   Status: number;
   Archivos: string;
+  VoucherType: string;
+  Establisment: string;
 }
 
 interface Project extends RowDataPacket {
@@ -88,7 +90,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           c.Total,
           c.Observations,
           c.Status,
-          c.Archivos
+          c.Archivos,
+          c.VoucherType,
+          c.Establisment
         FROM consumableclient c
         INNER JOIN paymentmethods pm ON c.MethodID = pm.MethodID
         WHERE c.ProjectID = ?
@@ -126,6 +130,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       total,
       observations,
       methodId,
+      voucherType,
+      establisment,
       archivos = []
     } = await request.json();
 
@@ -162,8 +168,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Crear el registro en la base de datos
     const [result] = await connection.execute<ResultSetHeader>(
       `INSERT INTO consumableclient 
-       (ProjectID, Date, Concept, Total, Observations, Status, MethodID, Archivos) 
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+       (ProjectID, Date, Concept, Total, Observations, Status, MethodID, Archivos, VoucherType, Establisment) 
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
       [
         projectId,
         formatDate(date),
@@ -171,7 +177,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         total,
         observations || null,
         methodId,
-        JSON.stringify(archivos)
+        JSON.stringify(archivos),
+        voucherType || null,
+        establisment || null
       ]
     );
 
@@ -217,6 +225,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       total,
       observations,
       methodId,
+      voucherType,
+      establisment,
       archivos = []
     } = await request.json();
 
@@ -254,6 +264,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       consumableClient.Total !== total ||
       consumableClient.Observations !== (observations || null) ||
       consumableClient.MethodID !== methodId ||
+      consumableClient.VoucherType !== (voucherType || null) ||
+      consumableClient.Establisment !== (establisment || null) ||
       JSON.stringify(JSON.parse(consumableClient.Archivos || '[]')) !== JSON.stringify(archivos || []);
 
     if (!hasChanges) {
@@ -286,6 +298,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         Observations = ?,
         MethodID = ?,
         Archivos = ?,
+        VoucherType = ?,
+        Establisment = ?,
         Status = 0
        WHERE ConsumableClientID = ?`,
       [
@@ -295,6 +309,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         observations || null,
         methodId,
         JSON.stringify(archivos),
+        voucherType || null,
+        establisment || null,
         id
       ]
     );
