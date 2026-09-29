@@ -15,7 +15,10 @@ interface WaterIce extends RowDataPacket {
   Observations: string;
   Status: number;
   Archivos: string;
+  VoucherType: string;
+  Establisment: string;
 }
+
 
 interface Project extends RowDataPacket {
   ProjectID: number;
@@ -85,7 +88,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           w.Total,
           w.Observations,
           w.Status,
-          w.Archivos
+          w.Archivos,
+          w.VoucherType,
+          w.Establisment
         FROM waterice w
         INNER JOIN paymentmethods pm ON w.MethodID = pm.MethodID
         WHERE w.ProjectID = ?
@@ -122,6 +127,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       total,
       observations,
       methodId,
+      voucherType,
+      establisment,
       archivos = []
     } = await request.json();
 
@@ -158,8 +165,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Crear el registro en la base de datos
     const [result] = await connection.execute<ResultSetHeader>(
       `INSERT INTO waterice 
-       (ProjectID, Date, Concept, Total, Observations, Status, MethodID, Archivos) 
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+       (ProjectID, Date, Concept, Total, Observations, Status, MethodID, Archivos, VoucherType, Establisment) 
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
       [
         projectId,
         formatDate(date),
@@ -167,7 +174,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         total,
         observations || null,
         methodId,
-        JSON.stringify(archivos)
+        JSON.stringify(archivos),
+        voucherType || null,
+        establisment || null
       ]
     );
 
@@ -212,6 +221,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       total,
       observations,
       methodId,
+      voucherType,
+      establisment,
       archivos = []
     } = await request.json();
 
@@ -249,6 +260,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       waterIce.Total !== total ||
       waterIce.Observations !== (observations || null) ||
       waterIce.MethodID !== methodId ||
+      waterIce.VoucherType !== (voucherType || null) ||
+      waterIce.Establisment !== (establisment || null) ||
       JSON.stringify(JSON.parse(waterIce.Archivos || '[]')) !== JSON.stringify(archivos || []);
 
     if (!hasChanges) {
@@ -281,6 +294,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         Observations = ?,
         MethodID = ?,
         Archivos = ?,
+        VoucherType = ?,
+        Establisment = ?,
         Status = 0
        WHERE WaterIceID = ?`,
       [
@@ -290,6 +305,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         observations || null,
         methodId,
         JSON.stringify(archivos),
+        voucherType || null,
+        establisment || null,
         id
       ]
     );
