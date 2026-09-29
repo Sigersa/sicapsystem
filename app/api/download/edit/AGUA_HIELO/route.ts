@@ -204,8 +204,8 @@ export async function GET(request: NextRequest) {
     await workbook.xlsx.readFile(templatePath);
     const ws = workbook.getWorksheet(1)!;
 
-    ws.getCell("A2").value = `AGUA EN SITIO ${projectName}`;
-    ws.getCell("F2").value = `ACUMULADO AGUA (${projectName})`;
+    ws.getCell("A2").value = `AGUA Y HIELO`;
+    ws.getCell("F2").value = `ACUMULADO AGUA Y HIELO (${projectName})`;
 
     // NUEVO: Escribir el rango de fechas en alguna celda (opcional)
     if (startDate && endDate) {
@@ -323,7 +323,7 @@ export async function GET(request: NextRequest) {
       .substring(0, 50);
 
     // NUEVO: Incluir el rango de fechas en el nombre del archivo si se filtró
-    let fileName = `CONSUMIBLES-${safeProjectName}`;
+    let fileName = `AGUA_HIELO-${safeProjectName}`;
     if (startDate && endDate) {
       fileName += `_${startDate}_a_${endDate}`;
     }
@@ -337,7 +337,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error("Error al generar CONSUMIBLES:", error);
+    console.error("Error al generar archivo:", error);
     return NextResponse.json(
       {
         success: false,
