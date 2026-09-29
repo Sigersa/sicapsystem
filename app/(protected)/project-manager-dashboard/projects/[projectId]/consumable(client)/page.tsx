@@ -7,7 +7,7 @@ import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useUploadThing } from '@/lib/uploadthing';
 import { useState, useRef, useEffect, useCallback, ChangeEvent, FormEvent, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Image as ImageIcon, FileSpreadsheet, Upload, Download, Calendar } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Image as ImageIcon, FileSpreadsheet, Upload } from 'lucide-react';
 
 // ============ CONSTANTES ============
 
@@ -708,7 +708,7 @@ const EditModal: React.FC<EditModalProps> = ({
               {/* Información principal */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2 flex items-center">
-                  INFORMACIÓN DEL CONSUMIBLE
+                  INFORMACIÓN DEL REGISTRO
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
