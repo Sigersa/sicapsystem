@@ -7,7 +7,12 @@ import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useUploadThing } from '@/lib/uploadthing';
 import { useState, useRef, useEffect, useCallback, ChangeEvent, FormEvent, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Image as ImageIcon, FileSpreadsheet, Upload } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Image as ImageIcon, FileSpreadsheet, Upload, Download, Calendar } from 'lucide-react';
+
+// ============ CONSTANTES ============
+
+const VOUCHER_TYPES = ['FACTURA', 'TICKET', 'S/C'] as const;
+type VoucherType = typeof VOUCHER_TYPES[number];
 
 // ============ INTERFACES ============
 
@@ -29,6 +34,8 @@ interface ConsumableClientData {
   metodoPago: string;
   total: number;
   observaciones: string;
+  voucherType: string;
+  establisment: string;
   archivos: File[];
   formattedTotal?: string;
 }
@@ -41,6 +48,8 @@ interface RegistroConsumableClient {
   total: number;
   observaciones: string;
   status: number;
+  voucherType: string;
+  establisment: string;
   archivos: ArchivoAdjunto[];
   formattedTotal?: string;
 }
@@ -238,6 +247,133 @@ const DeleteModal: React.FC<DeleteModalProps> = ({ isOpen, onClose, onConfirm, r
   );
 };
 
+// ============ MODAL DE DESCARGA POR RANGO DE FECHAS ============
+
+interface DownloadRangeModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onDownload: (startDate: string, endDate: string) => Promise<void>;
+  isDownloading: boolean;
+}
+
+const DownloadRangeModal: React.FC<DownloadRangeModalProps> = ({ isOpen, onClose, onDownload, isDownloading }) => {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setStartDate('');
+      setEndDate('');
+      setError('');
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!startDate || !endDate) {
+      setError('Debe seleccionar ambas fechas');
+      return;
+    }
+
+    if (new Date(startDate) > new Date(endDate)) {
+      setError('La fecha inicial no puede ser mayor que la fecha final');
+      return;
+    }
+
+    await onDownload(startDate, endDate);
+  };
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative z-[10000]">
+        <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+              DESCARGAR EXCEL
+            </h2>
+            <p className="text-sm text-gray-600 mt-2 leading-5">
+              Seleccione el rango de fechas.
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6">
+          {error && (
+            <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+              <div className="flex items-center">
+                <AlertCircle className="h-4 w-4 text-red-600 mr-2 flex-shrink-0" />
+                <p className="text-xs font-medium text-red-700">{error}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                FECHA INICIAL *
+              </label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                FECHA FINAL *
+              </label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                min={startDate || undefined}
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-gray-300 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isDownloading}
+              className="bg-gray-200 text-black font-bold py-2.5 px-6 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
+            >
+              CANCELAR
+            </button>
+            <button
+              type="submit"
+              disabled={isDownloading}
+              className="px-6 py-2.5 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center min-w-[150px] disabled:opacity-50"
+            >
+              {isDownloading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  DESCARGANDO...
+                </>
+              ) : (
+                <>DESCARGAR</>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 // ============ COMPONENTE DE ICONO DE ARCHIVO ============
 
 function FileIcon({ type, size = 5 }: { type: string; size?: number }) {
@@ -253,6 +389,35 @@ function FileIcon({ type, size = 5 }: { type: string; size?: number }) {
     return <FileText className={`${iconClass} text-gray-500`} />;
   }
 }
+
+// ============ SELECT TIPO COMPROBANTE ============
+
+interface VoucherSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+}
+
+const VoucherSelect: React.FC<VoucherSelectProps> = ({ value, onChange }) => {
+  return (
+    <div>
+      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+        TIPO DE COMPROBANTE *
+      </label>
+      <select
+        name="voucherType"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+        required
+      >
+        <option value="">SELECCIONA UN TIPO</option>
+        {VOUCHER_TYPES.map((t) => (
+          <option key={t} value={t}>{t}</option>
+        ))}
+      </select>
+    </div>
+  );
+};
 
 // ============ MODAL DE EDICIÓN ============
 
@@ -334,6 +499,8 @@ const EditModal: React.FC<EditModalProps> = ({
     if (registro) {
       setEditData({
         ...registro,
+        voucherType: registro.voucherType || '',
+        establisment: registro.establisment || '',
         formattedTotal: registro.total !== 0 ?
           registro.total.toLocaleString('en-US', {
             minimumFractionDigits: 2,
@@ -369,7 +536,7 @@ const EditModal: React.FC<EditModalProps> = ({
         [name]: parseCurrency(formattedValue),
         formattedTotal: formattedValue
       });
-    } else if (name === 'concepto' || name === 'observaciones') {
+    } else if (name === 'concepto' || name === 'observaciones' || name === 'establisment') {
       setEditData({
         ...editData,
         [name]: normalizarMayusculas(value)
@@ -543,7 +710,7 @@ const EditModal: React.FC<EditModalProps> = ({
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2 flex items-center">
                   INFORMACIÓN DEL CONSUMIBLE
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       FECHA *
@@ -571,6 +738,25 @@ const EditModal: React.FC<EditModalProps> = ({
                       required
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      ESTABLECIMIENTO *
+                    </label>
+                    <input
+                      type="text"
+                      name="establisment"
+                      value={editData.establisment || ''}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                    />
+                  </div>
+
+                  <VoucherSelect
+                    value={editData.voucherType || ''}
+                    onChange={(v) => setEditData({ ...editData, voucherType: v })}
+                  />
                 </div>
               </div>
 
@@ -774,6 +960,8 @@ const AddConsumableClientModal: React.FC<AddConsumableClientModalProps> = ({
     total: 0,
     formattedTotal: '',
     observaciones: '',
+    voucherType: '',
+    establisment: '',
     archivos: []
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -837,6 +1025,8 @@ const AddConsumableClientModal: React.FC<AddConsumableClientModalProps> = ({
       total: 0,
       formattedTotal: '',
       observaciones: '',
+      voucherType: '',
+      establisment: '',
       archivos: []
     });
     if (fileInputRef.current) {
@@ -855,7 +1045,7 @@ const AddConsumableClientModal: React.FC<AddConsumableClientModalProps> = ({
         [name]: parseCurrency(formattedValue),
         formattedTotal: formattedValue
       }));
-    } else if (name === 'concepto' || name === 'observaciones') {
+    } else if (name === 'concepto' || name === 'observaciones' || name === 'establisment') {
       setConsumableClientData(prev => ({
         ...prev,
         [name]: normalizarMayusculas(value)
@@ -930,7 +1120,7 @@ const AddConsumableClientModal: React.FC<AddConsumableClientModalProps> = ({
           <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
             <div>
               <h2 className="text-lg font-bold text-gray-900 tracking-tight">NUEVO CONSUMIBLE (CLIENTE)</h2>
-              <p className="text-gray-600 mt-1 text-sm">Complete la información del consumible (cliente).</p>
+              <p className="text-gray-600 mt-1 text-sm">Complete la información del registro.</p>
             </div>
             <button
               onClick={handleClose}
@@ -947,7 +1137,7 @@ const AddConsumableClientModal: React.FC<AddConsumableClientModalProps> = ({
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2 flex items-center">
                   INFORMACIÓN DEL REGISTRO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       FECHA *
@@ -978,6 +1168,25 @@ const AddConsumableClientModal: React.FC<AddConsumableClientModalProps> = ({
                       required
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      ESTABLECIMIENTO *
+                    </label>
+                    <input
+                      type="text"
+                      name="establisment"
+                      value={consumableClientData.establisment}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                    />
+                  </div>
+
+                  <VoucherSelect
+                    value={consumableClientData.voucherType}
+                    onChange={(v) => setConsumableClientData(prev => ({ ...prev, voucherType: v }))}
+                  />
                 </div>
               </div>
 
@@ -1138,6 +1347,7 @@ export default function ConsumableClientPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFetchingRegistros, setIsFetchingRegistros] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -1185,6 +1395,9 @@ export default function ConsumableClientPage({ params }: PageProps) {
   const [addConsumableClientModal, setAddConsumableClientModal] = useState({
     isOpen: false
   });
+
+  // NUEVO: Estado para el modal de descarga por rango de fechas
+  const [downloadRangeModal, setDownloadRangeModal] = useState({ isOpen: false });
 
   // Upload hook
   const { startUpload } = useUploadThing('consumableClientFiles', {
@@ -1339,6 +1552,8 @@ export default function ConsumableClientPage({ params }: PageProps) {
           total: parseFloat(registro.Total) || 0,
           observaciones: registro.Observations || '',
           status: registro.Status || 0,
+          voucherType: registro.VoucherType || '',
+          establisment: registro.Establisment || '',
           archivos: registro.Archivos ? JSON.parse(registro.Archivos) : []
         })));
       } else {
@@ -1430,6 +1645,62 @@ export default function ConsumableClientPage({ params }: PageProps) {
     setAddConsumableClientModal({ isOpen: false });
   };
 
+  // NUEVO: Abrir modal de descarga por rango
+  const openDownloadRangeModal = () => {
+    setDownloadRangeModal({ isOpen: true });
+  };
+
+  const closeDownloadRangeModal = () => {
+    setDownloadRangeModal({ isOpen: false });
+  };
+
+  // NUEVO: Manejar descarga por rango de fechas
+  const handleDownloadByRange = async (startDate: string, endDate: string) => {
+    if (!projectId) {
+      showModal('Error', 'No se ha identificado el proyecto', 'error');
+      return;
+    }
+
+    try {
+      setIsDownloading(true);
+
+      const response = await fetch(
+        `/api/download/edit/CONSUMIBLES?projectId=${projectId}&startDate=${startDate}&endDate=${endDate}`
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Error al descargar el archivo');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let fileName = `CONSUMIBLES_${startDate}_${endDate}.xlsx`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="(.+)"/);
+        if (match && match[1]) fileName = match[1];
+      }
+
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      showModal('Éxito', '¡ARCHIVO DESCARGADO EXITOSAMENTE!', 'success');
+      closeDownloadRangeModal();
+    } catch (error: any) {
+      console.error('Error al descargar el archivo:', error);
+      showModal('Error', error.message || 'Error al descargar el archivo', 'error');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   const handleAddConsumableClient = async (data: ConsumableClientData) => {
     if (!projectId) {
       showModal('Error', 'No se ha identificado el proyecto asociado', 'error');
@@ -1438,6 +1709,11 @@ export default function ConsumableClientPage({ params }: PageProps) {
 
     if (!data.fecha) {
       showModal('Error', 'La fecha es requerida', 'error');
+      return;
+    }
+
+    if (!data.voucherType) {
+      showModal('Error', 'Debe seleccionar un tipo de comprobante', 'error');
       return;
     }
 
@@ -1454,7 +1730,9 @@ export default function ConsumableClientPage({ params }: PageProps) {
           concept: data.concepto,
           methodId: data.metodoPago,
           total: data.total,
-          observations: data.observaciones
+          observations: data.observaciones,
+          voucherType: data.voucherType,
+          establisment: data.establisment
         })
       });
 
@@ -1475,6 +1753,8 @@ export default function ConsumableClientPage({ params }: PageProps) {
               methodId: data.metodoPago,
               total: data.total,
               observations: data.observaciones,
+              voucherType: data.voucherType,
+              establisment: data.establisment,
               archivos: archivosSubidos
             })
           });
@@ -1552,6 +1832,8 @@ export default function ConsumableClientPage({ params }: PageProps) {
           methodId: data.metodoPago,
           total: data.total,
           observations: data.observaciones,
+          voucherType: data.voucherType,
+          establisment: data.establisment,
           archivos: data.archivos
         })
       });
@@ -1576,7 +1858,9 @@ export default function ConsumableClientPage({ params }: PageProps) {
   const filteredRegistros = registros.filter(registro =>
     registro.concepto.toLowerCase().includes(searchTerm.toLowerCase()) ||
     registro.observaciones.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    registro.metodoPago.toLowerCase().includes(searchTerm.toLowerCase())
+    registro.metodoPago.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (registro.establisment || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (registro.voucherType || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   useEffect(() => {
@@ -1638,6 +1922,14 @@ export default function ConsumableClientPage({ params }: PageProps) {
         paymentMethods={paymentMethods}
       />
 
+      {/* NUEVO: Modal de descarga por rango de fechas */}
+      <DownloadRangeModal
+        isOpen={downloadRangeModal.isOpen}
+        onClose={closeDownloadRangeModal}
+        onDownload={handleDownloadByRange}
+        isDownloading={isDownloading}
+      />
+
       {/* Modal de mensajes */}
       <Modal
         isOpen={modal.isOpen}
@@ -1695,7 +1987,7 @@ export default function ConsumableClientPage({ params }: PageProps) {
                 </div>
                 <input
                   type="text"
-                  placeholder="Buscar por concepto, observaciones..."
+                  placeholder="Buscar por concepto, establecimiento, observaciones..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(normalizarMayusculas(e.target.value))}
                   className="w-full pl-10 px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
@@ -1720,6 +2012,16 @@ export default function ConsumableClientPage({ params }: PageProps) {
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               ACTUALIZAR
+            </button>
+
+            {/* BOTÓN MODIFICADO: Abre el modal de descarga por rango */}
+            <button
+              onClick={openDownloadRangeModal}
+              disabled={isDownloading}
+              className="px-4 py-2.5 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center whitespace-nowrap disabled:opacity-50"
+              title="Descargar plantilla CONSUMIBLES por rango de fechas"
+            >
+              DESCARGAR EXCEL
             </button>
 
             <button
@@ -1754,6 +2056,8 @@ export default function ConsumableClientPage({ params }: PageProps) {
                           <tr>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FECHA</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">CONCEPTO</th>
+                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ESTABLECIMIENTO</th>
+                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">COMPROBANTE</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">PAGO</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">TOTAL</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ARCHIVOS</th>
@@ -1776,6 +2080,20 @@ export default function ConsumableClientPage({ params }: PageProps) {
                                   <div className="text-sm font-medium text-gray-800 uppercase max-w-[180px] truncate" title={registro.concepto}>
                                     {registro.concepto}
                                   </div>
+                                </td>
+                                <td className="py-3 px-4">
+                                  <div className="text-sm text-gray-800 uppercase max-w-[180px] truncate" title={registro.establisment}>
+                                    {registro.establisment || '-'}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4">
+                                  {registro.voucherType ? (
+                                    <span className="px-2 py-1 text-xs font-bold rounded bg-blue-100 text-blue-800 uppercase">
+                                      {registro.voucherType}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">-</span>
+                                  )}
                                 </td>
                                 <td className="py-3 px-4">
                                   <div className="text-sm text-gray-800 uppercase">{paymentMethodName}</div>
