@@ -9,6 +9,17 @@ import { useState, useRef, useEffect, useCallback, ChangeEvent, FormEvent, use }
 import { useRouter } from 'next/navigation';
 import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Image as ImageIcon, FileSpreadsheet, Upload } from 'lucide-react';
 
+// ============ CONSTANTES ============
+
+const VOUCHER_TYPES = ['FACTURA', 'TICKET', 'S/C'] as const;
+type VoucherType = typeof VOUCHER_TYPES[number];
+
+// ✅ NUEVO: Tipos de combustible
+const FUEL_TYPES = [
+  { value: 1, label: 'DIESEL' },
+  { value: 2, label: 'GAS LP' }
+] as const;
+
 // ============ INTERFACES ============
 
 interface UserData {
@@ -30,6 +41,9 @@ interface FuelData {
   total: number;
   metodoPago: string;
   observaciones: string;
+  voucherType: string;
+  establisment: string;
+  fuelType: string; // ✅ NUEVO: valor como string (para el <select>) "1" o "2"
   archivos: File[];
 }
 
@@ -42,6 +56,9 @@ interface RegistroCombustible {
   metodoPago: string;
   observaciones: string;
   status: number;
+  voucherType: string;
+  establisment: string;
+  fuelType: number; // ✅ NUEVO
   archivos: ArchivoAdjunto[];
 }
 
@@ -69,7 +86,6 @@ const normalizarMayusculas = (texto: string): string => {
   return texto.toUpperCase();
 };
 
-// Función para calcular total TRUNCANDO a 2 decimales
 const calculateTotal = (litros: number, costoPorLitro: number): number => {
   const total = litros * costoPorLitro;
   return Math.floor(total * 100) / 100;
@@ -99,6 +115,14 @@ const formatCurrencyNumber = (amount: number): string => {
   } catch {
     return `$${amount.toFixed(2)}`;
   }
+};
+
+// ✅ NUEVO: Helper para obtener el label del tipo de combustible
+const getFuelTypeLabel = (fuelType: number | string | null | undefined): string => {
+  if (fuelType === null || fuelType === undefined || fuelType === '') return '-';
+  const numValue = typeof fuelType === 'string' ? parseInt(fuelType) : fuelType;
+  const found = FUEL_TYPES.find(f => f.value === numValue);
+  return found ? found.label : '-';
 };
 
 // ============ COMPONENTES DE MODALES ============
@@ -227,6 +251,133 @@ const DeleteModal: React.FC<DeleteModalProps> = ({ isOpen, onClose, onConfirm, r
   );
 };
 
+// ============ MODAL DE DESCARGA POR RANGO DE FECHAS ============
+
+interface DownloadRangeModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onDownload: (startDate: string, endDate: string) => Promise<void>;
+  isDownloading: boolean;
+}
+
+const DownloadRangeModal: React.FC<DownloadRangeModalProps> = ({ isOpen, onClose, onDownload, isDownloading }) => {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setStartDate('');
+      setEndDate('');
+      setError('');
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!startDate || !endDate) {
+      setError('Debe seleccionar ambas fechas');
+      return;
+    }
+
+    if (new Date(startDate) > new Date(endDate)) {
+      setError('La fecha inicial no puede ser mayor que la fecha final');
+      return;
+    }
+
+    await onDownload(startDate, endDate);
+  };
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-[9999] p-4 bg-black/70">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-fade-in relative z-[10000]">
+        <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center">
+              DESCARGAR EXCEL
+            </h2>
+            <p className="text-sm text-gray-600 mt-2 leading-5">
+              Seleccione el rango de fechas.
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6">
+          {error && (
+            <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+              <div className="flex items-center">
+                <AlertCircle className="h-4 w-4 text-red-600 mr-2 flex-shrink-0" />
+                <p className="text-xs font-medium text-red-700">{error}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                FECHA INICIAL *
+              </label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                FECHA FINAL *
+              </label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                min={startDate || undefined}
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-gray-300 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isDownloading}
+              className="bg-gray-200 text-black font-bold py-2.5 px-6 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
+            >
+              CANCELAR
+            </button>
+            <button
+              type="submit"
+              disabled={isDownloading}
+              className="px-6 py-2.5 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center min-w-[150px] disabled:opacity-50"
+            >
+              {isDownloading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  DESCARGANDO...
+                </>
+              ) : (
+                <>DESCARGAR</>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 // ============ COMPONENTE DE ICONO DE ARCHIVO ============
 
 function FileIcon({ type, size = 5 }: { type: string; size?: number }) {
@@ -242,6 +393,66 @@ function FileIcon({ type, size = 5 }: { type: string; size?: number }) {
     return <FileText className={`${iconClass} text-gray-500`} />;
   }
 }
+
+// ============ SELECT TIPO COMPROBANTE ============
+
+interface VoucherSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+}
+
+const VoucherSelect: React.FC<VoucherSelectProps> = ({ value, onChange }) => {
+  return (
+    <div>
+      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+        TIPO DE COMPROBANTE *
+      </label>
+      <select
+        name="voucherType"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+        required
+      >
+        <option value="">SELECCIONA UN TIPO</option>
+        {VOUCHER_TYPES.map((t) => (
+          <option key={t} value={t}>{t}</option>
+        ))}
+      </select>
+    </div>
+  );
+};
+
+// ============ SELECT TIPO DE COMBUSTIBLE (NUEVO) ============
+
+interface FuelTypeSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+}
+
+const FuelTypeSelect: React.FC<FuelTypeSelectProps> = ({ value, onChange }) => {
+  return (
+    <div>
+      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+        TIPO DE COMBUSTIBLE *
+      </label>
+      <select
+        name="fuelType"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+        required
+      >
+        <option value="">SELECCIONA UN TIPO</option>
+        {FUEL_TYPES.map((fuel) => (
+          <option key={fuel.value} value={fuel.value.toString()}>
+            {fuel.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+};
 
 // ============ MODAL DE EDICIÓN ============
 
@@ -321,7 +532,12 @@ const EditModal: React.FC<EditModalProps> = ({
 
   useEffect(() => {
     if (registro) {
-      setEditData(registro);
+      setEditData({
+        ...registro,
+        voucherType: registro.voucherType || '',
+        establisment: registro.establisment || '',
+        fuelType: registro.fuelType ?? 0 // ✅ NUEVO
+      });
       setArchivos([]);
       setFilesToDelete([]);
       if (fileInputRef.current) {
@@ -362,7 +578,13 @@ const EditModal: React.FC<EditModalProps> = ({
       });
     } else if (name === 'total') {
       return;
-    } else if (name === 'observaciones') {
+    } else if (name === 'fuelType') {
+      // ✅ NUEVO: convertir a número
+      setEditData(prev => ({
+        ...prev!,
+        fuelType: value ? parseInt(value) : 0
+      }));
+    } else if (name === 'observaciones' || name === 'establisment') {
       setEditData(prev => ({
         ...prev!,
         [name]: normalizarMayusculas(value)
@@ -581,6 +803,27 @@ const EditModal: React.FC<EditModalProps> = ({
                     />
                   </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      ESTABLECIMIENTO *
+                    </label>
+                    <input
+                      type="text"
+                      name="establisment"
+                      value={editData.establisment || ''}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                    />
+                  </div>
+
+                  <FuelTypeSelect
+                    value={editData.fuelType ? editData.fuelType.toString() : ''}
+                    onChange={(v) => setEditData({ ...editData, fuelType: v ? parseInt(v) : 0 })}
+                  />
+                </div>
               </div>
 
               {/* Detalles de pago */}
@@ -588,7 +831,7 @@ const EditModal: React.FC<EditModalProps> = ({
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2 flex items-center">
                   DETALLES DE PAGO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       TOTAL ($)
@@ -624,31 +867,35 @@ const EditModal: React.FC<EditModalProps> = ({
                     </select>
                   </div>
 
-                  {/* Subir nuevos archivos */}
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                  ADJUNTAR ARCHIVOS (MÁX. 3)
-                </label>
-                <div className="relative">
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx"
-                    multiple
-                    onChange={handleFileChange}
-                    ref={fileInputRef}
-                    className="hidden"
+                  <VoucherSelect
+                    value={editData.voucherType || ''}
+                    onChange={(v) => setEditData({ ...editData, voucherType: v })}
                   />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-lg hover:border-[#3a6ea5] transition-colors flex items-center justify-center text-gray-500 hover:text-[#3a6ea5] text-sm"
-                  >
-                    <Upload className="h-5 w-5 mr-2" />
-                    SELECCIONAR 
-                  </button>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      ADJUNTAR ARCHIVOS (MÁX. 3)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx"
+                        multiple
+                        onChange={handleFileChange}
+                        ref={fileInputRef}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-lg hover:border-[#3a6ea5] transition-colors flex items-center justify-center text-gray-500 hover:text-[#3a6ea5] text-sm"
+                      >
+                        <Upload className="h-5 w-5 mr-2" />
+                        SELECCIONAR 
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
                 {archivos.length > 0 && (
                   <div className="mt-3 space-y-2">
@@ -784,6 +1031,9 @@ const AddFuelModal: React.FC<AddFuelModalProps> = ({
     total: 0,
     metodoPago: '',
     observaciones: '',
+    voucherType: '',
+    establisment: '',
+    fuelType: '', // ✅ NUEVO
     archivos: []
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -847,6 +1097,9 @@ const AddFuelModal: React.FC<AddFuelModalProps> = ({
       total: 0,
       metodoPago: paymentMethods.length > 0 ? paymentMethods[0].methodId.toString() : '',
       observaciones: '',
+      voucherType: '',
+      establisment: '',
+      fuelType: '',
       archivos: []
     });
     if (fileInputRef.current) {
@@ -872,7 +1125,7 @@ const AddFuelModal: React.FC<AddFuelModalProps> = ({
           total: total
         };
       });
-    } else if (name === 'observaciones') {
+    } else if (name === 'observaciones' || name === 'establisment') {
       setFuelData(prev => ({
         ...prev,
         [name]: normalizarMayusculas(value)
@@ -947,7 +1200,7 @@ const AddFuelModal: React.FC<AddFuelModalProps> = ({
           <div className="p-6 pb-4 border-b border-gray-300 flex items-center justify-between sticky top-0 bg-white z-10">
             <div>
               <h2 className="text-lg font-bold text-gray-900 tracking-tight">NUEVO COMBUSTIBLE (CLIENTE)</h2>
-              <p className="text-gray-600 mt-1 text-sm">Complete la información del combustible (cliente).</p>
+              <p className="text-gray-600 mt-1 text-sm">Complete la información del registro.</p>
             </div>
             <button
               onClick={handleClose}
@@ -1009,6 +1262,27 @@ const AddFuelModal: React.FC<AddFuelModalProps> = ({
                     />
                   </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                      ESTABLECIMIENTO *
+                    </label>
+                    <input
+                      type="text"
+                      name="establisment"
+                      value={fuelData.establisment}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                      required
+                    />
+                  </div>
+
+                  <FuelTypeSelect
+                    value={fuelData.fuelType}
+                    onChange={(v) => setFuelData(prev => ({ ...prev, fuelType: v }))}
+                  />
+                </div>
               </div>
 
               {/* Detalles de pago */}
@@ -1016,7 +1290,7 @@ const AddFuelModal: React.FC<AddFuelModalProps> = ({
                 <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase border-b border-gray-200 pb-2 flex items-center">
                   DETALLES DE PAGO
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                       TOTAL ($)
@@ -1051,6 +1325,11 @@ const AddFuelModal: React.FC<AddFuelModalProps> = ({
                       ))}
                     </select>
                   </div>
+
+                  <VoucherSelect
+                    value={fuelData.voucherType}
+                    onChange={(v) => setFuelData(prev => ({ ...prev, voucherType: v }))}
+                  />
 
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
@@ -1172,6 +1451,7 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Datos
   const [registros, setRegistros] = useState<RegistroCombustible[]>([]);
@@ -1216,6 +1496,8 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
   const [addFuelModal, setAddFuelModal] = useState({
     isOpen: false
   });
+
+  const [downloadRangeModal, setDownloadRangeModal] = useState({ isOpen: false });
 
   // Upload hook
   const { startUpload } = useUploadThing('fuelClientFiles', {
@@ -1368,9 +1650,12 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
           costoPorLitro: parseFloat(registro.LitersCost) || 0,
           total: typeof registro.Total === 'number' ? parseFloat(registro.Total.toFixed(2)) :
             typeof registro.Total === 'string' ? parseFloat(parseFloat(registro.Total).toFixed(2)) : 0,
-          metodoPago: registro.MethodID?.toString() || registro.PaymentMethod,
+          metodoPago: registro.MethodID?.toString() || '',
           observaciones: registro.Observations || '',
           status: registro.Status || 0,
+          voucherType: registro.VoucherType || '',
+          establisment: registro.Establisment || '',
+          fuelType: registro.FuelType ?? 0, 
           archivos: registro.Archivos ? JSON.parse(registro.Archivos) : []
         })));
       } else {
@@ -1462,6 +1747,64 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
     setAddFuelModal({ isOpen: false });
   };
 
+  const openDownloadRangeModal = () => {
+    setDownloadRangeModal({ isOpen: true });
+  };
+
+  const closeDownloadRangeModal = () => {
+    setDownloadRangeModal({ isOpen: false });
+  };
+
+  // ============ HANDLER: DESCARGAR EXCEL ============
+
+  const handleDownloadByRange = async (startDate: string, endDate: string) => {
+    if (!projectId) {
+      showModal('Error', 'No se ha identificado el proyecto', 'error');
+      return;
+    }
+
+    try {
+      setIsDownloading(true);
+
+      const response = await fetch(
+        `/api/download/edit/COMBUSTIBLE_CLIENTE?projectId=${projectId}&startDate=${startDate}&endDate=${endDate}`
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Error al descargar el archivo');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let fileName = `COMBUSTIBLE_CLIENTE_${startDate}_${endDate}.xlsx`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="(.+)"/);
+        if (match && match[1]) fileName = match[1];
+      }
+
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      showModal('Éxito', '¡ARCHIVO DESCARGADO EXITOSAMENTE!', 'success');
+      closeDownloadRangeModal();
+    } catch (error: any) {
+      console.error('Error al descargar el archivo:', error);
+      showModal('Error', error.message || 'Error al descargar el archivo', 'error');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  // ============ HANDLER: CREAR REGISTRO ============
+
   const handleAddFuel = async (data: FuelData) => {
     if (!projectId) {
       showModal('Error', 'No se ha identificado el proyecto asociado', 'error');
@@ -1470,6 +1813,21 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
 
     if (!data.fecha) {
       showModal('Error', 'La fecha es requerida', 'error');
+      return;
+    }
+
+    if (!data.voucherType) {
+      showModal('Error', 'Debe seleccionar un tipo de comprobante', 'error');
+      return;
+    }
+
+    if (!data.establisment) {
+      showModal('Error', 'El establecimiento es requerido', 'error');
+      return;
+    }
+
+    if (!data.fuelType) {
+      showModal('Error', 'Debe seleccionar un tipo de combustible', 'error');
       return;
     }
 
@@ -1483,6 +1841,7 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
 
       const fechaFormateada = data.fecha.split('T')[0];
 
+      // Subir archivos primero
       let archivosSubidos: ArchivoAdjunto[] = [];
       if (data.archivos.length > 0) {
         archivosSubidos = await uploadFiles(data.archivos);
@@ -1499,16 +1858,15 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
           total: data.total,
           methodId: data.metodoPago,
           observations: data.observaciones,
+          voucherType: data.voucherType,
+          establisment: data.establisment,
+          fuelType: parseInt(data.fuelType), 
           archivos: archivosSubidos
         })
       });
 
       if (response.ok) {
-        const newFuel = await response.json();
-        const fuelId = newFuel.id;
-
         await fetchRegistros();
-
         showModal('Éxito', '¡REGISTRO DE COMBUSTIBLE DE CLIENTE GUARDADO EXITOSAMENTE!', 'success');
         closeAddFuelModal();
       } else {
@@ -1562,6 +1920,8 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
     }
   };
 
+  // ============ HANDLER: ACTUALIZAR REGISTRO ============
+
   const handleUpdate = async (data: RegistroCombustible) => {
     setEditModal(prev => ({ ...prev, isSaving: true }));
 
@@ -1580,6 +1940,9 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
           total: data.total,
           methodId: data.metodoPago,
           observations: data.observaciones,
+          voucherType: data.voucherType,
+          establisment: data.establisment,
+          fuelType: data.fuelType, 
           archivos: data.archivos
         })
       });
@@ -1605,12 +1968,18 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
     const observaciones = (registro.observaciones || '').toLowerCase();
     const metodoPago = (registro.metodoPago || '').toLowerCase();
     const fecha = formatDate(registro.fecha).toLowerCase();
+    const establisment = (registro.establisment || '').toLowerCase();
+    const voucherType = (registro.voucherType || '').toLowerCase();
+    const fuelTypeLabel = getFuelTypeLabel(registro.fuelType).toLowerCase();
     const term = searchTerm.toLowerCase();
 
     return (
       observaciones.includes(term) ||
       metodoPago.includes(term) ||
-      fecha.includes(term)
+      fecha.includes(term) ||
+      establisment.includes(term) ||
+      voucherType.includes(term) ||
+      fuelTypeLabel.includes(term)
     );
   });
 
@@ -1626,7 +1995,6 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
 
   // ============ RENDER ============
 
-  // Loading de sesión
   if (sessionLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
@@ -1638,14 +2006,13 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
     );
   }
 
-  // Si no hay usuario
   if (!user) {
     return null;
   }
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <AppHeader title="GESTIÓN DE COMBUSTIBLES - CLIENTE" />
+      <AppHeader title="PANEL DE ADMINISTRACIÓN DE PROYECTOS" />
 
       {/* Modal de confirmación para eliminar */}
       <DeleteModal
@@ -1673,6 +2040,14 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
         onSave={handleAddFuel}
         isSubmitting={isSubmitting}
         paymentMethods={paymentMethods}
+      />
+
+      {/* Modal de descarga por rango de fechas */}
+      <DownloadRangeModal
+        isOpen={downloadRangeModal.isOpen}
+        onClose={closeDownloadRangeModal}
+        onDownload={handleDownloadByRange}
+        isDownloading={isDownloading}
       />
 
       {/* Modal de mensajes */}
@@ -1760,6 +2135,15 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
             </button>
 
             <button
+              onClick={openDownloadRangeModal}
+              disabled={isDownloading}
+              className="px-4 py-2.5 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center whitespace-nowrap disabled:opacity-50"
+              title="Descargar Excel"
+            >
+              DESCARGAR EXCEL
+            </button>
+
+            <button
               onClick={openAddFuelModal}
               className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap"
             >
@@ -1793,6 +2177,9 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">LITROS</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">COSTO/L</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">TOTAL</th>
+                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">TIPO COMBUSTIBLE</th>
+                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ESTABLECIMIENTO</th>
+                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">COMPROBANTE</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">PAGO</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ARCHIVOS</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">OBSERVACIONES</th>
@@ -1821,6 +2208,29 @@ export default function LocalTransportationFuelClientPage({ params }: PageProps)
                                 </td>
                                 <td className="py-3 px-4 text-sm text-gray-800 font-medium">
                                   {formatCurrencyNumber(registro.total)}
+                                </td>
+                                <td className="py-3 px-4">
+                                  {registro.fuelType ? (
+                                    <span className="px-2 py-1 text-xs font-bold rounded bg-purple-100 text-purple-800 uppercase">
+                                      {getFuelTypeLabel(registro.fuelType)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">-</span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-4">
+                                  <div className="text-sm text-gray-800 uppercase max-w-[180px] truncate" title={registro.establisment}>
+                                    {registro.establisment || '-'}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4">
+                                  {registro.voucherType ? (
+                                    <span className="px-2 py-1 text-xs font-bold rounded bg-blue-100 text-blue-800 uppercase">
+                                      {registro.voucherType}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">-</span>
+                                  )}
                                 </td>
                                 <td className="py-3 px-4">
                                   <div className="text-sm text-gray-800 uppercase">{paymentMethodName}</div>
