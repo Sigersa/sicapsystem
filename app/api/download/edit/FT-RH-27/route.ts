@@ -1,10 +1,21 @@
-// app/api/download/edit/FT-RH-27/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import path from "path";
 import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
 import fs from "fs";
+
+// Función auxiliar para obtener el texto de la regla según la descripción
+function getRuleText(description: string): string {
+  const upper = (description || '').toUpperCase().trim();
+  if (upper === 'RETARDO') {
+    return 'ARTICULO 7. Lo permitido seria un retardo de 5 minutos por semana que no aplicaría descuento, si excede de esto, el trabajador ingresará a laborar remunerando una hora laboral en la semana que se este generando el retardo por segunda ocasión, lo cual aplica cuando el horario de retardo sea antes de las 08:20 hrs o 15:15 hrs. Si el horario de ingreso es antes de las 09:00 hrs o 16:00 hrs, el trabajador debera de remunerar media jornada laboral en la misma semana que este generando el retardo (solo por unica ocasión). En el tercer retardo, el trabajador debera ser regresado a su casa y se contara como falta injustificada. En el caso de que el trabajador decida no laborar se tomará como falta injustificada. El registro injusttificado de salida antes de las 14:00 hrs para hora de descanso o de las 18:00 hrs para salida por termino de jornada laboral se sancionará con un 50% de remuneración diaria.';
+  }
+  if (upper === 'FALTA') {
+    return 'a) Falta injustificada por inasistencia, sanción económica equivalente al número de días no laborados.\na) Más de tres faltas injustificadas por inasistencia y por lo indicado el artículo 14 y 51 en un periodo de treinta días dará lugar a la rescisión contractual, sin responsabilidad para la Empresa.';
+  }
+  return 'NO ESPECIFICADO';
+}
 
 export async function GET(request: NextRequest) {
   let connection;
@@ -47,7 +58,7 @@ export async function GET(request: NextRequest) {
 
     connection = await getConnection();
 
-    // Obtener información de la incidencia y del empleado
+    // Obtener información del lote y del empleado
     const [batchRows] = await connection.execute<any[]>(
      `SELECT 
                 eib.BatchID,
@@ -78,7 +89,6 @@ export async function GET(request: NextRequest) {
             throw new Error(`Batch con ID ${batchId} no encontrado`);
         }
 
-
         const batch = batchRows[0];
 
          // Obtener todas las incidencias del lote
@@ -86,8 +96,7 @@ export async function GET(request: NextRequest) {
             `SELECT 
                 IncidenceNumber,
                 IncidenceDate,
-                Description,
-                Rule
+                Description
             FROM employee_incidence_details 
             WHERE BatchID = ?
             ORDER BY IncidenceNumber`,
@@ -137,26 +146,26 @@ export async function GET(request: NextRequest) {
       batch.LastName || ''
     ].filter(part => part && part.trim() !== '').join(' ').trim() || 'NO ESPECIFICADO';
 
-       ws.getCell('A6').value = batch.LastName || 'NO ESPECIFICADO';
-        ws.getCell('E6').value = batch.MiddleName || 'NO ESPECIFICADO';
-        ws.getCell('H6').value = batch.FirstName || 'NO ESPECIFICADO';
-        ws.getCell('H6').value = batch.FirstName || 'NO ESPECIFICADO';
-        ws.getCell('A9').value = formatDate(batch.StartDate);
-        ws.getCell('C9').value = batch.Position || 'NO ESPECIFICADO';
-        ws.getCell('G9').value = batch.NameProject || 'N/A';
-        ws.getCell('I9').value = batch.Area || 'N/A';
-        ws.getCell('E20').value = employeeName || 'NO ESPECIFICADO';
+    ws.getCell('A6').value = batch.LastName || 'NO ESPECIFICADO';
+    ws.getCell('E6').value = batch.MiddleName || 'NO ESPECIFICADO';
+    ws.getCell('H6').value = batch.FirstName || 'NO ESPECIFICADO';
+    ws.getCell('A9').value = formatDate(batch.StartDate);
+    ws.getCell('C9').value = batch.Position || 'NO ESPECIFICADO';
+    ws.getCell('G9').value = batch.NameProject || 'N/A';
+    ws.getCell('I9').value = batch.Area || 'N/A';
+    ws.getCell('E20').value = employeeName || 'NO ESPECIFICADO';
 
-        // Llenar cada incidencia en filas consecutivas (12, 13, 14, 15)
-        incidenceRows.forEach((inc, index) => {
-            const rowNumber = 12 + index; // Fila 12, 13, 14, 15
-            ws.getCell(`A${rowNumber}`).value = inc.IncidenceNumber || 'NO ESPECIFICADO';
-            ws.getCell(`B${rowNumber}`).value = formatDate(inc.IncidenceDate);
-            ws.getCell(`D${rowNumber}`).value = inc.Description || 'NO ESPECIFICADO';
-            ws.getCell(`H${rowNumber}`).value = inc.Rule || 'NO ESPECIFICADO';
-        });
-        
-       const buffer = await workbook.xlsx.writeBuffer();
+    // Llenar cada incidencia en filas consecutivas (12, 13, 14, 15)
+    incidenceRows.forEach((inc, index) => {
+        const rowNumber = 12 + index; // Fila 12, 13, 14, 15
+        ws.getCell(`A${rowNumber}`).value = inc.IncidenceNumber || 'NO ESPECIFICADO';
+        ws.getCell(`B${rowNumber}`).value = formatDate(inc.IncidenceDate);
+        ws.getCell(`D${rowNumber}`).value = inc.Description || 'NO ESPECIFICADO';
+        // Regla generada automáticamente según la descripción
+        ws.getCell(`G${rowNumber}`).value = getRuleText(inc.Description);
+    });
+    
+    const buffer = await workbook.xlsx.writeBuffer();
 
     const fileName = `FT-RH-27.xlsx`;
 
