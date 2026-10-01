@@ -1,5 +1,3 @@
-//app/api/download/pdf/FT-RH-27/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import path from "path";
@@ -10,6 +8,18 @@ import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
 
 const convertapi = new ConvertAPI(process.env.CONVERTAPI_SECRET!);
+
+// Función auxiliar para obtener el texto de la regla según la descripción
+function getRuleText(description: string): string {
+  const upper = (description || '').toUpperCase().trim();
+  if (upper === 'RETARDO') {
+    return 'ARTICULO 7. Lo permitido seria un retardo de 5 minutos por semana que no aplicaría descuento, si excede de esto, el trabajador ingresará a laborar remunerando una hora laboral en la semana que se este generando el retardo por segunda ocasión, lo cual aplica cuando el horario de retardo sea antes de las 08:20 hrs o 15:15 hrs. Si el horario de ingreso es antes de las 09:00 hrs o 16:00 hrs, el trabajador debera de remunerar media jornada laboral en la misma semana que este generando el retardo (solo por unica ocasión). En el tercer retardo, el trabajador debera ser regresado a su casa y se contara como falta injustificada. En el caso de que el trabajador decida no laborar se tomará como falta injustificada. El registro injusttificado de salida antes de las 14:00 hrs para hora de descanso o de las 18:00 hrs para salida por termino de jornada laboral se sancionará con un 50% de remuneración diaria.';
+  }
+  if (upper === 'FALTA') {
+    return 'a) Falta injustificada por inasistencia, sanción económica equivalente al número de días no laborados.\na) Más de tres faltas injustificadas por inasistencia y por lo indicado el artículo 14 y 51 en un periodo de treinta días dará lugar a la rescisión contractual, sin responsabilidad para la Empresa.';
+  }
+  return 'NO ESPECIFICADO';
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -70,7 +80,6 @@ try {
         ei.EmployeeID,
         ei.InicidenceNumber,
         ei.Description,
-        ei.Rule,
         ei.FileURL,
         ei.IncidenceDate,
         bp.Area,
@@ -159,7 +168,8 @@ try {
     ws.getCell('A12').value = inc.InicidenceNumber || 'NO ESPECIFICADO';
     ws.getCell('B12').value = formatDate(inc.IncidenceDate);
     ws.getCell('D12').value = inc.Description || 'NO ESPECIFICADO';
-    ws.getCell('H12').value = inc.Rule || 'NO ESPECIFICADO';
+    // Regla generada automáticamente según la descripción
+    ws.getCell('G12').value = getRuleText(inc.Description);
     ws.getCell('E17').value = employeeName || 'NO ESPECIFICADO';
     ws.getCell('G9').value = inc.NameProject || 'N/A';
     ws.getCell('I9').value = inc.Area || 'N/A';
