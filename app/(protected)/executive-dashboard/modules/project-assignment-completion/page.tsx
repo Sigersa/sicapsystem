@@ -5,7 +5,7 @@ import AppHeader from '@/components/header/4/4.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/4';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
-import { X, CheckCircle, AlertCircle, Search, Plus, Edit, Trash2 } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, Search, Plus, Edit, Trash2, FileText } from 'lucide-react';
 
 interface UserData {
   id: number;
@@ -51,14 +51,12 @@ interface Employee {
   Status: number;
 }
 
-// Cliente desde la API (viene en minúscula)
 interface ClientFromAPI {
   clientId: number;
   clientName: string;
   businessName: string;
 }
 
-// Cliente normalizado para el frontend
 interface Client {
   ClientID: number;
   ClientName: string;
@@ -79,7 +77,8 @@ interface Area {
   ClientID: number;
 }
 
-// Componente Modal mejorado
+// ============ MODAL GENÉRICO ============
+
 const Modal = ({ isOpen, onClose, title, message, type = 'info' }: {
   isOpen: boolean;
   onClose: () => void;
@@ -133,7 +132,8 @@ const Modal = ({ isOpen, onClose, title, message, type = 'info' }: {
   );
 };
 
-// Modal de confirmación para eliminar
+// ============ MODAL DE ELIMINACIÓN ============
+
 const DeleteModal = ({ isOpen, onClose, onConfirm, project }: {
   isOpen: boolean;
   onClose: () => void;
@@ -201,7 +201,8 @@ const DeleteModal = ({ isOpen, onClose, onConfirm, project }: {
   );
 };
 
-// Modal de confirmación para concluir proyecto
+// ============ MODAL DE CONCLUSIÓN ============
+
 const CompleteModal = ({ isOpen, onClose, onConfirm, project }: {
   isOpen: boolean;
   onClose: () => void;
@@ -269,7 +270,8 @@ const CompleteModal = ({ isOpen, onClose, onConfirm, project }: {
   );
 };
 
-// Modal de Asignación de Proyecto
+// ============ MODAL ASIGNAR PROYECTO ============
+
 const AssignProjectModal = ({ isOpen, onClose, onSave, users, employees, clients, areas, isSubmitting }: {
   isOpen: boolean;
   onClose: () => void;
@@ -292,7 +294,8 @@ const AssignProjectModal = ({ isOpen, onClose, onSave, users, employees, clients
     ExternalProjectManagerPhone: '',
     AreaID: '',
     Status: '0',
-    StartDate: new Date().toISOString().split('T')[0]
+    StartDate: new Date().toISOString().split('T')[0],
+    EndDate: ''
   });
 
   const [localAreas, setLocalAreas] = useState<Area[]>([]);
@@ -426,7 +429,8 @@ const AssignProjectModal = ({ isOpen, onClose, onSave, users, employees, clients
       ExternalProjectManagerPhone: newProject.ExternalProjectManagerPhone || '',
       AreaID: newProject.ClientID === '1' ? (newProject.AreaID ? parseInt(newProject.AreaID) : null) : null,
       Status: 0,
-      StartDate: newProject.StartDate || new Date().toISOString().split('T')[0]
+      StartDate: newProject.StartDate || new Date().toISOString().split('T')[0],
+      EndDate: newProject.EndDate || null
     };
 
     await onSave(projectData);
@@ -445,7 +449,8 @@ const AssignProjectModal = ({ isOpen, onClose, onSave, users, employees, clients
       ExternalProjectManagerPhone: '',
       AreaID: '',
       Status: '0',
-      StartDate: new Date().toISOString().split('T')[0]
+      StartDate: new Date().toISOString().split('T')[0],
+      EndDate: ''
     });
     setLocalAreas([]);
     onClose();
@@ -547,6 +552,23 @@ const AssignProjectModal = ({ isOpen, onClose, onSave, users, employees, clients
                     className="block w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label htmlFor="EndDate" className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    Fecha de Término
+                  </label>
+                  <input
+                    type="date"
+                    id="EndDate"
+                    name="EndDate"
+                    value={newProject.EndDate}
+                    onChange={handleInputChange}
+                    className="block w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  />
+                </div>
+                <div></div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -730,7 +752,8 @@ const AssignProjectModal = ({ isOpen, onClose, onSave, users, employees, clients
   );
 };
 
-// Modal de Edición de Proyecto
+// ============ MODAL EDITAR PROYECTO ============
+
 const EditProjectModal = ({ isOpen, onClose, project, onSave, users, employees, clients, areas, isSaving }: {
   isOpen: boolean;
   onClose: () => void;
@@ -910,7 +933,9 @@ const EditProjectModal = ({ isOpen, onClose, project, onSave, users, employees, 
       ExternalProjectManagerName: editData.ExternalProjectManagerName || '',
       ExternalProjectManagerEmail: editData.ExternalProjectManagerEmail || '',
       ExternalProjectManagerPhone: editData.ExternalProjectManagerPhone || '',
-      AreaID: editData.ClientID === 1 ? (editData.AreaID ?? null) : null
+      AreaID: editData.ClientID === 1 ? (editData.AreaID ?? null) : null,
+      StartDate: editData.StartDate || null,
+      EndDate: editData.EndDate || null
     };
 
     await onSave(projectData);
@@ -987,6 +1012,36 @@ const EditProjectModal = ({ isOpen, onClose, project, onSave, users, employees, 
                       <option value="" disabled>No hay usuarios disponibles</option>
                     )}
                   </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label htmlFor="edit-StartDate" className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    Fecha de Inicio
+                  </label>
+                  <input
+                    type="date"
+                    id="edit-StartDate"
+                    name="StartDate"
+                    value={editData.StartDate || ''}
+                    onChange={handleInputChange}
+                    className="block w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="edit-EndDate" className="block text-xs font-bold text-gray-700 mb-2 uppercase">
+                    Fecha de Término
+                  </label>
+                  <input
+                    type="date"
+                    id="edit-EndDate"
+                    name="EndDate"
+                    value={editData.EndDate || ''}
+                    onChange={handleInputChange}
+                    className="block w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                  />
                 </div>
               </div>
 
@@ -1171,6 +1226,8 @@ const EditProjectModal = ({ isOpen, onClose, project, onSave, users, employees, 
   );
 };
 
+// ============ COMPONENTE PRINCIPAL ============
+
 export default function ProjectsPage() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
@@ -1306,6 +1363,21 @@ export default function ProjectsPage() {
     }).format(value);
   };
 
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return 'No definida';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'No definida';
+      return date.toLocaleDateString('es-MX', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+    } catch {
+      return 'No definida';
+    }
+  };
+
   const getAreaName = (areaId: number | null | undefined) => {
     if (!areaId) return 'No asignada';
     const area = areas.find(a => a.AreaID === areaId);
@@ -1405,7 +1477,6 @@ export default function ProjectsPage() {
       const response = await fetch('/api/executive-manager/clients');
       if (response.ok) {
         const data = await response.json();
-        // Normalizar los datos de clientes (vienen en minúscula desde la API)
         const normalizedClients = Array.isArray(data) ? data.map((client: any) => ({
           ClientID: client.clientId || client.ClientID || client.id,
           ClientName: client.clientName || client.ClientName || client.name || 'Cliente sin nombre',
@@ -1685,160 +1756,164 @@ export default function ProjectsPage() {
               </div>
 
               {/* Tabla de Proyectos */}
-              <div className="overflow-x-auto">
-                {tableLoading ? (
-                  <div className="flex justify-center items-center py-12">
-                    <div className="flex flex-col items-center space-y-4">
-                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#3a6ea5]"></div>
-                      <p className="text-sm text-gray-600 font-medium">Cargando proyectos...</p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {filteredProjects.length > 0 ? (
-                      <div className="overflow-hidden">
-                        <table className="w-full bg-white text-sm">
-                          <thead className="bg-gray-100">
-                            <tr>
-                              <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider border-b border-gray-300 border-r border-gray-300">
-                                Nombre
-                              </th>
-                              <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider border-b border-gray-300 border-r border-gray-300">
-                                Estado
-                              </th>
-                              <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider border-b border-gray-300 border-r border-gray-300">
-                                Administrador (Interno)
-                              </th>
-                              <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider border-b border-gray-300 border-r border-gray-300">
-                                Project Manager (Externo)
-                              </th>
-                              <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider border-b border-gray-300 border-r border-gray-300">
-                                Cliente
-                              </th>
-                              <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider border-b border-gray-300 border-r border-gray-300">
-                                Tipo
-                              </th>
-                              <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider border-b border-gray-300 border-r border-gray-300">
-                                Presupuesto
-                              </th>
-                              <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider border-b border-gray-300 border-r border-gray-300">
-                                Área
-                              </th>
-                              <th className="px-4 py-3 text-center font-bold text-gray-700 uppercase tracking-wider border-b border-gray-300">
-                                Acciones
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-200">
-                            {filteredProjects.map((project, index) => {
-                              const user = users.find(u => u.EmployeeID === project.AdminProjectID);
-                              const client = clients.find(c => c.ClientID === project.ClientID);
-                              const externalManager = externalManagers.find(m => m.ExternalProjectManagerID === project.ExternalProjectManagerID);
-                              const projectType = project.ProjectType === 1 ? 
-                                'Servicio especializado' : 'Servicio llave en mano';
-                              const clientName = client ? (client.ClientName || 'No asignado') : 'No asignado';
-                              
-                              return (
-                                <tr 
-                                  key={`project-${project.ProjectID}`}
-                                  className={`transition-colors duration-150 ${
-                                    index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                                  } hover:bg-gray-100`}
-                                >
-                                  <td className="px-4 py-3 border-r border-gray-300 text-gray-700 font-medium">
-                                    {project.NameProject}
-                                  </td>
-                                  <td className="px-4 py-3 border-r border-gray-300 text-gray-700">
-                                    {project.Status === 1 ? (
-                                      <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                                        Concluido
-                                      </span>
-                                    ) : (
-                                      <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                                        En Progreso
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="px-4 py-3 border-r border-gray-300 text-gray-700">
-                                    {user ? user.UserName : 'No asignado'}
-                                  </td>
-                                  <td className="px-4 py-3 border-r border-gray-300 text-gray-700">
-                                    {externalManager ? (
-                                      <div>
-                                        <div className="font-medium">{externalManager.NameProjectManager}</div>
-                                        <div className="text-xs text-gray-500 mt-0.5">
-                                          {externalManager.Email} | {externalManager.Phone}
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      'No asignado'
-                                    )}
-                                  </td>
-                                  <td className="px-4 py-3 border-r border-gray-300 text-gray-700">
-                                    {clientName}
-                                  </td>
-                                  <td className="px-4 py-3 border-r border-gray-300 text-gray-700">
-                                    {projectType}
-                                  </td>
-                                  <td className="px-4 py-3 border-r border-gray-300 text-gray-700">
-                                    {formatCurrency(project.ProjectBudget)}
-                                  </td>
-                                  <td className="px-4 py-3 border-r border-gray-300 text-gray-700">
-                                    {project.ClientID === 1 ? getAreaName(project.AreaID) : 'N/A'}
-                                  </td>
-                                  <td className="px-4 py-3 text-gray-700">
-                                    <div className="flex justify-center space-x-1 flex-wrap gap-1">
-                                      {project.Status === 0 ? (
-                                        <>
-                                          <button
-                                            onClick={() => openEditModal(project)}
-                                            className="inline-flex items-center px-3 py-1.5 border border-[#3a6ea5] text-[#3a6ea5] font-bold rounded-lg hover:bg-[#3a6ea5] hover:text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#3a6ea5] focus:ring-offset-1 text-xs"
-                                          >
-                                            <Edit className="w-3 h-3 mr-1" />
-                                            EDITAR
-                                          </button>
-                                          <button
-                                            onClick={() => handleConfirmComplete(project)}
-                                            className="inline-flex items-center px-3 py-1.5 border border-green-600 text-green-600 font-bold rounded-lg hover:bg-green-600 hover:text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-1 text-xs"
-                                          >
-                                            <CheckCircle className="w-3 h-3 mr-1" />
-                                            CONCLUIR
-                                          </button>
-                                        </>
-                                      ) : (
-                                        <span className="text-xs text-gray-500 font-medium">Sin acciones</span>
-                                      )}
-                                      <button
-                                        onClick={() => openDeleteModal(project)}
-                                        className="inline-flex items-center px-3 py-1.5 border border-red-600 text-red-600 font-bold rounded-lg hover:bg-red-600 hover:text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 text-xs"
-                                      >
-                                        <Trash2 className="w-3 h-3 mr-1" />
-                                        ELIMINAR
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+<div className="overflow-x-auto">
+  {tableLoading ? (
+    <div className="flex justify-center items-center py-12">
+      <div className="flex flex-col items-center space-y-4">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#3a6ea5]"></div>
+        <p className="text-sm text-gray-600 font-medium">Cargando proyectos...</p>
+      </div>
+    </div>
+  ) : (
+    <>
+      {filteredProjects.length > 0 ? (
+        <table className="w-full">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 border-r border-gray-300">
+                NOMBRE
+              </th>
+              <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 border-r border-gray-300">
+                ESTADO
+              </th>
+              <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 border-r border-gray-300">
+                ADMINISTRADOR (INTERNO)
+              </th>
+              <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 border-r border-gray-300">
+                PROJECT MANAGER (EXTERNO)
+              </th>
+              <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 border-r border-gray-300">
+                CLIENTE
+              </th>
+              <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 border-r border-gray-300">
+                TIPO
+              </th>
+              <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 border-r border-gray-300">
+                PRESUPUESTO
+              </th>
+              <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 border-r border-gray-300">
+                FECHA INICIO
+              </th>
+              <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 border-r border-gray-300">
+                FECHA TÉRMINO
+              </th>
+              <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 border-r border-gray-300">
+                ÁREA
+              </th>
+              <th className="py-3 px-4 text-center text-sm font-bold text-gray-700 uppercase border-b border-gray-300">
+                ACCIONES
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredProjects.map((project) => {
+              const user = users.find(u => u.EmployeeID === project.AdminProjectID);
+              const client = clients.find(c => c.ClientID === project.ClientID);
+              const externalManager = externalManagers.find(m => m.ExternalProjectManagerID === project.ExternalProjectManagerID);
+              const projectType = project.ProjectType === 1
+                ? 'Servicio especializado'
+                : 'Servicio llave en mano';
+              const clientName = client ? (client.ClientName || 'No asignado') : 'No asignado';
+
+              return (
+                <tr key={`project-${project.ProjectID}`} className="hover:bg-gray-50 transition-colors border-b border-gray-300">
+                  <td className="py-3 px-4 text-sm text-gray-800 font-medium">
+                    {project.NameProject}
+                  </td>
+                  <td className="py-3 px-4">
+                    {project.Status === 1 ? (
+                      <span className="px-2 py-1 inline-flex text-xs leading-5 font-bold rounded-full bg-green-100 text-green-800">
+                        CONCLUIDO
+                      </span>
                     ) : (
-                      <div className="px-6 py-12 text-center">
-                        <div className="flex flex-col items-center">
-                          <div className="bg-gray-100 rounded-full p-4 mb-4">
-                            <Search className="h-8 w-8 text-gray-400" />
-                          </div>
-                          <h3 className="text-sm font-bold text-gray-900">No hay proyectos</h3>
-                          <p className="mt-1 text-sm text-gray-500">
-                            {searchTerm ? 'No se encontraron proyectos que coincidan con tu búsqueda.' : 'No se han encontrado proyectos registrados.'}
-                          </p>
+                      <span className="px-2 py-1 inline-flex text-xs leading-5 font-bold rounded-full bg-yellow-100 text-yellow-800">
+                        EN PROGRESO
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-800">
+                    {user ? user.UserName : 'No asignado'}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-800">
+                    {externalManager ? (
+                      <div>
+                        <div className="font-medium">{externalManager.NameProjectManager}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {externalManager.Email} | {externalManager.Phone}
                         </div>
                       </div>
+                    ) : (
+                      'No asignado'
                     )}
-                  </>
-                )}
-              </div>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-800">
+                    {clientName}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-800">
+                    {projectType}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-800 font-medium">
+                    {formatCurrency(project.ProjectBudget)}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-800">
+                    {formatDate(project.StartDate)}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-800">
+                    {formatDate(project.EndDate)}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-800">
+                    {project.ClientID === 1 ? getAreaName(project.AreaID) : 'N/A'}
+                  </td>
+                  <td className="py-3 px-4">
+                    <div className="flex items-center justify-center gap-2">
+                      {project.Status === 0 ? (
+                        <>
+                          <button
+                            onClick={() => openEditModal(project)}
+                            className="inline-flex items-center px-3 py-1.5 border border-[#3a6ea5] text-[#3a6ea5] font-bold rounded-lg hover:bg-[#3a6ea5] hover:text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#3a6ea5] focus:ring-offset-1 text-xs"
+                          >
+                            <Edit className="w-3 h-3 mr-1" />
+                            EDITAR
+                          </button>
+                          <button
+                            onClick={() => handleConfirmComplete(project)}
+                            className="inline-flex items-center px-3 py-1.5 border border-green-600 text-green-600 font-bold rounded-lg hover:bg-green-600 hover:text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-1 text-xs"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            CONCLUIR
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-500 font-medium">Sin acciones</span>
+                      )}
+                      <button
+                        onClick={() => openDeleteModal(project)}
+                        className="inline-flex items-center px-3 py-1.5 border border-red-600 text-red-600 font-bold rounded-lg hover:bg-red-600 hover:text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 text-xs"
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" />
+                        ELIMINAR
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : (
+        <div className="py-12 text-center">
+          <FileText className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-sm font-bold text-gray-900">NO HAY PROYECTOS</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            {searchTerm
+              ? 'No se encontraron proyectos que coincidan con tu búsqueda.'
+              : 'No se han encontrado proyectos registrados.'}
+          </p>
+        </div>
+      )}
+    </>
+  )}
+</div>
             </div>
           </div>
         </div>
