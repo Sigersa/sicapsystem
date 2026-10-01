@@ -116,7 +116,6 @@ const formatCurrencyNumber = (amount: number): string => {
   }
 };
 
-// ✅ NUEVO: Helper para obtener el label del tipo de combustible
 const getFuelTypeLabel = (fuelType: number | string | null | undefined): string => {
   if (fuelType === null || fuelType === undefined || fuelType === '') return '-';
   const numValue = typeof fuelType === 'string' ? parseInt(fuelType) : fuelType;
@@ -535,7 +534,7 @@ const EditModal: React.FC<EditModalProps> = ({
         ...registro,
         voucherType: registro.voucherType || '',
         establisment: registro.establisment || '',
-        fuelType: registro.fuelType ?? 0 // ✅ NUEVO
+        fuelType: registro.fuelType ?? 0 
       });
       setArchivos([]);
       setFilesToDelete([]);
@@ -578,7 +577,6 @@ const EditModal: React.FC<EditModalProps> = ({
     } else if (name === 'total') {
       return;
     } else if (name === 'fuelType') {
-      // ✅ NUEVO: convertir a número
       setEditData(prev => ({
         ...prev!,
         fuelType: value ? parseInt(value) : 0
@@ -1032,7 +1030,7 @@ const AddFuelModal: React.FC<AddFuelModalProps> = ({
     observaciones: '',
     voucherType: '',
     establisment: '',
-    fuelType: '', // ✅ NUEVO
+    fuelType: '', 
     archivos: []
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
