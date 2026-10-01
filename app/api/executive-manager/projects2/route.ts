@@ -75,6 +75,38 @@ const tablesToCheck = [
   'waterice'
 ];
 
+// ============ HELPERS ============
+
+/**
+ * Normaliza cualquier fecha al formato YYYY-MM-DD que MySQL acepta para columnas DATE.
+ * Acepta:
+ *  - 'YYYY-MM-DD'
+ *  - 'YYYY-MM-DDTHH:mm:ss.sssZ' (ISO)
+ *  - Date object
+ *  - null / undefined / '' → devuelve null
+ */
+function normalizeDateToMySQL(value: any): string | null {
+  if (value === null || value === undefined || value === '') return null;
+
+  // Si ya es string tipo 'YYYY-MM-DD', devolverlo tal cual
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  // Intentar convertir a Date
+  try {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return null;
+
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch {
+    return null;
+  }
+}
+
 async function checkInvalidRecords(projectId: string, connection: Connection) {
   let invalidRecords: { table: string; count: number }[] = [];
 
@@ -101,7 +133,7 @@ async function checkInvalidRecords(projectId: string, connection: Connection) {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   let connection;
-  
+
   try {
     const sessionId = request.cookies.get("session")?.value;
 
@@ -139,7 +171,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const externalManagers = searchParams.get('externalManagers');
     const employeesList = searchParams.get('employees');
 
-    // Obtener lista de empleados (para el frontend)
     if (employeesList) {
       const [employeeRows] = await connection.query<Employee[]>(`
         SELECT EmployeeID, EmployeeType, Status FROM employees
@@ -147,7 +178,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json(employeeRows);
     }
 
-    // Obtener detalles específicos de un proyecto
     if (projectId && !checkRecords) {
       let query = `
         SELECT p.*, epm.NameProjectManager as ExternalProjectManagerName, 
@@ -175,7 +205,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json(projectRows[0]);
     }
 
-    // Obtener administradores externos
     if (externalManagers) {
       const [managers] = await connection.query<ExternalProjectManager[]>(`
         SELECT * FROM externalprojectmanager ORDER BY NameProjectManager ASC
@@ -183,7 +212,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json(managers);
     }
 
-    // Verificar registros no validados
     if (checkRecords && projectId) {
       let permissionQuery = `SELECT ProjectID FROM projects WHERE ProjectID = ?`;
       const permissionParams: any[] = [projectId];
@@ -206,7 +234,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ hasInvalidRecords, invalidTables });
     }
 
-    // Verificar proyectos activos del usuario
     if (checkActive && userId) {
       if (user.UserTypeID === 5 && parseInt(userId) !== user.UserID) {
         return NextResponse.json(
@@ -228,7 +255,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ hasActiveProject });
     }
 
-    // Obtener todos los proyectos con información del manager externo
     let projectsQuery = `
       SELECT p.*, epm.NameProjectManager as ExternalProjectManagerName, 
              epm.Email as ExternalProjectManagerEmail, epm.Phone as ExternalProjectManagerPhone
@@ -250,7 +276,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     console.error('Error en GET /api/projects2:', error);
     return NextResponse.json(
-      { 
+      {
         success: false,
         message: 'Error al obtener datos de proyectos',
         error: process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : undefined
@@ -270,7 +296,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   let connection;
-  
+
   try {
     const sessionId = request.cookies.get("session")?.value;
 
@@ -298,7 +324,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const body = await request.json();
-    
+
     const {
       NameProject,
       ProjectAddress,
@@ -311,7 +337,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ExternalProjectManagerEmail,
       ExternalProjectManagerPhone,
       AreaID,
-      StartDate
+      StartDate,
+      EndDate
     } = body;
 
     if (!NameProject) {
@@ -330,7 +357,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     connection = await getConnection();
 
-    // Verificar que el empleado exista
     const [employeeRows] = await connection.query<Employee[]>(
       'SELECT EmployeeID FROM employees WHERE EmployeeID = ?',
       [AdminProjectID]
@@ -355,7 +381,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // Validar área si el cliente es Siemens (ClientID = 1)
     if (ClientID == 1 && !AreaID) {
       return NextResponse.json(
         { success: false, message: 'El área es requerida para proyectos de Siemens' },
@@ -376,7 +401,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // Crear o encontrar el administrador externo
     let externalManagerId = null;
     if (ExternalProjectManagerName) {
       const [existingManager] = await connection.query<ExternalProjectManager[]>(
@@ -398,17 +422,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const startDate = StartDate || new Date().toISOString().split('T')[0];
+    // Normalizar fechas
+    const startDate = normalizeDateToMySQL(StartDate) || normalizeDateToMySQL(new Date());
+    const endDate = normalizeDateToMySQL(EndDate);
 
     const [result] = await connection.query<ResultSetHeader>(`
       INSERT INTO projects 
-      (NameProject, ProjectAddress, AdminProjectID, StartDate, Status, ProjectType, ProjectBudget, AreaID, ClientID, ExternalProjectManagerID, CreatedBy)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (NameProject, ProjectAddress, AdminProjectID, StartDate, EndDate, Status, ProjectType, ProjectBudget, AreaID, ClientID, ExternalProjectManagerID, CreatedBy)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       NameProject,
       ProjectAddress || null,
       AdminProjectID,
       startDate,
+      endDate,
       Status,
       ProjectType || null,
       ProjectBudget || null,
@@ -428,7 +455,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     console.error('Error al crear proyecto:', error);
     return NextResponse.json(
-      { 
+      {
         success: false,
         message: 'Error al crear proyecto',
         error: process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : undefined
@@ -448,7 +475,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 export async function PUT(request: NextRequest): Promise<NextResponse> {
   let connection;
-  
+
   try {
     const sessionId = request.cookies.get("session")?.value;
 
@@ -488,7 +515,6 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
 
     connection = await getConnection();
 
-    // Verificar permisos para el proyecto
     let permissionQuery = `SELECT * FROM projects WHERE ProjectID = ?`;
     const permissionParams: any[] = [projectId];
 
@@ -530,7 +556,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       }
 
       const [result] = await connection.query<ResultSetHeader>(
-        'UPDATE projects SET Status = 1, EndDate = NOW() WHERE ProjectID = ?',
+        'UPDATE projects SET Status = 1 WHERE ProjectID = ?',
         [projectId]
       );
 
@@ -547,7 +573,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       );
     } else {
       const body = await request.json();
-      
+
       const {
         NameProject,
         AdminProjectID,
@@ -557,7 +583,9 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         ExternalProjectManagerName,
         ExternalProjectManagerEmail,
         ExternalProjectManagerPhone,
-        AreaID
+        AreaID,
+        StartDate,
+        EndDate
       } = body;
 
       if (!NameProject) {
@@ -634,10 +662,14 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         }
       }
 
+      // ✅ Normalizar fechas antes de pasarlas a MySQL
+      const normalizedStartDate = normalizeDateToMySQL(StartDate);
+      const normalizedEndDate = normalizeDateToMySQL(EndDate);
+
       const [result] = await connection.query<ResultSetHeader>(`
         UPDATE projects 
         SET NameProject = ?, AdminProjectID = ?, ClientID = ?, ProjectType = ?, ProjectBudget = ?, 
-            ExternalProjectManagerID = ?, AreaID = ?
+            ExternalProjectManagerID = ?, AreaID = ?, StartDate = ?, EndDate = ?
         WHERE ProjectID = ?
       `, [
         NameProject,
@@ -647,6 +679,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         ProjectBudget || null,
         externalManagerId,
         ClientID == 1 ? AreaID : null,
+        normalizedStartDate,
+        normalizedEndDate,
         projectId
       ]);
 
@@ -673,7 +707,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     console.error('Error al actualizar proyecto:', error);
     return NextResponse.json(
-      { 
+      {
         success: false,
         message: 'Error al actualizar proyecto',
         error: process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : undefined
@@ -693,7 +727,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
 
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
   let connection;
-  
+
   try {
     const sessionId = request.cookies.get("session")?.value;
 
@@ -768,7 +802,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     console.error('Error al eliminar proyecto:', error);
     return NextResponse.json(
-      { 
+      {
         success: false,
         message: 'Error al eliminar proyecto',
         error: process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : undefined
