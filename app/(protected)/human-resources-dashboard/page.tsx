@@ -40,13 +40,6 @@ export default function SystemAdminDashboard() {
       description: 'Procesos de terminación laboral',
       icon: <FileText className="h-6 w-6" />,
       href: '/human-resources-dashboard/job-termination'
-    },
-    {
-      id: 4,
-      title: 'GESTIÓN DE PROYECTOS',
-      description: 'Administración de proyectos',
-      icon: <ToolCase className="h-6 w-6" />,
-      href: '/human-resources-dashboard/projects'
     }
   ];
 
