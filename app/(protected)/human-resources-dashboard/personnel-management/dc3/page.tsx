@@ -14,10 +14,6 @@ interface EmployeeDC3 {
   CourseName: string | null;
   StartDate: string | null;
   EndDate: string | null;
-  TrainerID: number | null;
-  TrainerName: string | null;
-  isExternalTrainer: boolean;
-  Duration: number | null;
   DocumentURL: string | null;
   FirstName?: string;
   LastName?: string;
@@ -50,25 +46,11 @@ interface DC3FormData {
   CourseName: string;
   StartDate: string;
   EndDate: string;
-  TrainerID: string;
-  TrainerName: string;
-  Duration: string;
 }
 
 // Interface para filtros
 interface Filters {
   search: string;
-}
-
-// Interface para instructor
-interface Trainer {
-  id: number;
-  FirstName: string;
-  LastName: string;
-  MiddleName: string;
-  puesto: string;
-  tipoPersonal: 'BASE' | 'PROJECT';
-  nombreCompleto: string;
 }
 
 // Interface para detalles del éxito
@@ -108,6 +90,35 @@ const COURSE_NAME = [
   { value: "PRIMEROS AUXILIOS", label: "PRIMEROS AUXILIOS" },
   { value: "PROTECCIÓN RESPIRATORIA", label: "PROTECCIÓN RESPIRATORIA" }
 ];
+
+// Mapeo de horas por curso
+const COURSE_HOURS: Record<string, number> = {
+  "IDENTIFICACIÓN DE PELIGROS Y EVALUACIÓN DE RIESGOS": 12,
+  "MANEJO DE SUSTANCIAS QUÍMICAS": 8,
+  "IDENTIFICACIÓN DE ASPECTOS AMBIENTALES": 8,
+  "MANIOBRAS E IZAJE": 18,
+  "USO Y MANEJO DE EXTINTORES": 8,
+  "MANEJO DE LAS HERRAMIENTAS DE TRABAJO (MANUALES Y DE PODER)": 8,
+  "MONTACARGAS (USO Y MANEJO, PROCEDIMIENTOS DE SEGURIDAD)": 8,
+  "USO DE EQUIPO DE PROTECCIÓN PERSONAL (EPP)": 8,
+  "CONDICIONES DE SEGURIDAD PARA REALIZAR TRABAJO EN ALTURA NOM-009-STPS-2011": 12,
+  "CONTROL DE ENERGÍAS PELIGROSAS SISTEMA LOTO": 30,
+  "CONDICIONES DE SEGURIDAD PARA REALIZAR TRABAJOS EN ESPACIOS CONFINADOS NOM-033-STPS-2015": 12,
+  "MANEJO MANUAL Y MECÁNICO DE CARGAS": 3,
+  "ARMADO DE ANDAMIOS PROCEDIMIENTOS DE SEGURIDAD E HIGIENE": 20,
+  "BRIGADAS DE EMERGENCIA Y EVALUACIÓN": 12,
+  "LEGISLACIÓN AMBIENTAL": 24,
+  "ANÁLISIS DE SEGURIDAD EN EL TRABAJO (AST)": 10,
+  "NOM-027-STPS-2008 ACTIVIDADES DE SOLDADURA Y CORTE, CONDICIONES DE SEGURIDAD E HIGIENE (TRABAJOS EN CALIENTE)": 5,
+  "PRIMEROS AUXILIOS": 12,
+  "PROTECCIÓN RESPIRATORIA": 12
+};
+
+// Función para obtener las horas de un curso
+const getCourseHours = (courseName: string | null): number | null => {
+  if (!courseName) return null;
+  return COURSE_HOURS[courseName] ?? null;
+};
 
 // Función para normalizar texto a mayúsculas
 const normalizarMayusculas = (texto: string): string => {
@@ -185,11 +196,6 @@ export default function EmployeeDC3Page() {
   const [selectedEmployeeData, setSelectedEmployeeData] = useState<EmployeeSearchResult | null>(null);
   const [employeeNotFound, setEmployeeNotFound] = useState(false);
 
-  // Estados para instructores
-  const [trainers, setTrainers] = useState<Trainer[]>([]);
-  const [loadingTrainers, setLoadingTrainers] = useState(false);
-  const [showCustomTrainerInput, setShowCustomTrainerInput] = useState(false);
-
   // Estados para modales
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
@@ -208,10 +214,7 @@ export default function EmployeeDC3Page() {
     EmployeeID: '',
     CourseName: '',
     StartDate: '',
-    EndDate: '',
-    TrainerID: '',
-    TrainerName: '',
-    Duration: ''
+    EndDate: ''
   });
 
   // Referencias
@@ -235,37 +238,11 @@ export default function EmployeeDC3Page() {
     setCurrentPage(1);
   }, [filteredRecords, itemsPerPage]);
 
-  // Cargar instructores cuando se abre el modal
-  useEffect(() => {
-    if (showModal) {
-      fetchTrainers();
-    }
-  }, [showModal]);
-
   // Obtener registros actuales de la página
   const currentRecords = filteredRecords.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
-
-  // Función para obtener instructores
-  const fetchTrainers = async () => {
-    try {
-      setLoadingTrainers(true);
-      const response = await fetch('/api/catalogs/jefes-directos');
-      
-      if (!response.ok) {
-        throw new Error('Error al cargar instructores');
-      }
-
-      const data = await response.json();
-      setTrainers(data);
-    } catch (error) {
-      console.error('Error al cargar instructores:', error);
-    } finally {
-      setLoadingTrainers(false);
-    }
-  };
 
   // Función para obtener registros DC3
   const fetchRecords = async () => {
@@ -403,16 +380,12 @@ export default function EmployeeDC3Page() {
       EmployeeID: '',
       CourseName: '',
       StartDate: '',
-      EndDate: '',
-      TrainerID: '',
-      TrainerName: '',
-      Duration: ''
+      EndDate: ''
     });
     setSelectedEmployee(null);
     setSelectedEmployeeData(null);
     setEmployeeIdInput('');
     setEmployeeNotFound(false);
-    setShowCustomTrainerInput(false);
     setError('');
     setShowModal(true);
     
@@ -443,20 +416,11 @@ export default function EmployeeDC3Page() {
       console.error('Error al cargar datos del empleado:', error);
     }
     
-    // Determinar si es instructor externo
-    const isExternal = record.isExternalTrainer === true;
-    const trainerName = record.TrainerName || '';
-    
-    setShowCustomTrainerInput(isExternal);
-    
     setFormData({
       EmployeeID: record.EmployeeID.toString(),
       CourseName: record.CourseName || '',
       StartDate: formatDateForInput(record.StartDate),
-      EndDate: formatDateForInput(record.EndDate),
-      TrainerID: isExternal ? 'otro' : (record.TrainerID ? record.TrainerID.toString() : ''),
-      TrainerName: isExternal ? trainerName : '',
-      Duration: record.Duration?.toString() || ''
+      EndDate: formatDateForInput(record.EndDate)
     });
   
     setShowModal(true);
@@ -514,36 +478,13 @@ export default function EmployeeDC3Page() {
         return;
       }
 
-      if (formData.Duration) {
-        const durationNum = parseInt(formData.Duration);
-        if (isNaN(durationNum) || durationNum <= 0) {
-          setError('LA DURACIÓN DEBE SER UN NÚMERO POSITIVO');
-          setSaving(false);
-          return;
-        }
-      }
-
       // Preparar datos para enviar
       const recordData: any = {
         EmployeeID: parseInt(formData.EmployeeID),
         CourseName: formData.CourseName,
         StartDate: formData.StartDate,
-        EndDate: formData.EndDate,
-        Duration: formData.Duration ? parseInt(formData.Duration) : null
+        EndDate: formData.EndDate
       };
-
-      // Determinar el instructor
-      if (showCustomTrainerInput && formData.TrainerName && formData.TrainerName.trim() !== '') {
-        recordData.TrainerID = null;
-        recordData.TrainerName = formData.TrainerName.trim();
-      } else if (formData.TrainerID && formData.TrainerID !== 'otro' && formData.TrainerID !== '') {
-        recordData.TrainerID = parseInt(formData.TrainerID);
-        recordData.TrainerName = null;
-      } else {
-        setError('DEBE SELECCIONAR UN INSTRUCTOR INTERNO O ESPECIFICAR UN INSTRUCTOR EXTERNO');
-        setSaving(false);
-        return;
-      }
 
       let response;
       
@@ -557,11 +498,6 @@ export default function EmployeeDC3Page() {
         });
       } else {
         const updateData = { ...recordData };
-        
-        if (showCustomTrainerInput && formData.TrainerName) {
-          updateData.TrainerName = formData.TrainerName.trim();
-          updateData.TrainerID = null;
-        }
         
         response = await fetch(`/api/human-resources-dashboard/employee-management/employeedc3/${recordToEdit?.DC3ID}`, {
           method: 'PUT',
@@ -592,7 +528,7 @@ export default function EmployeeDC3Page() {
             CourseName: formData.CourseName,
             StartDate: formData.StartDate,
             EndDate: formData.EndDate,
-            Duration: parseInt(formData.Duration) || 0,
+            Duration: getCourseHours(formData.CourseName) || 0,
             fileUrl: pdfUrl,
             pdfUrl: pdfUrl,
             excelUrl: excelUrl
@@ -620,7 +556,6 @@ export default function EmployeeDC3Page() {
     setSelectedEmployee(null);
     setEmployeeIdInput('');
     setEmployeeNotFound(false);
-    setShowCustomTrainerInput(false);
     setError('');
   };
 
@@ -653,48 +588,10 @@ export default function EmployeeDC3Page() {
   // Función para manejar cambios en el formulario
   const handleFormChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    
-    if (name === 'TrainerID') {
-      if (value === 'otro') {
-        setShowCustomTrainerInput(true);
-        setFormData(prev => ({
-          ...prev,
-          TrainerID: 'otro',
-          TrainerName: ''
-        }));
-      } else {
-        setShowCustomTrainerInput(false);
-        setFormData(prev => ({
-          ...prev,
-          TrainerID: value,
-          TrainerName: ''
-        }));
-      }
-      return;
-    }
-    
-    if (name === 'TrainerName') {
-      setFormData(prev => ({
-        ...prev,
-        [name]: normalizarMayusculas(value)
-      }));
-      return;
-    }
-    
     let newValue = value;
     
-    if (!['StartDate', 'EndDate', 'Duration'].includes(name)) {
+    if (!['StartDate', 'EndDate'].includes(name)) {
       newValue = normalizarMayusculas(value);
-    }
-    
-    if (name === 'Duration') {
-      if (value === '' || /^\d+$/.test(value)) {
-        setFormData(prev => ({
-          ...prev,
-          [name]: value
-        }));
-      }
-      return;
     }
     
     setFormData(prev => ({
@@ -757,23 +654,6 @@ export default function EmployeeDC3Page() {
     setShowSuccessModal(false);
     setSuccessDetails(null);
     setPdfLoading(false);
-  };
-
-  // Función auxiliar para obtener el nombre del instructor
-  const getTrainerDisplay = (record: EmployeeDC3): React.ReactNode => {
-    if (record.isExternalTrainer === true && record.TrainerName) {
-      return (
-        <span className="flex items-center gap-1">
-          <span>{record.TrainerName}</span>
-        </span>
-      );
-    }
-    
-    if (record.TrainerID && record.TrainerName) {
-      return record.TrainerName;
-    }
-    
-    return 'N/A';
   };
 
   // Mostrar loading de sesión
@@ -1180,78 +1060,6 @@ export default function EmployeeDC3Page() {
                         />
                       </div>
                     </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                        DURACIÓN EN HORAS *
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          name="Duration"
-                          value={formData.Duration}
-                          onChange={handleFormChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          placeholder="Ingrese la duración del curso en horas"
-                          inputMode="numeric"
-                          pattern="\d*"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                        INSTRUCTOR O TUTOR *
-                      </label>
-                      <div className="relative">
-                        <select
-                          name="TrainerID"
-                          value={formData.TrainerID || (showCustomTrainerInput ? 'otro' : '')}
-                          onChange={handleFormChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          disabled={loadingTrainers}
-                        >
-                          <option value="">Seleccione un instructor o tutor</option>
-                          {loadingTrainers ? (
-                            <option value="" disabled>CARGANDO INSTRUCTORES...</option>
-                          ) : (
-                            <>
-                              {trainers.map((trainer) => (
-                                <option key={trainer.id} value={trainer.id}>
-                                  {trainer.nombreCompleto} - {trainer.puesto} ({trainer.tipoPersonal})
-                                </option>
-                              ))}
-                              <option value="otro">
-                                OTRO (INSTRUCTOR EXTERNO)
-                              </option>
-                            </>
-                          )}
-                        </select>
-                        {loadingTrainers && (
-                          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#3a6ea5]"></div>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {showCustomTrainerInput && (
-                        <div className="mt-3">
-                          <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                            NOMBRE DEL INSTRUCTOR EXTERNO *
-                          </label>
-                          <input
-                            type="text"
-                            name="TrainerName"
-                            value={formData.TrainerName}
-                            onChange={handleFormChange}
-                            className="w-full px-3 py-2.5 text-sm bg-white border border-[#3a6ea5] rounded focus:outline-none focus:border-[#2d5592] font-medium"
-                            placeholder="Ingrese el nombre completo del instructor externo"
-                            required={showCustomTrainerInput}
-                          />
-                        </div>
-                      )}
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1370,7 +1178,6 @@ export default function EmployeeDC3Page() {
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">INICIO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FIN</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">DURACIÓN (HRS)</th>
-                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">INSTRUCTOR</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">DOCUMENTOS</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
                   </tr>
@@ -1401,6 +1208,7 @@ export default function EmployeeDC3Page() {
                   ) : (
                     currentRecords.map((record) => {
                       const pdfUrl = getPDFUrlFromDocumentURL(record.DocumentURL);
+                      const hours = getCourseHours(record.CourseName);
                       return (
                         <tr key={record.DC3ID} className="hover:bg-gray-50 transition-colors border-b border-gray-300">
                           <td className="py-3 px-4 text-sm text-gray-800 font-medium">{record.DC3ID}</td>
@@ -1422,12 +1230,7 @@ export default function EmployeeDC3Page() {
                           <td className="py-3 px-4 text-sm text-gray-800">{formatDate(record.StartDate)}</td>
                           <td className="py-3 px-4 text-sm text-gray-800">{formatDate(record.EndDate)}</td>
                           <td className="py-3 px-4 text-sm text-gray-800 font-medium">
-                            {record.Duration ? `${record.Duration} hrs` : 'N/A'}
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="text-sm text-gray-800">
-                              {getTrainerDisplay(record)}
-                            </div>
+                            {hours ? `${hours} hrs` : 'N/A'}
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
