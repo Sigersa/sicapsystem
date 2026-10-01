@@ -315,7 +315,8 @@ export async function GET(request: NextRequest) {
     gasLpRows.forEach((fuel, index) => {
       const currentRow = startRow + index;
       ws.getCell(`F${currentRow}`).value = index + 1;                                 // ITEM
-      ws.getCell(`G${currentRow}`).value = fuel.VoucherType || 'NO DISPONIBLE';       // COMPROBANTE
+      ws.getCell(`G${currentRow}`).value = fuel.VoucherType || 'NO DISPONIBLE';
+      ws.getCell(`I${currentRow}`).value = `${fuel.Liters} LITROS` || 'NO DISPONIBLE';    // COMPROBANTE
       ws.getCell(`H${currentRow}`).value = fuel.Establisment || 'NO DISPONIBLE';      // ESTABLECIMIENTO
       ws.getCell(`J${currentRow}`).value = Number(fuel.Total ?? 0);                   // TOTAL
 
