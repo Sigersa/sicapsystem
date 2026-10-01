@@ -7,6 +7,34 @@ import { getConnection } from "@/lib/db";
 import { validateAndRenewSession } from "@/lib/auth";
 import fs from "fs"; 
 
+// Mapeo de horas por curso
+const COURSE_HOURS: Record<string, number> = {
+  "IDENTIFICACIÓN DE PELIGROS Y EVALUACIÓN DE RIESGOS": 12,
+  "MANEJO DE SUSTANCIAS QUÍMICAS": 8,
+  "IDENTIFICACIÓN DE ASPECTOS AMBIENTALES": 8,
+  "MANIOBRAS E IZAJE": 18,
+  "USO Y MANEJO DE EXTINTORES": 8,
+  "MANEJO DE LAS HERRAMIENTAS DE TRABAJO (MANUALES Y DE PODER)": 8,
+  "MONTACARGAS (USO Y MANEJO, PROCEDIMIENTOS DE SEGURIDAD)": 8,
+  "USO DE EQUIPO DE PROTECCIÓN PERSONAL (EPP)": 8,
+  "CONDICIONES DE SEGURIDAD PARA REALIZAR TRABAJO EN ALTURA NOM-009-STPS-2011": 12,
+  "CONTROL DE ENERGÍAS PELIGROSAS SISTEMA LOTO": 30,
+  "CONDICIONES DE SEGURIDAD PARA REALIZAR TRABAJOS EN ESPACIOS CONFINADOS NOM-033-STPS-2015": 12,
+  "MANEJO MANUAL Y MECÁNICO DE CARGAS": 3,
+  "ARMADO DE ANDAMIOS PROCEDIMIENTOS DE SEGURIDAD E HIGIENE": 20,
+  "BRIGADAS DE EMERGENCIA Y EVALUACIÓN": 12,
+  "LEGISLACIÓN AMBIENTAL": 24,
+  "ANÁLISIS DE SEGURIDAD EN EL TRABAJO (AST)": 10,
+  "NOM-027-STPS-2008 ACTIVIDADES DE SOLDADURA Y CORTE, CONDICIONES DE SEGURIDAD E HIGIENE (TRABAJOS EN CALIENTE)": 5,
+  "PRIMEROS AUXILIOS": 12,
+  "PROTECCIÓN RESPIRATORIA": 12
+};
+
+const getCourseHours = (courseName: string | null): number | null => {
+  if (!courseName) return null;
+  return COURSE_HOURS[courseName] ?? null;
+};
+
 export async function GET(request: NextRequest) {
   let connection;
   
@@ -48,7 +76,7 @@ export async function GET(request: NextRequest) {
 
     connection = await getConnection();
 
-    // Obtener información del registro DC3, del empleado y del instructor
+    // Obtener información del registro DC3, del empleado 
     const [rows] = await connection.execute<any[]>(
       `SELECT 
         dc.DC3ID,
@@ -56,9 +84,6 @@ export async function GET(request: NextRequest) {
         dc.CourseName,
         dc.StartDate,
         dc.EndDate,
-        dc.Duration,
-        dc.TrainerID,
-        dc.ExternalTrainerName,  -- Importante: incluir el instructor externo
         -- Datos del empleado que recibe el curso
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
@@ -73,14 +98,7 @@ export async function GET(request: NextRequest) {
         CASE 
           WHEN bp.EmployeeID IS NOT NULL THEN bpi.CURP
           ELSE ppi.CURP
-        END as CURP,
-        -- Datos del instructor (Trainer) - SOLO SI ES INTERNO
-        trainer_bp.FirstName as TrainerFirstName,
-        trainer_bp.LastName as TrainerLastName,
-        trainer_bp.MiddleName as TrainerMiddleName,
-        trainer_pp.FirstName as TrainerPpFirstName,
-        trainer_pp.LastName as TrainerPpLastName,
-        trainer_pp.MiddleName as TrainerPpMiddleName
+        END as CURP
       FROM employeedc3 dc
       -- Datos del empleado que recibe el curso (BASE)
       LEFT JOIN basepersonnel bp ON dc.EmployeeID = bp.EmployeeID
@@ -90,10 +108,6 @@ export async function GET(request: NextRequest) {
       LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
       LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
-      -- Datos del instructor (Trainer) - BASE
-      LEFT JOIN basepersonnel trainer_bp ON dc.TrainerID = trainer_bp.EmployeeID
-      -- Datos del instructor (Trainer) - PROJECT
-      LEFT JOIN projectpersonnel trainer_pp ON dc.TrainerID = trainer_pp.EmployeeID
       WHERE dc.DC3ID = ?`,
       [dc3Id]
     );
@@ -113,38 +127,6 @@ export async function GET(request: NextRequest) {
       dc3Record.MiddleName || '',      // Apellido Materno
       dc3Record.FirstName || ''        // Nombre(s)
     ].filter(part => part.trim() !== '').join(' ');
-
-    // CONSTRUIR EL NOMBRE DEL INSTRUCTOR - PRIORIZANDO EL EXTERNO
-    let trainerName = "INSTRUCTOR NO ESPECIFICADO";
-    
-    // 1. PRIMERO: Verificar si hay un instructor externo
-    if (dc3Record.ExternalTrainerName && dc3Record.ExternalTrainerName.trim() !== '') {
-      trainerName = dc3Record.ExternalTrainerName.trim();
-      console.log(`Usando instructor externo: ${trainerName}`);
-    } 
-    // 2. SEGUNDO: Buscar instructor interno (BASE)
-    else if (dc3Record.TrainerID !== null && dc3Record.TrainerFirstName) {
-      trainerName = [
-        dc3Record.TrainerFirstName || '',
-        dc3Record.TrainerLastName || '',
-        dc3Record.TrainerMiddleName || ''
-      ].filter(part => part.trim() !== '').join(' ');
-      console.log(`Usando instructor interno BASE: ${trainerName}`);
-    }
-    // 3. TERCERO: Buscar instructor interno (PROJECT)
-    else if (dc3Record.TrainerID !== null && dc3Record.TrainerPpFirstName) {
-      trainerName = [
-        dc3Record.TrainerPpFirstName || '',
-        dc3Record.TrainerPpLastName || '',
-        dc3Record.TrainerPpMiddleName || ''
-      ].filter(part => part.trim() !== '').join(' ');
-      console.log(`Usando instructor interno PROJECT: ${trainerName}`);
-    }
-    // 4. Si hay TrainerID pero no se encontró el nombre
-    else if (dc3Record.TrainerID !== null) {
-      trainerName = `INSTRUCTOR ID: ${dc3Record.TrainerID}`;
-      console.log(`Instructor ID ${dc3Record.TrainerID} sin nombre encontrado`);
-    }
 
     // Extraer fechas
     const startYear = dc3Record.StartDate 
@@ -170,6 +152,9 @@ export async function GET(request: NextRequest) {
     const endDay = dc3Record.EndDate 
       ? new Date(dc3Record.EndDate).getDate().toString().padStart(2, '0')
       : '';
+
+    // Obtener horas según el curso
+    const courseHours = getCourseHours(dc3Record.CourseName);
 
     // Cargar plantilla Excel
     const templatePath = path.join(
@@ -197,8 +182,7 @@ export async function GET(request: NextRequest) {
     ws.getCell("A5").value = employeeName || "NOMBRE NO ESPECIFICADO";
     ws.getCell("A9").value = dc3Record.Position || "NO ESPECIFICADO";
     ws.getCell("A19").value = dc3Record.CourseName || "NO ESPECIFICADO";
-    ws.getCell("B32").value = trainerName; // Instructor (prioriza externo)
-    ws.getCell("A21").value = dc3Record.Duration || "NO ESPECIFICADO";
+    ws.getCell("A21").value = courseHours ?? "NO ESPECIFICADO";
     ws.getCell("I21").value = startYear || "";
     ws.getCell("J21").value = startMonth || "";
     ws.getCell("K21").value = startDay || "";
