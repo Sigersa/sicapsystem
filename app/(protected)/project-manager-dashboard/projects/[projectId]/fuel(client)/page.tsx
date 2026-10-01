@@ -14,7 +14,6 @@ import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCir
 const VOUCHER_TYPES = ['FACTURA', 'TICKET', 'S/C'] as const;
 type VoucherType = typeof VOUCHER_TYPES[number];
 
-// ✅ NUEVO: Tipos de combustible
 const FUEL_TYPES = [
   { value: 1, label: 'DIESEL' },
   { value: 2, label: 'GAS LP' }
@@ -43,7 +42,7 @@ interface FuelData {
   observaciones: string;
   voucherType: string;
   establisment: string;
-  fuelType: string; // ✅ NUEVO: valor como string (para el <select>) "1" o "2"
+  fuelType: string; 
   archivos: File[];
 }
 
@@ -58,7 +57,7 @@ interface RegistroCombustible {
   status: number;
   voucherType: string;
   establisment: string;
-  fuelType: number; // ✅ NUEVO
+  fuelType: number; 
   archivos: ArchivoAdjunto[];
 }
 
