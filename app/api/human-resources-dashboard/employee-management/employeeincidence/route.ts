@@ -11,6 +11,18 @@ import ConvertAPI from "convertapi";
 const convertapi = new ConvertAPI(process.env.CONVERTAPI_SECRET!);
 const utapi = new UTApi();
 
+// Función auxiliar para obtener el texto de la regla según la descripción
+function getRuleText(description: string): string {
+    const upper = (description || '').toUpperCase().trim();
+    if (upper === 'RETARDO') {
+        return 'ARTICULO 7. Lo permitido seria un retardo de 5 minutos por semana que no aplicaría descuento, si excede de esto, el trabajador ingresará a laborar remunerando una hora laboral en la semana que se este generando el retardo por segunda ocasión, lo cual aplica cuando el horario de retardo sea antes de las 08:20 hrs o 15:15 hrs. Si el horario de ingreso es antes de las 09:00 hrs o 16:00 hrs, el trabajador debera de remunerar media jornada laboral en la misma semana que este generando el retardo (solo por unica ocasión). En el tercer retardo, el trabajador debera ser regresado a su casa y se contara como falta injustificada. En el caso de que el trabajador decida no laborar se tomará como falta injustificada. El registro injusttificado de salida antes de las 14:00 hrs para hora de descanso o de las 18:00 hrs para salida por termino de jornada laboral se sancionará con un 50% de remuneración diaria.';
+    }
+    if (upper === 'FALTA') {
+        return 'a) Falta injustificada por inasistencia, sanción económica equivalente al número de días no laborados.\na) Más de tres faltas injustificadas por inasistencia y por lo indicado el artículo 14 y 51 en un periodo de treinta días dará lugar a la rescisión contractual, sin responsabilidad para la Empresa.';
+    }
+    return 'NO ESPECIFICADO';
+}
+
 // Función para generar el PDF FT-RH-27 para múltiples incidencias del mismo empleado
 async function generateIncidencePDF(
     batchId: number,
@@ -64,8 +76,7 @@ async function generateIncidencePDF(
             `SELECT 
                 IncidenceNumber,
                 IncidenceDate,
-                Description,
-                Rule
+                Description
             FROM employee_incidence_details 
             WHERE BatchID = ?
             ORDER BY IncidenceNumber`,
@@ -116,7 +127,6 @@ async function generateIncidencePDF(
         ws.getCell('A6').value = batch.LastName || 'NO ESPECIFICADO';
         ws.getCell('E6').value = batch.MiddleName || 'NO ESPECIFICADO';
         ws.getCell('H6').value = batch.FirstName || 'NO ESPECIFICADO';
-        ws.getCell('H6').value = batch.FirstName || 'NO ESPECIFICADO';
         ws.getCell('A9').value = formatDate(batch.StartDate);
         ws.getCell('C9').value = batch.Position || 'NO ESPECIFICADO';
         ws.getCell('G9').value = batch.NameProject || 'N/A';
@@ -125,11 +135,12 @@ async function generateIncidencePDF(
 
         // Llenar cada incidencia en filas consecutivas (12, 13, 14, 15)
         incidenceRows.forEach((inc, index) => {
-            const rowNumber = 12 + index; // Fila 12, 13, 14, 15
+            const rowNumber = 12 + index;
             ws.getCell(`A${rowNumber}`).value = inc.IncidenceNumber || 'NO ESPECIFICADO';
             ws.getCell(`B${rowNumber}`).value = formatDate(inc.IncidenceDate);
             ws.getCell(`D${rowNumber}`).value = inc.Description || 'NO ESPECIFICADO';
-            ws.getCell(`H${rowNumber}`).value = inc.Rule || 'NO ESPECIFICADO';
+            // Regla generada automáticamente según la descripción
+            ws.getCell(`G${rowNumber}`).value = getRuleText(inc.Description);
         });
 
         await workbook.xlsx.writeFile(tempExcelPath);
@@ -297,10 +308,7 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
-        const {
-            EmployeeID,
-            Incidences
-        } = body;
+        const { EmployeeID, Incidences } = body;
 
         if (!EmployeeID) {
             return NextResponse.json(
@@ -354,10 +362,7 @@ export async function POST(request: NextRequest) {
                 `INSERT INTO employee_incidence_batches 
                  (EmployeeID, BatchDate, FileURL) 
                  VALUES (?, NOW(), ?)`,
-                [
-                    EmployeeID,
-                    null
-                ]
+                [EmployeeID, null]
             );
 
             const BatchID = (batchResult as any).insertId;
@@ -368,14 +373,13 @@ export async function POST(request: NextRequest) {
 
                 await connection.execute(
                     `INSERT INTO employee_incidence_details 
-                     (BatchID, IncidenceNumber, IncidenceDate, Description, Rule) 
-                     VALUES (?, ?, ?, ?, ?)`,
+                     (BatchID, IncidenceNumber, IncidenceDate, Description) 
+                     VALUES (?, ?, ?, ?)`,
                     [
                         BatchID,
                         incidenceNumber,
                         inc.IncidenceDate,
-                        inc.Description || 'SIN DESCRIPCIÓN',
-                        inc.Rule || 'SIN REGLA'
+                        inc.Description || 'SIN DESCRIPCIÓN'
                     ]
                 );
             }
