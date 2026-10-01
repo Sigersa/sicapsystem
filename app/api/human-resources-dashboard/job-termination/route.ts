@@ -975,25 +975,6 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // 3. Verificar si es entrenador en DC3
-    const [dc3Trainer] = await connection.execute(
-      `SELECT COUNT(*) as count 
-       FROM employeedc3 
-       WHERE TrainerID = ?`,
-      [EmployeeID]
-    );
-
-    const dc3TrainerCount = (dc3Trainer as any[])[0]?.count || 0;
-    if (dc3TrainerCount > 0) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: `No se puede eliminar el empleado porque es entrenador en ${dc3TrainerCount} registro(s) DC3. Debe reasignar estos registros antes de proceder.` 
-        },
-        { status: 400 }
-      );
-    }
-
     // Si pasó todas las validaciones, proceder con la eliminación
     await connection.beginTransaction();
 
@@ -1128,8 +1109,6 @@ export async function DELETE(request: NextRequest) {
           errorMessage = 'No se puede eliminar el empleado porque tiene contratos de proyecto asociados.';
         } else if (error.sqlMessage?.includes('basecontracts')) {
           errorMessage = 'No se puede eliminar el empleado porque es jefe directo de contratos base. Debe reasignar estos contratos primero.';
-        } else if (error.sqlMessage?.includes('employeedc3')) {
-          errorMessage = 'No se puede eliminar el empleado porque es instructor en registros DC3. Debe reasignar estos registros primero.';
         } else if (error.sqlMessage?.includes('projects')) {
           errorMessage = 'No se puede eliminar el empleado porque es administrador de proyectos. Debe reasignar estos proyectos primero.';
         } else {
