@@ -5,7 +5,7 @@ import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useState, useEffect, useRef, KeyboardEvent } from 'react';
-import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, Download, Eye, FileText, Plus } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, Download, Eye, FileText } from 'lucide-react';
 
 // Interface para lote de incidencias
 interface IncidenceBatch {
@@ -34,13 +34,12 @@ interface EmployeeSearchResult {
     NameProject?: string;
 }
 
-// Interface para incidencia individual
+// Interface para incidencia individual (sin Rule)
 interface IncidenceItem {
     id: string;
     IncidenceNumber: number;
     IncidenceDate: string;
     Description: string;
-    Rule: string;
 }
 
 // Interface para formulario
@@ -65,7 +64,8 @@ interface Filters {
 }
 
 const INCIDENCE_DESCRIPTIONS = [
-    { value: 'FALTA O RETARDO', label: 'FALTA O RETARDO' }
+    { value: 'FALTA', label: 'FALTA' },
+    { value: 'RETARDO', label: 'RETARDO' }
 ];
 
 // Función para normalizar texto a mayúsculas
@@ -286,8 +286,7 @@ export default function EmployeeIncidencePage() {
             id: `inc-${Date.now()}-${incidences.length + 1}`,
             IncidenceNumber: incidences.length + 1,
             IncidenceDate: '',
-            Description: '',
-            Rule: ''
+            Description: ''
         };
 
         setIncidences([...incidences, newIncidence]);
@@ -342,8 +341,7 @@ export default function EmployeeIncidencePage() {
                 id: 'inc-1',
                 IncidenceNumber: 1,
                 IncidenceDate: '',
-                Description: '',
-                Rule: ''
+                Description: ''
             }
         ]);
         setError('');
@@ -384,8 +382,7 @@ export default function EmployeeIncidencePage() {
                         id: `edit-${inc.IncidenceDetailID}`,
                         IncidenceNumber: inc.IncidenceNumber,
                         IncidenceDate: formatDateForInput(inc.IncidenceDate) || '',
-                        Description: inc.Description || '',
-                        Rule: inc.Rule || ''
+                        Description: inc.Description || ''
                     }));
                     setIncidences(incidencesData);
                 } else {
@@ -479,8 +476,7 @@ export default function EmployeeIncidencePage() {
                 EmployeeID: parseInt(formData.EmployeeID),
                 Incidences: incidences.map(inc => ({
                     IncidenceDate: inc.IncidenceDate,
-                    Description: inc.Description || 'SIN DESCRIPCIÓN',
-                    Rule: inc.Rule || 'SIN REGLA'
+                    Description: inc.Description || 'SIN DESCRIPCIÓN'
                 }))
             };
 
@@ -938,7 +934,7 @@ export default function EmployeeIncidencePage() {
                                                                 </button>
                                                             )}
                                                         </div>
-                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                             <div>
                                                                  <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
                                                                     FECHA *
@@ -968,19 +964,6 @@ export default function EmployeeIncidencePage() {
                                                                         </option>
                                                                     ))}
                                                                 </select>
-                                                            </div>
-                                                            <div>
-                                                                 <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                                                                    REGLA *
-                                                                </label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={inc.Rule}
-                                                                    onChange={(e) => updateIncidence(inc.id, 'Rule', normalizarMayusculas(e.target.value))}
-                                                                    placeholder="Lo que el reglamento indica"
-                                                                     className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                                                                    required
-                                                                />
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1115,7 +1098,7 @@ export default function EmployeeIncidencePage() {
                                 <tbody>
                                     {loading ? (
                                         <tr>
-                                            <td colSpan={8} className="py-12 text-center">
+                                            <td colSpan={9} className="py-12 text-center">
                                                 <div className="flex flex-col items-center justify-center">
                                                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
                                                     <p className="text-gray-600">Cargando incidencias...</p>
@@ -1124,7 +1107,7 @@ export default function EmployeeIncidencePage() {
                                         </tr>
                                     ) : filteredRecords.length === 0 ? (
                                         <tr>
-                                            <td colSpan={8} className="py-12 text-center">
+                                            <td colSpan={9} className="py-12 text-center">
                                                 <div className="flex flex-col items-center justify-center">
                                                     <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
                                                     <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
