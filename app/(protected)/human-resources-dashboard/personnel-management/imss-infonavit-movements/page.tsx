@@ -5,7 +5,7 @@ import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 import { useState, useEffect, ChangeEvent, useRef, KeyboardEvent } from 'react';
-import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Download, Eye } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Download, Eye, Info } from 'lucide-react';
 
 // Interface para movimientos de empleados
 interface EmployeeMovement {
@@ -32,13 +32,17 @@ interface EmployeeSearchResult {
   tipo: 'BASE' | 'PROJECT';
   Area?: string;
   NameProject?: string;
+  SalaryIMSS?: number | null;
+  NCI?: string | null;
 }
 
-// Interface para empleado en el lote
+// Interface para empleado en el lote (con campos editables)
 interface EmployeeInBatch {
   id: string;
   EmployeeID: number;
   EmployeeData: EmployeeSearchResult;
+  editableSalaryIMSS: string;
+  editableNCI: string;
 }
 
 // Interface para formulario de movimientos
@@ -285,7 +289,9 @@ export default function EmployeeMovementsPage() {
     const newEmployee: EmployeeInBatch = {
       id: `${Date.now()}-${employeeToAdd.EmployeeID}`,
       EmployeeID: employeeToAdd.EmployeeID,
-      EmployeeData: employeeToAdd
+      EmployeeData: employeeToAdd,
+      editableSalaryIMSS: employeeToAdd.SalaryIMSS?.toString() || '',
+      editableNCI: employeeToAdd.NCI || ''
     };
     
     setEmployeesInBatch([...employeesInBatch, newEmployee]);
@@ -300,6 +306,18 @@ export default function EmployeeMovementsPage() {
 
   const removeEmployeeFromBatch = (id: string) => {
     setEmployeesInBatch(employeesInBatch.filter(emp => emp.id !== id));
+  };
+
+  const updateEmployeeSalary = (id: string, value: string) => {
+    setEmployeesInBatch(prev => prev.map(emp => 
+      emp.id === id ? { ...emp, editableSalaryIMSS: value } : emp
+    ));
+  };
+
+  const updateEmployeeNCI = (id: string, value: string) => {
+    setEmployeesInBatch(prev => prev.map(emp => 
+      emp.id === id ? { ...emp, editableNCI: normalizarMayusculas(value) } : emp
+    ));
   };
 
   const clearEmployeeSearch = () => {
@@ -362,7 +380,9 @@ export default function EmployeeMovementsPage() {
             EmployeeData: {
               ...emp,
               tipo: emp.tipo
-            }
+            },
+            editableSalaryIMSS: emp.SalaryIMSS?.toString() || '',
+            editableNCI: emp.NCI || ''
           }));
           setEmployeesInBatch(employees);
         } else {
@@ -471,8 +491,15 @@ export default function EmployeeMovementsPage() {
         return;
       }
 
+      // Construir datos de empleados con campos editables
+      const employeesData = employeesInBatch.map(emp => ({
+        EmployeeID: emp.EmployeeID,
+        SalaryIMSS: emp.editableSalaryIMSS ? parseFloat(emp.editableSalaryIMSS) : null,
+        NCI: emp.editableNCI || null
+      }));
+
       const recordData = {
-        Employees: employeesInBatch.map(emp => emp.EmployeeID),
+        Employees: employeesData,
         MovementType: formData.MovementType,
         DateMovement: formData.DateMovement,
         ReasonForWithdrawal: formData.MovementType === 'BAJA' ? formData.ReasonForWithdrawal : null,
@@ -923,48 +950,84 @@ export default function EmployeeMovementsPage() {
                     </div>
                   )}
 
-                  {/* Lista de empleados en el lote */}
+                  {/* Lista de empleados en el lote con campos editables */}
                   {employeesInBatch.length > 0 && (
                     <div className="mt-4">
                       <h4 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">EMPLEADOS EN LA SOLICITUD:</h4>
                       
-                      <div className="space-y-2 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+                        <div className="flex items-start gap-2">
+                          <Info className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                          <p className="text-xs text-amber-800 leading-relaxed">
+                            <strong>IMPORTANTE:</strong> Revise que el <strong>Salario IMSS</strong> y el <strong>Número de Crédito INFONAVIT (NCI)</strong> sean correctos antes de generar el documento. 
+                            Si los modifica, se actualizarán en la base de datos y se reflejarán en el documento generado.
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-3 max-h-80 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
                         {employeesInBatch.map((emp) => (
-                          <div key={emp.id} className="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-200 hover:shadow-sm transition-shadow">
-                            <div className="flex-1">
-                              <p className="font-semibold text-gray-800 text-sm mb-1">
-                                {`${emp.EmployeeData.FirstName} ${emp.EmployeeData.LastName} ${emp.EmployeeData.MiddleName || ''}`.trim()}
-                              </p>
-                              <div className="grid grid-cols-3 gap-2 text-xs">
-                                <div>
-                                  <span className="font-semibold text-gray-600">ID:</span>
-                                  <span className="text-gray-700 ml-1">{emp.EmployeeID}</span>
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-gray-600">TIPO:</span>
-                                  <span className="text-gray-700 ml-1">{emp.EmployeeData.tipo}</span>
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-gray-600">PUESTO:</span>
-                                  <span className="text-gray-700 ml-1">{emp.EmployeeData.Position}</span>
+                          <div key={emp.id} className="p-3 bg-white rounded-lg border border-gray-200 hover:shadow-sm transition-shadow">
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="flex-1">
+                                <p className="font-semibold text-gray-800 text-sm mb-1">
+                                  {`${emp.EmployeeData.FirstName} ${emp.EmployeeData.LastName} ${emp.EmployeeData.MiddleName || ''}`.trim()}
+                                </p>
+                                <div className="grid grid-cols-3 gap-2 text-xs">
+                                  <div>
+                                    <span className="font-semibold text-gray-600">ID:</span>
+                                    <span className="text-gray-700 ml-1">{emp.EmployeeID}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-semibold text-gray-600">TIPO:</span>
+                                    <span className="text-gray-700 ml-1">{emp.EmployeeData.tipo}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-semibold text-gray-600">PUESTO:</span>
+                                    <span className="text-gray-700 ml-1">{emp.EmployeeData.Position}</span>
+                                  </div>
                                 </div>
                               </div>
+                              <button
+                                onClick={() => removeEmployeeFromBatch(emp.id)}
+                                className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md transition-all duration-200 ml-2"
+                                title="Eliminar de la solicitud"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
                             </div>
-                            <button
-                              onClick={() => removeEmployeeFromBatch(emp.id)}
-                              className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md transition-all duration-200 ml-2"
-                              title="Eliminar de la solicitud"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            
+                            {/* Campos editables */}
+                            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-100">
+                              <div>
+                                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">
+                                  Salario IMSS
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={emp.editableSalaryIMSS}
+                                  onChange={(e) => updateEmployeeSalary(emp.id, e.target.value)}
+                                  placeholder="Ej: 450.00"
+                                  className="w-full px-2.5 py-1.5 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">
+                                  N° Crédito INFONAVIT (NCI)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={emp.editableNCI}
+                                  onChange={(e) => updateEmployeeNCI(emp.id, e.target.value)}
+                                  placeholder="Ej: 1234567890"
+                                  className="w-full px-2.5 py-1.5 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                                />
+                              </div>
+                            </div>
                           </div>
                         ))}
-                        
-                        {employeesInBatch.length === 0 && (
-                          <div className="text-center py-6 text-gray-400 text-sm">
-                            No hay empleados agregados
-                          </div>
-                        )}
                       </div>
                       
                       {employeesInBatch.length === 10 && (
