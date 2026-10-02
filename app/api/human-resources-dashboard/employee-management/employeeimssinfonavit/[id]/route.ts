@@ -82,6 +82,62 @@ async function getEmployeeContractIDs(connection: any, employeeId: number): Prom
   return { baseContractId, projectContractId };
 }
 
+// Función para actualizar el salario IMSS y NCI en la base de datos
+async function updateEmployeeSalaryAndNCI(
+  connection: any,
+  employeeId: number,
+  baseContractId: number | null,
+  projectContractId: number | null,
+  salaryIMSS: number | null,
+  nci: string | null
+): Promise<void> {
+  if (baseContractId && salaryIMSS !== null) {
+    await connection.execute(
+      `UPDATE basecontracts SET SalaryIMSS = ? WHERE ContractID = ?`,
+      [salaryIMSS, baseContractId]
+    );
+  }
+
+  if (projectContractId && salaryIMSS !== null) {
+    await connection.execute(
+      `UPDATE projectcontracts SET SalaryIMSS = ? WHERE ContractID = ?`,
+      [salaryIMSS, projectContractId]
+    );
+  }
+
+  if (baseContractId && nci !== null) {
+    const [basePersonnel] = await connection.execute(
+      `SELECT bp.BasePersonnelID FROM basepersonnel bp 
+       INNER JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID 
+       WHERE bc.ContractID = ? LIMIT 1`,
+      [baseContractId]
+    );
+    const basePersonnelRows = basePersonnel as any[];
+    if (basePersonnelRows.length > 0) {
+      await connection.execute(
+        `UPDATE basepersonnelpersonalinfo SET NCI = ? WHERE BasePersonnelID = ?`,
+        [nci, basePersonnelRows[0].BasePersonnelID]
+      );
+    }
+  }
+
+  if (projectContractId && nci !== null) {
+    const [projectPersonnel] = await connection.execute(
+      `SELECT pp.ProjectPersonnelID FROM projectpersonnel pp 
+       INNER JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID 
+       WHERE pc.ContractID = ? LIMIT 1`,
+      [projectContractId]
+    );
+    const projectPersonnelRows = projectPersonnel as any[];
+    if (projectPersonnelRows.length > 0) {
+      await connection.execute(
+        `UPDATE projectpersonnelpersonalinfo SET NCI = ? WHERE ProjectPersonnelID = ?`,
+        [nci, projectPersonnelRows[0].ProjectPersonnelID]
+      );
+    }
+  }
+}
+
 // Función para obtener el ALTA activa (Status = 1) de un empleado
 async function getActiveAltaMovement(connection: any, employeeId: number, excludeBatchId?: number): Promise<any | null> {
   let query = `
@@ -129,7 +185,8 @@ async function getLastMovement(connection: any, employeeId: number, excludeBatch
 }
 
 async function generateUpdatedMovementPDF(
-  batchId: number
+  batchId: number,
+  employeesData?: any[]
 ): Promise<{ pdfBuffer: ArrayBuffer; fileUrl: string }> {
   const tempExcelPath = path.join(
     os.tmpdir(),
@@ -208,6 +265,21 @@ async function generateUpdatedMovementPDF(
       throw new Error('El lote tiene más de 10 movimientos');
     }
 
+    // Sobrescribir con valores editados si se proporcionaron
+    const finalEmployeeRows = employeeRows.map(row => {
+      if (employeesData) {
+        const editedEmp = employeesData.find((e: any) => e.EmployeeID === row.EmployeeID);
+        if (editedEmp) {
+          return {
+            ...row,
+            SalaryIMSS: editedEmp.SalaryIMSS !== undefined && editedEmp.SalaryIMSS !== null ? editedEmp.SalaryIMSS : row.SalaryIMSS,
+            NCI: editedEmp.NCI !== undefined && editedEmp.NCI !== null ? editedEmp.NCI : row.NCI
+          };
+        }
+      }
+      return row;
+    });
+
     const adminName = [
       batch.AdminNombre || '',
       batch.AdminApellido || '',
@@ -248,7 +320,7 @@ async function generateUpdatedMovementPDF(
     ws.getCell('D5').value = batch.NameProject || 'NO ESPECIFICADO';
     ws.getCell('D7').value = adminName || 'NO ESPECIFICADO';
 
-    employeeRows.forEach((mov, index) => {
+    finalEmployeeRows.forEach((mov, index) => {
       const rowNumber = 10 + index; 
       
       const employeeName = [
@@ -383,6 +455,8 @@ export async function GET(
         COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
         COALESCE(bp.Position, pc.Position) as Position,
         COALESCE(bp.Area, pj.NameProject) as AreaOrProject,
+        COALESCE(bc.SalaryIMSS, pc.SalaryIMSS) as SalaryIMSS,
+        COALESCE(bpi.NCI, ppi.NCI) as NCI,
         CASE 
           WHEN bp.EmployeeID IS NOT NULL AND em.BaseContractID IS NOT NULL THEN 'BASE'
           WHEN pp.EmployeeID IS NOT NULL AND em.ProjectContractID IS NOT NULL THEN 'PROYECTO'
@@ -390,8 +464,11 @@ export async function GET(
         END as tipo
       FROM employeeimssinfonavitmovements em
       LEFT JOIN basepersonnel bp ON em.EmployeeID = bp.EmployeeID
+      LEFT JOIN basecontracts bc ON em.BaseContractID = bc.ContractID
+      LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
       LEFT JOIN projectpersonnel pp ON em.EmployeeID = pp.EmployeeID
-      LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
+      LEFT JOIN projectcontracts pc ON em.ProjectContractID = pc.ContractID
+      LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
       LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
       WHERE em.BatchID = ?
       ORDER BY em.MovementID`,
@@ -509,7 +586,6 @@ export async function PUT(
     await connection.beginTransaction();
 
     try {
-      // Obtener el batch actual
       const [batchCheck] = await connection.execute<any[]>(
         'SELECT BatchID, FileURL, MovementType as CurrentMovementType FROM employee_movement_batches WHERE BatchID = ?',
         [BatchID]
@@ -521,9 +597,7 @@ export async function PUT(
 
       const currentBatch = batchCheck[0];
       const oldFileUrl = currentBatch.FileURL;
-      const currentMovementType = currentBatch.CurrentMovementType;
 
-      // Obtener los empleados actuales del lote
       const [currentEmployees] = await connection.execute<any[]>(
         `SELECT EmployeeID, Status FROM employeeimssinfonavitmovements WHERE BatchID = ?`,
         [BatchID]
@@ -531,18 +605,14 @@ export async function PUT(
       
       const currentEmployeeIds = currentEmployees.map((e: any) => e.EmployeeID);
 
-      // Determinar el nuevo status basado en el MovementType
       const newStatus = MovementType === 'ALTA' ? 1 : 0;
 
       // Procesar los empleados que serán removidos del lote
       for (const empId of currentEmployeeIds) {
-        if (!Employees.includes(empId)) {
-          // El empleado fue removido del lote
-          // Buscar el último movimiento del empleado (excluyendo el lote actual)
+        if (!Employees.find((e: any) => e.EmployeeID === empId)) {
           const lastMovement = await getLastMovement(connection, empId, BatchID);
           
           if (lastMovement) {
-            // Restaurar el status del último movimiento anterior
             await connection.execute(
               `UPDATE employeeimssinfonavitmovements 
                SET Status = ? 
@@ -553,29 +623,43 @@ export async function PUT(
         }
       }
 
-      // Procesar los empleados que se mantienen o se agregan
-      const employeesToSave = [];
+      const employeesToSave: any[] = [];
       
-      for (const employeeId of Employees) {
+      for (const emp of Employees) {
+        const employeeId = typeof emp === 'object' ? emp.EmployeeID : emp;
+        const salaryIMSS = typeof emp === 'object' ? emp.SalaryIMSS : null;
+        const nci = typeof emp === 'object' ? emp.NCI : null;
+
         const { baseContractId, projectContractId } = await getEmployeeContractIDs(connection, employeeId);
         
         if (!baseContractId && !projectContractId) {
           throw new Error(`El empleado ${employeeId} no tiene un contrato activo.`);
         }
 
-        // Verificar si el empleado ya está en el lote actual
+        // Actualizar salario IMSS y NCI si se proporcionaron
+        if (salaryIMSS !== null || nci !== null) {
+          await updateEmployeeSalaryAndNCI(
+            connection,
+            employeeId,
+            baseContractId,
+            projectContractId,
+            salaryIMSS,
+            nci
+          );
+        }
+
         const existingInBatch = currentEmployeeIds.includes(employeeId);
         
         if (existingInBatch) {
-          // Si ya está en el lote, actualizar su status según el nuevo MovementType
           employeesToSave.push({ 
             EmployeeID: employeeId, 
             BaseContractID: baseContractId, 
             ProjectContractID: projectContractId,
-            Status: newStatus
+            Status: newStatus,
+            SalaryIMSS: salaryIMSS,
+            NCI: nci
           });
           
-          // Actualizar el status del empleado en el lote
           await connection.execute(
             `UPDATE employeeimssinfonavitmovements 
              SET Status = ? 
@@ -583,9 +667,7 @@ export async function PUT(
             [newStatus, BatchID, employeeId]
           );
         } else {
-          // Nuevo empleado agregado al lote
           if (MovementType === 'ALTA') {
-            // Verificar si tiene un ALTA activa en otro lote
             const activeAlta = await getActiveAltaMovement(connection, employeeId);
             
             if (activeAlta) {
@@ -596,18 +678,18 @@ export async function PUT(
               EmployeeID: employeeId, 
               BaseContractID: baseContractId, 
               ProjectContractID: projectContractId,
-              Status: 1
+              Status: 1,
+              SalaryIMSS: salaryIMSS,
+              NCI: nci
             });
             
           } else if (MovementType === 'BAJA') {
-            // Verificar si tiene un ALTA activa
             const activeAlta = await getActiveAltaMovement(connection, employeeId);
             
             if (!activeAlta) {
               throw new Error(`El empleado ${employeeId} no tiene un ALTA activa. No se puede dar de BAJA.`);
             }
             
-            // Marcar el ALTA activa como inactiva
             await connection.execute(
               `UPDATE employeeimssinfonavitmovements 
                SET Status = 0 
@@ -619,7 +701,9 @@ export async function PUT(
               EmployeeID: employeeId, 
               BaseContractID: baseContractId, 
               ProjectContractID: projectContractId,
-              Status: 0
+              Status: 0,
+              SalaryIMSS: salaryIMSS,
+              NCI: nci
             });
           }
         }
@@ -627,7 +711,6 @@ export async function PUT(
 
       const dateMovementFormatted = DateMovement ? formatearFechaMySQL(DateMovement) : null;
 
-      // Actualizar los datos del batch
       await connection.execute(
         `UPDATE employee_movement_batches 
          SET MovementType = ?, DateMovement = ?, ReasonForWithdrawal = ?
@@ -640,9 +723,8 @@ export async function PUT(
         ]
       );
 
-      // Eliminar los empleados que ya no están en el lote
       for (const empId of currentEmployeeIds) {
-        if (!Employees.includes(empId)) {
+        if (!Employees.find((e: any) => e.EmployeeID === empId)) {
           await connection.execute(
             'DELETE FROM employeeimssinfonavitmovements WHERE BatchID = ? AND EmployeeID = ?',
             [BatchID, empId]
@@ -650,7 +732,6 @@ export async function PUT(
         }
       }
 
-      // Insertar los nuevos empleados (los que no estaban en el lote)
       for (const emp of employeesToSave) {
         if (!currentEmployeeIds.includes(emp.EmployeeID)) {
           await connection.execute(
@@ -670,14 +751,13 @@ export async function PUT(
 
       await connection.commit();
 
-      // Generar nuevo PDF
       let newFileUrl: string | null = null;
       let pdfGenerationSuccess = false;
 
       try {
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        const { fileUrl: pdfUrl } = await generateUpdatedMovementPDF(BatchID);
+        const { fileUrl: pdfUrl } = await generateUpdatedMovementPDF(BatchID, employeesToSave);
         newFileUrl = pdfUrl;
         pdfGenerationSuccess = true;
         
@@ -819,7 +899,6 @@ export async function DELETE(
 
       const fileUrl = batchCheck[0].FileURL;
 
-      // Obtener los empleados del lote
       const [employees] = await connection.execute<any[]>(
         `SELECT EmployeeID, Status 
          FROM employeeimssinfonavitmovements 
@@ -827,13 +906,10 @@ export async function DELETE(
         [BatchID]
       );
 
-      // Restaurar status de empleados que estaban en el lote
       for (const emp of employees) {
-        // Buscar el último movimiento del empleado (excluyendo el lote actual)
         const lastMovement = await getLastMovement(connection, emp.EmployeeID, BatchID);
         
         if (lastMovement) {
-          // Restaurar el status del último movimiento anterior
           await connection.execute(
             `UPDATE employeeimssinfonavitmovements 
              SET Status = ? 
