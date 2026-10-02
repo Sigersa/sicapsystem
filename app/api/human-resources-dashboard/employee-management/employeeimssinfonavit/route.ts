@@ -77,10 +77,70 @@ async function getActiveAltaMovement(connection: any, employeeId: number): Promi
   return (rows as any[])[0] || null;
 }
 
-// Función para generar el PDF FT-RH-05
+// Función para actualizar el salario IMSS y NCI en la base de datos
+async function updateEmployeeSalaryAndNCI(
+  connection: any,
+  employeeId: number,
+  baseContractId: number | null,
+  projectContractId: number | null,
+  salaryIMSS: number | null,
+  nci: string | null
+): Promise<void> {
+  // Actualizar en basecontracts si tiene contrato BASE
+  if (baseContractId && salaryIMSS !== null) {
+    await connection.execute(
+      `UPDATE basecontracts SET SalaryIMSS = ? WHERE ContractID = ?`,
+      [salaryIMSS, baseContractId]
+    );
+  }
+
+  // Actualizar en projectcontracts si tiene contrato PROJECT
+  if (projectContractId && salaryIMSS !== null) {
+    await connection.execute(
+      `UPDATE projectcontracts SET SalaryIMSS = ? WHERE ContractID = ?`,
+      [salaryIMSS, projectContractId]
+    );
+  }
+
+  // Actualizar NCI en basepersonnelpersonalinfo
+  if (baseContractId && nci !== null) {
+    const [basePersonnel] = await connection.execute(
+      `SELECT bp.BasePersonnelID FROM basepersonnel bp 
+       INNER JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID 
+       WHERE bc.ContractID = ? LIMIT 1`,
+      [baseContractId]
+    );
+    const basePersonnelRows = basePersonnel as any[];
+    if (basePersonnelRows.length > 0) {
+      await connection.execute(
+        `UPDATE basepersonnelpersonalinfo SET NCI = ? WHERE BasePersonnelID = ?`,
+        [nci, basePersonnelRows[0].BasePersonnelID]
+      );
+    }
+  }
+
+  // Actualizar NCI en projectpersonnelpersonalinfo
+  if (projectContractId && nci !== null) {
+    const [projectPersonnel] = await connection.execute(
+      `SELECT pp.ProjectPersonnelID FROM projectpersonnel pp 
+       INNER JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID 
+       WHERE pc.ContractID = ? LIMIT 1`,
+      [projectContractId]
+    );
+    const projectPersonnelRows = projectPersonnel as any[];
+    if (projectPersonnelRows.length > 0) {
+      await connection.execute(
+        `UPDATE projectpersonnelpersonalinfo SET NCI = ? WHERE ProjectPersonnelID = ?`,
+        [nci, projectPersonnelRows[0].ProjectPersonnelID]
+      );
+    }
+  }
+}
+
+// Función para generar el PDF FT-RH-05 (con soporte para valores editados)
 async function generateMovementPDF(
   batchId: number,
-  employees: any[]
+  employeesData: any[]
 ): Promise<{ pdfBuffer: ArrayBuffer; fileUrl: string }> {
   const tempExcelPath = path.join(
     os.tmpdir(),
@@ -120,9 +180,10 @@ async function generateMovementPDF(
 
     const batch = batchRows[0];
 
-    const employeesData: any[] = [];
+    // Usar los datos editados proporcionados
+    const finalEmployeesData: any[] = [];
     
-    for (const emp of employees) {
+    for (const emp of employeesData) {
       const [empRows] = await connection.execute<any[]>(
         `SELECT 
           em.EmployeeID,
@@ -132,10 +193,8 @@ async function generateMovementPDF(
           COALESCE(bp.LastName, pp.LastName) as LastName,
           COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
           COALESCE(bp.Position, pc.Position) as Position,
-          COALESCE(bc.SalaryIMSS, pc.SalaryIMSS) as SalaryIMSS,
           COALESCE(bpi.CURP, ppi.CURP) as CURP,
           COALESCE(bpi.NSS, ppi.NSS) as NSS,
-          COALESCE(bpi.NCI, ppi.NCI) as NCI,
           COALESCE(bpi.UMF, ppi.UMF) as UMF,    
           CASE 
             WHEN bp.EmployeeID IS NOT NULL AND em.BaseContractID IS NOT NULL THEN 'BASE'
@@ -154,11 +213,15 @@ async function generateMovementPDF(
       );
       
       if (empRows && empRows.length > 0) {
-        employeesData.push(empRows[0]);
+        const row = empRows[0];
+        // Sobrescribir con los valores editados si se proporcionaron
+        row.SalaryIMSS = emp.SalaryIMSS !== undefined && emp.SalaryIMSS !== null ? emp.SalaryIMSS : row.SalaryIMSS;
+        row.NCI = emp.NCI !== undefined && emp.NCI !== null ? emp.NCI : row.NCI;
+        finalEmployeesData.push(row);
       }
     }
 
-    if (employeesData.length === 0) {
+    if (finalEmployeesData.length === 0) {
       throw new Error('No se encontraron empleados para este lote');
     }
 
@@ -202,7 +265,7 @@ async function generateMovementPDF(
     ws.getCell('D5').value = batch.NameProject || 'NO ESPECIFICADO';
     ws.getCell('D7').value = adminName || 'NO ESPECIFICADO';
 
-    employeesData.forEach((mov, index) => {
+    finalEmployeesData.forEach((mov, index) => {
       const rowNumber = 10 + index; 
       
       const employeeName = [
@@ -433,14 +496,30 @@ export async function POST(request: NextRequest) {
       );
 
       const BatchID = (batchResult as any).insertId;
-      const employeesToSave = [];
+      const employeesToSave: any[] = [];
       
-      for (const employeeId of Employees) {
+      for (const emp of Employees) {
+        const employeeId = typeof emp === 'object' ? emp.EmployeeID : emp;
+        const salaryIMSS = typeof emp === 'object' ? emp.SalaryIMSS : null;
+        const nci = typeof emp === 'object' ? emp.NCI : null;
+
         // Obtener ambos IDs de contrato
         const { baseContractId, projectContractId } = await getEmployeeContractIDs(connection, employeeId);
         
         if (!baseContractId && !projectContractId) {
           throw new Error(`El empleado ${employeeId} no tiene un contrato activo.`);
+        }
+
+        // Actualizar salario IMSS y NCI si se proporcionaron
+        if (salaryIMSS !== null || nci !== null) {
+          await updateEmployeeSalaryAndNCI(
+            connection,
+            employeeId,
+            baseContractId,
+            projectContractId,
+            salaryIMSS,
+            nci
+          );
         }
 
         if (MovementType === 'ALTA') {
@@ -494,7 +573,11 @@ export async function POST(request: NextRequest) {
           );
         }
         
-        employeesToSave.push({ EmployeeID: employeeId });
+        employeesToSave.push({ 
+          EmployeeID: employeeId,
+          SalaryIMSS: salaryIMSS,
+          NCI: nci
+        });
       }
 
       await connection.commit();
