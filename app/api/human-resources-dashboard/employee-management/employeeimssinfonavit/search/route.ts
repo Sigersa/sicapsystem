@@ -4,9 +4,7 @@ import { validateAndRenewSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   let connection;
-  
   try {
-    // Validar sesión
     const sessionId = request.cookies.get("session")?.value;
 
     if (!sessionId) {
@@ -16,7 +14,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Validar y renovar la sesión
     const user = await validateAndRenewSession(sessionId);
 
     if (!user) {
@@ -26,7 +23,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verificar permisos (solo administradores)
     if (user.UserTypeID !== 2) {
       return NextResponse.json(
         { success: false, message: 'ACCESO DENEGADO' },
@@ -35,68 +31,53 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const term = searchParams.get('term');
+    const term = searchParams.get("term");
 
     if (!term) {
-      return NextResponse.json({
-        success: true,
-        employees: []
-      });
+      return NextResponse.json(
+        { success: false, message: 'Término de búsqueda requerido' },
+        { status: 400 }
+      );
     }
 
     connection = await getConnection();
 
-    // Buscar en basepersonnel (BASE)
-    const [baseResults] = await connection.execute(
+    const [rows] = await connection.execute(
       `SELECT 
-        bp.EmployeeID,
-        bp.FirstName,
-        bp.LastName,
-        bp.MiddleName,
-        bp.Position,
+        e.EmployeeID,
+        COALESCE(bp.FirstName, pp.FirstName) as FirstName,
+        COALESCE(bp.LastName, pp.LastName) as LastName,
+        COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
+        COALESCE(bp.Position, pc.Position) as Position,
         bp.Area,
-        e.Status,
-        'BASE' as tipo
-      FROM basepersonnel bp
-      INNER JOIN employees e ON e.EmployeeID = bp.EmployeeID
-      WHERE bp.EmployeeID LIKE ? 
-         OR bp.FirstName LIKE ? 
-         OR bp.LastName LIKE ?
-         OR CONCAT(bp.FirstName, ' ', bp.LastName, ' ', COALESCE(bp.MiddleName, '')) LIKE ?
-      AND e.Status = 1
-      LIMIT 10`,
-      [`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`]
-    );
-
-    // Buscar en projectpersonnel (PROJECT)
-    const [projectResults] = await connection.execute(
-      `SELECT 
-        pp.EmployeeID,
-        pp.FirstName,
-        pp.LastName,
-        pp.MiddleName,
-        pc.Position,
-        p.NameProject,
-        e.Status,
-        'PROJECT' as tipo
-      FROM projectpersonnel pp
-      INNER JOIN employees e ON e.EmployeeID = pp.EmployeeID
+        pj.NameProject,
+        COALESCE(bc.SalaryIMSS, pc.SalaryIMSS) as SalaryIMSS,
+        COALESCE(bpi.NCI, ppi.NCI) as NCI,
+        CASE 
+          WHEN bp.EmployeeID IS NOT NULL THEN 'BASE'
+          WHEN pp.EmployeeID IS NOT NULL THEN 'PROJECT'
+          ELSE 'NO ESPECIFICADO'
+        END as tipo
+      FROM employees e
+      LEFT JOIN basepersonnel bp ON e.EmployeeID = bp.EmployeeID
+      LEFT JOIN basecontracts bc ON bp.BasePersonnelID = bc.BasePersonnelID
+      LEFT JOIN basepersonnelpersonalinfo bpi ON bp.BasePersonnelID = bpi.BasePersonnelID
+      LEFT JOIN projectpersonnel pp ON e.EmployeeID = pp.EmployeeID
       LEFT JOIN projectcontracts pc ON pp.ProjectPersonnelID = pc.ProjectPersonnelID
-      LEFT JOIN projects p ON pc.ProjectID = p.ProjectID
-      WHERE pp.EmployeeID LIKE ? 
-         OR pp.FirstName LIKE ? 
-         OR pp.LastName LIKE ?
-         OR CONCAT(pp.FirstName, ' ', pp.LastName, ' ', COALESCE(pp.MiddleName, '')) LIKE ?
-         AND e.Status = 1 
+      LEFT JOIN projectpersonnelpersonalinfo ppi ON pp.ProjectPersonnelID = ppi.ProjectPersonnelID
+      LEFT JOIN projects pj ON pc.ProjectID = pj.ProjectID
+      WHERE e.EmployeeID = ? OR 
+            bp.FirstName LIKE ? OR 
+            bp.LastName LIKE ? OR
+            pp.FirstName LIKE ? OR
+            pp.LastName LIKE ?
       LIMIT 10`,
-      [`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`]
+      [term, `%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`]
     );
-
-    const employees = [...(baseResults as any[]), ...(projectResults as any[])];
 
     return NextResponse.json({
       success: true,
-      employees
+      employees: rows
     });
 
   } catch (error) {
