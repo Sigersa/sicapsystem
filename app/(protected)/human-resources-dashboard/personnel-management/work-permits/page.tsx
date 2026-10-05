@@ -1138,7 +1138,7 @@ export default function EmployeePermissionsPage() {
                     )}
                     {employeeNotFound && (
                       <p className="mt-2 text-sm text-red-600">
-                        No se encontró un empleado con ese ID
+                        No se encontró un empleado con ese ID o nombre
                       </p>
                     )}
                   </div>
