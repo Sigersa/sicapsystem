@@ -12,7 +12,6 @@ interface EmployeeMovement {
   BatchID: number;
   ProjectContractID: number;
   MovementType: string | null;
-  DateMovement: string | null;
   ReasonForWithdrawal: string | null;
   FileURL?: string | null; 
   FirstName?: string;
@@ -43,12 +42,12 @@ interface EmployeeInBatch {
   EmployeeData: EmployeeSearchResult;
   editableSalaryIMSS: string;
   editableNCI: string;
+  editableDateMovement: string;
 }
 
 // Interface para formulario de movimientos
 interface MovementFormData {
   MovementType: string;
-  DateMovement: string;
   ReasonForWithdrawal: string;
 }
 
@@ -158,7 +157,6 @@ export default function EmployeeMovementsPage() {
 
   const [formData, setFormData] = useState<MovementFormData>({
     MovementType: '',
-    DateMovement: '',
     ReasonForWithdrawal: '',
   });
 
@@ -237,7 +235,7 @@ export default function EmployeeMovementsPage() {
       e.preventDefault();
       const term = searchTerm.trim();
       if (!term) {
-        setError('POR FAVOR INGRESE UN ID O NOMBREDE EMPLEADO');
+        setError('POR FAVOR INGRESE UN ID O NOMBRE DE EMPLEADO');
         return;
       }
       await searchEmployeeByTerm(term);
@@ -298,7 +296,8 @@ export default function EmployeeMovementsPage() {
         EmployeeID: employee.EmployeeID,
         EmployeeData: employee,
         editableSalaryIMSS: employee.SalaryIMSS?.toString() || '',
-        editableNCI: employee.NCI || ''
+        editableNCI: employee.NCI || '',
+        editableDateMovement: ''
     };
 
     setEmployeesInBatch(prev => [...prev, newEmployee]);
@@ -322,7 +321,8 @@ export default function EmployeeMovementsPage() {
       EmployeeID: employeeToAdd.EmployeeID,
       EmployeeData: employeeToAdd,
       editableSalaryIMSS: employeeToAdd.SalaryIMSS?.toString() || '',
-      editableNCI: employeeToAdd.NCI || ''
+      editableNCI: employeeToAdd.NCI || '',
+      editableDateMovement: ''
     };
     
     setEmployeesInBatch([...employeesInBatch, newEmployee]);
@@ -352,6 +352,12 @@ export default function EmployeeMovementsPage() {
     ));
   };
 
+  const updateEmployeeDateMovement = (id: string, value: string) => {
+    setEmployeesInBatch(prev => prev.map(emp => 
+      emp.id === id ? { ...emp, editableDateMovement: value } : emp
+    ));
+  };
+
   const clearEmployeeSearch = () => {
     setSearchTerm('');
     setSearchResults([]);
@@ -375,7 +381,6 @@ export default function EmployeeMovementsPage() {
     setModalMode('create');
     setFormData({
       MovementType: '',
-      DateMovement: '',
       ReasonForWithdrawal: '',
     });
     setEmployeesInBatch([]);
@@ -405,7 +410,6 @@ export default function EmployeeMovementsPage() {
         if (data.success) {
           setFormData({
             MovementType: data.batch.MovementType || '',
-            DateMovement: formatDateForInput(data.batch.DateMovement),
             ReasonForWithdrawal: data.batch.ReasonForWithdrawal || '',
           });
           
@@ -417,7 +421,8 @@ export default function EmployeeMovementsPage() {
               tipo: emp.tipo
             },
             editableSalaryIMSS: emp.SalaryIMSS?.toString() || '',
-            editableNCI: emp.NCI || ''
+            editableNCI: emp.NCI || '',
+            editableDateMovement: formatDateForInput(emp.DateMovement)
           }));
           setEmployeesInBatch(employees);
         } else {
@@ -515,8 +520,10 @@ export default function EmployeeMovementsPage() {
         return;
       }
 
-      if (!formData.DateMovement) {
-        setError('DEBE SELECCIONAR UNA FECHA DE MOVIMIENTO');
+      // Validar que todos los empleados tengan fecha de movimiento
+      const employeeWithoutDate = employeesInBatch.find(emp => !emp.editableDateMovement);
+      if (employeeWithoutDate) {
+        setError(`DEBE INGRESAR LA FECHA DE MOVIMIENTO PARA EL EMPLEADO ${employeeWithoutDate.EmployeeID}`);
         setSaving(false);
         return;
       }
@@ -531,13 +538,13 @@ export default function EmployeeMovementsPage() {
       const employeesData = employeesInBatch.map(emp => ({
         EmployeeID: emp.EmployeeID,
         SalaryIMSS: emp.editableSalaryIMSS ? parseFloat(emp.editableSalaryIMSS) : null,
-        NCI: emp.editableNCI || null
+        NCI: emp.editableNCI || null,
+        DateMovement: emp.editableDateMovement || null
       }));
 
       const recordData = {
         Employees: employeesData,
         MovementType: formData.MovementType,
-        DateMovement: formData.DateMovement,
         ReasonForWithdrawal: formData.MovementType === 'BAJA' ? formData.ReasonForWithdrawal : null,
       };
 
@@ -580,7 +587,7 @@ export default function EmployeeMovementsPage() {
               tipo: emp.EmployeeData.tipo
             })),
             MovementType: formData.MovementType,
-            DateMovement: formData.DateMovement,
+            DateMovement: employeesInBatch.length > 0 ? employeesInBatch[0].editableDateMovement : null,
             pdfUrl: pdfUrl,
             excelUrl: excelUrl
           });
@@ -764,10 +771,6 @@ export default function EmployeeMovementsPage() {
                       <div className="flex justify-between items-center">
                         <span className="block text-xs font-bold text-gray-700 uppercase">TIPO DE MOVIMIENTO:</span>
                         <span className="text-gray-600 mt-1 text-sm">{successDetails.MovementType}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="block text-xs font-bold text-gray-700 uppercase">FECHA DEL MOVIMIENTO:</span>
-                        <span className="text-gray-600 mt-1 text-sm">{successDetails.DateMovement}</span>
                       </div>
                     </div>
                   </div>
@@ -1015,7 +1018,7 @@ export default function EmployeeMovementsPage() {
                         <div className="flex items-start gap-2">
                           <Info className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
                           <p className="text-xs text-amber-800 leading-relaxed">
-                            <strong>IMPORTANTE:</strong> Revise que el <strong>Salario IMSS</strong> y el <strong>Número de Crédito INFONAVIT (NCI)</strong> sean correctos antes de generar el documento. 
+                            <strong>IMPORTANTE:</strong> Revise que la <strong>Fecha de Movimiento</strong>, el <strong>Salario IMSS</strong> y el <strong>Número de Crédito INFONAVIT (NCI)</strong> sean correctos antes de generar el documento. 
                             Si los modifica, se actualizarán en la base de datos y se reflejarán en el documento generado.
                           </p>
                         </div>
@@ -1054,7 +1057,18 @@ export default function EmployeeMovementsPage() {
                             </div>
                             
                             {/* Campos editables */}
-                            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-100">
+                            <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-100">
+                              <div>
+                                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">
+                                  Fecha de Movimiento *
+                                </label>
+                                <input
+                                  type="date"
+                                  value={emp.editableDateMovement}
+                                  onChange={(e) => updateEmployeeDateMovement(emp.id, e.target.value)}
+                                  className="w-full px-2.5 py-1.5 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
+                                />
+                              </div>
                               <div>
                                 <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">
                                   Salario IMSS
@@ -1135,22 +1149,6 @@ export default function EmployeeMovementsPage() {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                        FECHA DEL MOVIMIENTO *
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="date"
-                          name="DateMovement"
-                          value={formData.DateMovement}
-                          onChange={handleFormChange}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          required
-                        />
-                      </div>
-                    </div>
-
                     {formData.MovementType === 'BAJA' && (
                       <div className="md:col-span-2">
                         <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
@@ -1182,7 +1180,7 @@ export default function EmployeeMovementsPage() {
               </button>
               <button
                 onClick={handleSaveRecord}
-                disabled={saving || employeesInBatch.length === 0 || !formData.MovementType || !formData.DateMovement || (formData.MovementType === 'BAJA' && !formData.ReasonForWithdrawal)}
+                disabled={saving || employeesInBatch.length === 0 || !formData.MovementType || (formData.MovementType === 'BAJA' && !formData.ReasonForWithdrawal)}
                 className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap disabled:opacity-50"
               >
                 {saving ? (
@@ -1280,7 +1278,6 @@ export default function EmployeeMovementsPage() {
                   <tr>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">ID SOLICITUD</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">TIPO DE MOVIMIENTO</th>
-                    <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">FECHA DEL MOVIMIENTO</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">MOTIVO DE BAJA</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300">DOCUMENTOS</th>
                     <th className="py-3 px-4 text-left text-sm font-bold text-gray-700 uppercase border-b border-gray-300 text-center">ACCIONES</th>
@@ -1289,7 +1286,7 @@ export default function EmployeeMovementsPage() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center">
+                      <td colSpan={5} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3a6ea5] mb-2"></div>
                           <p className="text-gray-600">Cargando solicitudes...</p>
@@ -1298,7 +1295,7 @@ export default function EmployeeMovementsPage() {
                     </tr>
                   ) : filteredRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center">
+                      <td colSpan={5} className="py-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <AlertCircle className="h-8 w-8 text-gray-400 mb-3" />
                           <p className="text-sm font-medium text-gray-600 mt-2 leading-5">
@@ -1318,9 +1315,6 @@ export default function EmployeeMovementsPage() {
                           <td className="py-3 px-4 text-sm text-gray-800 font-medium">{record.BatchID}</td>
                           <td className="py-3 px-4 text-sm text-gray-800">
                             <div className="text-sm text-gray-800 uppercase">{record.MovementType}</div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="text-sm text-gray-800 uppercase">{formatDate(record.DateMovement)}</div>
                           </td>
                           <td className="py-3 px-4">
                             <div className="text-sm text-gray-800 uppercase max-w-xs truncate">{record.ReasonForWithdrawal || "N/A"}</div>
