@@ -4,7 +4,7 @@ import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
-import { useState, useEffect, ChangeEvent, useRef, KeyboardEvent } from 'react';
+import { useState, useEffect, ChangeEvent, useRef } from 'react';
 import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, Download, Eye, FileText } from 'lucide-react';
 
 // Interface para registro DC3
@@ -925,77 +925,79 @@ const handleCloseModal = () => {
                   
                   <div className="mb-4">
                     <div className="relative">
-  <input
-    ref={employeeIdInputRef}
-    type="text"
-    value={searchTerm}
-    onChange={(e) => {
-      setSearchTerm(normalizarMayusculas(e.target.value));
-      if (employeeNotFound) setEmployeeNotFound(false);
-      if (selectedEmployee) {
-        // Si ya había uno seleccionado y se empieza a escribir, limpiar
-        setSelectedEmployee(null);
-        setSelectedEmployeeData(null);
-      }
-    }}
-    onKeyDown={(e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const term = searchTerm.trim();
-        if (!term) {
-          setError('POR FAVOR INGRESE UN ID O NOMBRE DE EMPLEADO');
-          return;
-        }
-        searchEmployeeByTerm(term);
-      }
-    }}
-    placeholder="Ingrese ID o nombre del empleado"
-    className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
-      employeeNotFound ? 'border-red-500' : 'border-gray-400'
-    }`}
-    // YA NO deshabilitar en edición
-  />
-  {!selectedEmployee && (
-    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
-      ENTER PARA BUSCAR
-    </div>
-  )}
-  {selectedEmployee && (
-    <button
-      onClick={clearEmployeeSearch}
-      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-      title="Limpiar búsqueda"
-    >
-      <X className="h-4 w-4" />
-    </button>
-  )}
-</div>
+                      <input
+                        ref={employeeIdInputRef}
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => {
+                          setSearchTerm(normalizarMayusculas(e.target.value));
+                          if (employeeNotFound) setEmployeeNotFound(false);
+                          if (selectedEmployee) {
+                            // Si ya había uno seleccionado y se empieza a escribir, limpiar
+                            setSelectedEmployee(null);
+                            setSelectedEmployeeData(null);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const term = searchTerm.trim();
+                            if (!term) {
+                              setError('POR FAVOR INGRESE UN ID O NOMBRE DE EMPLEADO');
+                              return;
+                            }
+                            searchEmployeeByTerm(term);
+                          }
+                        }}
+                        placeholder="Ingrese ID o nombre del empleado"
+                        className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
+                          employeeNotFound ? 'border-red-500' : 'border-gray-400'
+                        }`}
+                        // YA NO deshabilitar en edición
+                      />
+                      {!selectedEmployee && (
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
+                          ENTER PARA BUSCAR
+                        </div>
+                      )}
+                      {selectedEmployee && (
+                        <button
+                          onClick={clearEmployeeSearch}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          title="Limpiar búsqueda"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
 
-{/* Lista de resultados cuando hay múltiples coincidencias */}
-{showResults && searchResults.length > 0 && (
-  <div className="mt-2 bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto z-20 relative">
-    {searchResults.map((emp) => (
-      <button
-        key={emp.EmployeeID}
-        onClick={() => selectEmployee(emp)}
-        className="w-full px-3 py-2 text-left hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
-      >
-        <div className="text-sm font-medium text-gray-900">
-          {emp.EmployeeID} - {emp.FirstName} {emp.LastName} {emp.MiddleName || ''}
-        </div>
-        <div className="text-xs text-gray-500">
-          {emp.Position} | {emp.tipo}
-        </div>
-      </button>
-    ))}
-  </div>
-)}
+                    {/* Lista de resultados cuando hay múltiples coincidencias */}
+                    {showResults && searchResults.length > 0 && (
+                      <div className="mt-2 bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto z-20 relative">
+                        {searchResults.map((emp) => (
+                          <button
+                            key={emp.EmployeeID}
+                            onClick={() => selectEmployee(emp)}
+                            className="w-full px-3 py-2 text-left hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="text-sm font-medium text-gray-900">
+                              {emp.EmployeeID} - {emp.FirstName} {emp.LastName} {emp.MiddleName || ''}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {emp.Position} | {emp.tipo}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
                     {searchingEmployee && (
                       <div className="mt-2 text-sm text-gray-600 flex items-center">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#3a6ea5] mr-2"></div>
                         BUSCANDO EMPLEADO...
                       </div>
                     )}
+                    
                     {employeeNotFound && (
                       <p className="mt-2 text-sm text-red-600">
                         No se encontró un empleado con ese ID
