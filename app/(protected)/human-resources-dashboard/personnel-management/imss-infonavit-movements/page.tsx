@@ -134,6 +134,11 @@ export default function EmployeeMovementsPage() {
     search: ''
   });
 
+  // Búsqueda unificada por ID o nombre
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<EmployeeSearchResult[]>([]);
+  const [showResults, setShowResults] = useState(false);
+
   const [employeeIdInput, setEmployeeIdInput] = useState('');
   const [searchingEmployee, setSearchingEmployee] = useState(false);
   const [employeeToAdd, setEmployeeToAdd] = useState<EmployeeSearchResult | null>(null);
@@ -230,56 +235,82 @@ export default function EmployeeMovementsPage() {
   const handleEmployeeIdKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      const id = employeeIdInput.trim();
-      
-      if (!id) {
-        setError('POR FAVOR INGRESE UN ID DE EMPLEADO');
+      const term = searchTerm.trim();
+      if (!term) {
+        setError('POR FAVOR INGRESE UN ID O NOMBREDE EMPLEADO');
         return;
       }
-
-      await searchEmployeeById(id);
+      await searchEmployeeByTerm(term);
     }
   };
 
-  const searchEmployeeById = async (id: string) => {
+  const searchEmployeeByTerm = async (term: string) => {
     try {
       setSearchingEmployee(true);
       setEmployeeNotFound(false);
       setError('');
 
-      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeeimssinfonavit/search?term=${encodeURIComponent(id)}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeeimssinfonavit/search?term=${encodeURIComponent(term)}`);
       
-      if (response.ok) {
-        const data = await response.json();
-        const employee = data.employees?.find((emp: EmployeeSearchResult) => 
-          emp.EmployeeID.toString() === id
-        );
+      if (!response.ok) {
+        throw new Error('Error al buscar empleado');
+      }
+       const data = await response.json();
         
-        if (employee) {
-          const alreadyInBatch = employeesInBatch.some(e => e.EmployeeID === employee.EmployeeID);
-          if (alreadyInBatch) {
-            setError('ESTE EMPLEADO YA HA SIDO AGREGADO AL LOTE');
-            setEmployeeToAdd(null);
-          } else if (employeesInBatch.length >= 10) {
-            setError('MÁXIMO 10 EMPLEADOS POR LOTE');
-            setEmployeeToAdd(null);
-          } else {
-            setEmployeeToAdd(employee);
-            setEmployeeNotFound(false);
-          }
-        } else {
-          setEmployeeToAdd(null);
-          setEmployeeNotFound(true);
-          setError('NO SE ENCONTRÓ UN EMPLEADO CON ESE ID');
+       if (/^\d+$/.test(term) && data.employees?.length >0) {
+         const exactMatch = data.employees.find((emp: EmployeeSearchResult) => emp.EmployeeID.toString() === term);
+        if (exactMatch) {
+          addEmployeeFromSearch(exactMatch);
+          return;
         }
+      }
+
+      if (data.employees && data.employees.length > 0) {
+        setSearchResults(data.employees);
+        setShowResults(true);
+        setEmployeeNotFound(false);
       } else {
-        setError('ERROR AL BUSCAR EL EMPLEADO');
+        setSearchResults([]);
+        setShowResults(false);
+        setEmployeeNotFound(true);
+        setError('NO SE ENCONTRÓ UN EMPLEADO');
       }
     } catch (error) {
       console.error('Error al buscar empleado:', error);
       setError('ERROR DE CONEXIÓN AL BUSCAR EMPLEADO');
     } finally {
       setSearchingEmployee(false);
+    }
+  };
+
+  const addEmployeeFromSearch = (employee: EmployeeSearchResult) => {
+    const alreadyInBatch = employeesInBatch.some(e => e.EmployeeID === employee.EmployeeID);
+    if (alreadyInBatch) {
+      setError('EL EMPLEADO YA ESTÁ AGREGADO AL LOTE');
+      return;
+    }
+    if (employeesInBatch.length >= 10) {
+      setError('NO SE PUEDEN AGREGAR MÁS DE 10 EMPLEADOS AL LOTE');
+      return;
+    }
+    const newEmployee: EmployeeInBatch = {
+        id: `${Date.now()}-${employee.EmployeeID}`,
+        EmployeeID: employee.EmployeeID,
+        EmployeeData: employee,
+        editableSalaryIMSS: employee.SalaryIMSS?.toString() || '',
+        editableNCI: employee.NCI || ''
+    };
+
+    setEmployeesInBatch(prev => [...prev, newEmployee]);
+
+    setSearchTerm('');
+    setSearchResults([]);
+    setShowResults(false);
+    setEmployeeNotFound(false);
+    setError('');
+    
+    if (employeeIdInputRef.current) {
+      employeeIdInputRef.current.focus();
     }
   };
 
@@ -304,6 +335,7 @@ export default function EmployeeMovementsPage() {
     }
   };
 
+
   const removeEmployeeFromBatch = (id: string) => {
     setEmployeesInBatch(employeesInBatch.filter(emp => emp.id !== id));
   };
@@ -321,8 +353,9 @@ export default function EmployeeMovementsPage() {
   };
 
   const clearEmployeeSearch = () => {
-    setEmployeeIdInput('');
-    setEmployeeToAdd(null);
+    setSearchTerm('');
+    setSearchResults([]);
+    setShowResults(false);
     setEmployeeNotFound(false);
     setError('');
     if (employeeIdInputRef.current) {
@@ -332,8 +365,9 @@ export default function EmployeeMovementsPage() {
 
   const clearBatch = () => {
     setEmployeesInBatch([]);
-    setEmployeeToAdd(null);
-    setEmployeeIdInput('');
+    setSearchTerm('');
+    setSearchResults([]);
+    setShowResults(false);
     setEmployeeNotFound(false);
   };
 
@@ -345,8 +379,9 @@ export default function EmployeeMovementsPage() {
       ReasonForWithdrawal: '',
     });
     setEmployeesInBatch([]);
-    setEmployeeToAdd(null);
-    setEmployeeIdInput('');
+    setSearchTerm('');
+    setSearchResults([]);
+    setShowResults(false);
     setEmployeeNotFound(false);
     setError('');
     setShowModal(true);
@@ -416,8 +451,9 @@ export default function EmployeeMovementsPage() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEmployeesInBatch([]);
-    setEmployeeToAdd(null);
-    setEmployeeIdInput('');
+    setSearchTerm('');
+    setSearchResults([]);
+    setShowResults(false);
     setEmployeeNotFound(false);
     setError('');
   };
@@ -873,25 +909,24 @@ export default function EmployeeMovementsPage() {
                       <input
                         ref={employeeIdInputRef}
                         type="text"
-                        value={employeeIdInput}
+                        value={searchTerm}
                         onChange={(e) => {
-                          setEmployeeIdInput(normalizarMayusculas(e.target.value));
+                          setSearchTerm(normalizarMayusculas(e.target.value));
                           if (employeeNotFound) setEmployeeNotFound(false);
-                          if (employeeToAdd) setEmployeeToAdd(null);
                         }}
                         onKeyDown={handleEmployeeIdKeyDown}
-                        placeholder="Ingrese el ID del empleado"
+                        placeholder="Ingrese el ID o nombre del empleado"
                         className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
                           employeeNotFound ? 'border-red-500' : 'border-gray-400'
                         }`}
                         disabled={employeesInBatch.length >= 10}
                       />
-                      {!employeeToAdd && employeeIdInput && !employeeNotFound && (
+                      {!searchTerm && (
                         <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
                           ENTER PARA BUSCAR
                         </div>
                       )}
-                      {employeeToAdd && (
+                      {searchTerm && (
                         <button
                           onClick={clearEmployeeSearch}
                           className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
@@ -901,6 +936,27 @@ export default function EmployeeMovementsPage() {
                         </button>
                       )}
                     </div>
+
+                    {/* Lista de resultados */}
+                      {showResults && searchResults.length > 0 && (
+                          <div className="mt-2 bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto z-20 relative">
+                              {searchResults.map((emp) => (
+                                  <button
+                                      key={`${emp.EmployeeID}-${emp.tipo}`}
+                                      onClick={() => addEmployeeFromSearch(emp)}
+                                      className="w-full px-3 py-2 text-left hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
+                                  >
+                                      <div className="text-sm font-medium text-gray-900">
+                                          {emp.EmployeeID} - {emp.FirstName} {emp.LastName} {emp.MiddleName || ''}
+                                      </div>
+                                      <div className="text-xs text-gray-500">
+                                          {emp.Position} | {emp.tipo}
+                                      </div>
+                                  </button>
+                              ))}
+                          </div>
+                      )}
+
                     {searchingEmployee && (
                       <div className="mt-2 text-sm text-gray-600 flex items-center">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#3a6ea5] mr-2"></div>
@@ -909,7 +965,7 @@ export default function EmployeeMovementsPage() {
                     )}
                     {employeeNotFound && (
                       <p className="mt-2 text-sm text-red-600">
-                        No se encontró un empleado con ese ID
+                        No se encontró un empleado con ese ID o nombre
                       </p>
                     )}
                   </div>
