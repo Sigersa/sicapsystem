@@ -1164,7 +1164,7 @@ export default function EmployeeMovementsPage() {
                     {/* ANTERIOR */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                        ANTERIOR *
+                        ANTERIOR 
                       </label>
                       <div className="relative">
                         <input
@@ -1173,7 +1173,6 @@ export default function EmployeeMovementsPage() {
                           value={formData.Former}
                           onChange={handleFormChange}
                           className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          required
                         />
                       </div>
                     </div>
@@ -1181,7 +1180,7 @@ export default function EmployeeMovementsPage() {
                     {/* NUEVO */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                        NUEVO *
+                        NUEVO 
                       </label>
                       <div className="relative">
                         <input
@@ -1190,7 +1189,6 @@ export default function EmployeeMovementsPage() {
                           value={formData.New}
                           onChange={handleFormChange}
                           className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          required
                         />
                       </div>
                     </div>
@@ -1264,7 +1262,7 @@ export default function EmployeeMovementsPage() {
               </button>
               <button
                 onClick={handleSaveRecord}
-                disabled={saving || !selectedEmployee || !formData.MovementType || !formData.Specification || !formData.Duration || !formData.Former || !formData.New || !formData.StartDate || (formData.Duration === 'OTRO' && !formData.DurationCustom)}
+                disabled={saving || !selectedEmployee || !formData.MovementType || !formData.Specification || !formData.Duration || !formData.StartDate || (formData.Duration === 'OTRO' && !formData.DurationCustom)}
                 className="px-6 py-2.5 bg-[#3a6ea5] text-white font-bold rounded-lg hover:bg-[#2d5592] transition-colors flex items-center justify-center whitespace-nowrap disabled:opacity-50"
               >
                 {saving ? (
