@@ -4,7 +4,7 @@ import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
-import { useState, useEffect, useRef, KeyboardEvent } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, Download, Eye, FileText } from 'lucide-react';
 
 // Interface para lote de incidencias
@@ -73,26 +73,6 @@ const normalizarMayusculas = (texto: string): string => {
     return texto.toUpperCase();
 };
 
-// Función para formatear fecha para input type="date"
-const formatDateForInput = (dateString: string | null): string => {
-    if (!dateString) return '';
-    try {
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-            return dateString;
-        }
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) {
-            return '';
-        }
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    } catch {
-        return '';
-    }
-};
-
 // Función para formatear fecha para mostrar
 const formatDate = (dateString: string | null): string => {
     if (!dateString) return 'N/A';
@@ -117,11 +97,17 @@ export default function EmployeeIncidencePage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
-
+    const [selectedEmployeeData, setSelectedEmployeeData] = useState<EmployeeSearchResult | null>(null);
+ 
     // Paginación
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage] = useState(10);
     const [totalPages, setTotalPages] = useState(1);
+
+    // Agregar un estado para el término de búsqueda general
+    const [searchTerm, setSearchTerm] = useState('');
+    const [searchResults, setSearchResults] = useState<EmployeeSearchResult[]>([]);
+    const [showResults, setShowResults] = useState(false);
 
     // Filtros
     const [filters, setFilters] = useState<Filters>({ search: '' });
@@ -221,53 +207,37 @@ export default function EmployeeIncidencePage() {
         setFilters({ search: '' });
     };
 
-    const handleEmployeeIdKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            const id = employeeIdInput.trim();
-
-            if (!id) {
-                setError('POR FAVOR INGRESE UN ID DE EMPLEADO');
-                return;
-            }
-
-            await searchEmployeeById(id);
-        }
-    };
-
-    const searchEmployeeById = async (id: string) => {
+    const searchEmployeeByTerm = async (term: string) => {
         try {
             setSearchingEmployee(true);
             setEmployeeNotFound(false);
             setError('');
 
-            const response = await fetch(`/api/human-resources-dashboard/employee-management/employeeincidence/search?term=${encodeURIComponent(id)}`);
+            const response = await fetch(`/api/human-resources-dashboard/employee-management/employeeincidence/search?term=${encodeURIComponent(term)}`);
 
             if (response.ok) {
                 const data = await response.json();
+
+                if (/^\d+$/.test(term)) {
                 const employee = data.employees?.find((emp: EmployeeSearchResult) =>
-                    emp.EmployeeID.toString() === id
+                    emp.EmployeeID.toString() === term
                 );
 
                 if (employee) {
-                    setSelectedEmployee(employee);
-                    setFormData(prev => ({
-                        ...prev,
-                        EmployeeID: employee.EmployeeID.toString()
-                    }));
-                    setEmployeeNotFound(false);
-                } else {
-                    setSelectedEmployee(null);
-                    setFormData(prev => ({
-                        ...prev,
-                        EmployeeID: ''
-                    }));
-                    setEmployeeNotFound(true);
-                    setError('NO SE ENCONTRÓ UN EMPLEADO CON ESE ID');
+                    selectEmployee(employee);
+                    return;
                 }
-            } else {
-                setError('ERROR AL BUSCAR EL EMPLEADO');
             }
+
+            if (data.employees && data.employees.length > 0) {
+                setSearchResults(data.employees);
+                setShowResults(true);
+                setEmployeeNotFound(false);
+            } else {
+                setEmployeeNotFound(true);
+                setError('NO SE ENCONTRÓ UN EMPLEADO');
+            }
+        }
         } catch (error) {
             console.error('Error al buscar empleado:', error);
             setError('ERROR DE CONEXIÓN AL BUSCAR EMPLEADO');
@@ -275,6 +245,21 @@ export default function EmployeeIncidencePage() {
             setSearchingEmployee(false);
         }
     };
+
+    // Función auxiliar para seleccionar empleado
+        const selectEmployee = (employee: EmployeeSearchResult) => {
+        setSelectedEmployee(employee);
+        setSelectedEmployeeData(employee);
+        setEmployeeIdInput(employee.EmployeeID.toString());
+        setSearchTerm(`${employee.FirstName} ${employee.LastName} ${employee.MiddleName || ''}`.trim());
+        setFormData(prev => ({
+            ...prev,
+            EmployeeID: employee.EmployeeID.toString(),
+        }));
+        setShowResults(false);
+        setSearchResults([]);
+        setEmployeeNotFound(false);
+        };
 
     const addIncidence = () => {
         if (incidences.length >= 4) {
@@ -316,7 +301,11 @@ export default function EmployeeIncidencePage() {
 
     const clearEmployeeSearch = () => {
         setEmployeeIdInput('');
+        setSearchTerm('');
+        setSearchResults([]);
+        setShowResults(false);
         setSelectedEmployee(null);
+        setSelectedEmployeeData(null);
         setFormData(prev => ({
             ...prev,
             EmployeeID: ''
@@ -335,6 +324,9 @@ export default function EmployeeIncidencePage() {
         });
         setSelectedEmployee(null);
         setEmployeeIdInput('');
+        setSearchTerm('');
+        setSearchResults([]);
+        setShowResults(false);
         setEmployeeNotFound(false);
         setIncidences([
             {
@@ -354,69 +346,102 @@ export default function EmployeeIncidencePage() {
         }, 100);
     };
 
-    const loadBatchForEdit = async (batchId: number) => {
-        try {
-            setLoading(true);
-            setError('');
-
-            const response = await fetch(`/api/human-resources-dashboard/employee-management/employeeincidence/${batchId}`);
-
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success) {
-                    const batch = data.batch;
-                    setFormData({
-                        EmployeeID: batch.EmployeeID.toString(),
-                    });
-
-                    setSelectedEmployee({
-                        EmployeeID: batch.EmployeeID,
-                        FirstName: batch.FirstName || '',
-                        LastName: batch.LastName || '',
-                        MiddleName: batch.MiddleName || '',
-                        Position: batch.Position || '',
-                        tipo: batch.tipo || 'BASE'
-                    });
-
-                    const incidencesData = data.incidences.map((inc: any) => ({
-                        id: `edit-${inc.IncidenceDetailID}`,
-                        IncidenceNumber: inc.IncidenceNumber,
-                        IncidenceDate: formatDateForInput(inc.IncidenceDate) || '',
-                        Description: inc.Description || ''
-                    }));
-                    setIncidences(incidencesData);
-                } else {
-                    setError(data.message || 'Error al cargar los datos del lote');
-                }
-            } else {
-                setError('Error al cargar los datos del lote');
-            }
-        } catch (error) {
-            console.error('Error al cargar lote:', error);
-            setError('ERROR DE CONEXIÓN AL CARGAR DATOS DEL LOTE');
-        } finally {
-            setLoading(false);
-        }
-    };
-
     const handleEditRecord = async (record: IncidenceBatch) => {
         setModalMode('edit');
         setRecordToEdit(record);
-        setShowModal(true);
-        await loadBatchForEdit(record.BatchID);
+        setError('');
 
-        setTimeout(() => {
-            if (employeeIdInputRef.current) {
-                employeeIdInputRef.current.focus();
+        try {
+            const response = await fetch(
+                `/api/human-resources-dashboard/employee-management/employeeincidence/${record.BatchID}`
+            );
+
+            if (!response.ok) {
+                throw new Error('Error al cargar el lote');
             }
-        }, 100);
+
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.message || 'Error al cargar el lote');
+            }
+
+            const batch = data.batch;
+
+            const employeeData: EmployeeSearchResult = {
+                EmployeeID: batch.EmployeeID,
+                FirstName: batch.FirstName,
+                LastName: batch.LastName,
+                MiddleName: batch.MiddleName,
+                Position: batch.Position,
+                tipo: batch.tipo
+            };
+
+            setSelectedEmployeeData(employeeData);
+            setSelectedEmployee(employeeData);
+            setEmployeeIdInput(batch.EmployeeID.toString());
+            setSearchTerm(
+                `${batch.FirstName} ${batch.LastName} ${batch.MiddleName || ''}`.trim()
+            );
+
+            const loadedIncidences: IncidenceItem[] = (data.incidences || []).map(
+                (inc: any, index: number) => ({
+                    id: `inc-${batch.BatchID}-${inc.IncidenceDetailID || index + 1}`,
+                    IncidenceNumber: inc.IncidenceNumber || index + 1,
+                    IncidenceDate: formatDateForInput(inc.IncidenceDate),
+                    Description: inc.Description || ''
+                })
+            );
+
+            setIncidences(
+                loadedIncidences.length > 0
+                    ? loadedIncidences
+                    : [{
+                        id: 'inc-1',
+                        IncidenceNumber: 1,
+                        IncidenceDate: '',
+                        Description: ''
+                    }]
+            );
+
+            setFormData({ EmployeeID: batch.EmployeeID.toString() });
+            setShowModal(true);
+
+        } catch (error) {
+            console.error('Error al cargar lote:', error);
+            setError('ERROR AL CARGAR EL LOTE DE INCIDENCIAS');
+        }
+    };
+
+    // Convierte cualquier valor de fecha a formato YYYY-MM-DD para <input type="date">
+    const formatDateForInput = (dateValue: any): string => {
+        if (!dateValue) return '';
+        try {
+            // Si ya viene como string "YYYY-MM-DD", devolverlo tal cual
+            if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+                return dateValue;
+            }
+            // Si viene como ISO string o Date, formatear sin desfase de zona horaria
+            const d = new Date(dateValue);
+            if (isNaN(d.getTime())) return '';
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        } catch {
+            return '';
+        }
     };
 
     const handleCloseModal = () => {
         setShowModal(false);
         setIncidences([]);
+        setSelectedEmployeeData(null);
         setSelectedEmployee(null);
         setEmployeeIdInput('');
+        setSearchTerm('');
+        setSearchResults([]);
+        setShowResults(false);
         setEmployeeNotFound(false);
         setError('');
     };
@@ -833,24 +858,37 @@ export default function EmployeeIncidencePage() {
                                             <input
                                                 ref={employeeIdInputRef}
                                                 type="text"
-                                                value={employeeIdInput}
+                                                value={searchTerm}
                                                 onChange={(e) => {
-                                                    setEmployeeIdInput(normalizarMayusculas(e.target.value));
+                                                    setSearchTerm(normalizarMayusculas(e.target.value));
                                                     if (employeeNotFound) setEmployeeNotFound(false);
-                                                    if (selectedEmployee) setSelectedEmployee(null);
+                                                    if (selectedEmployee) {
+                                                        setSelectedEmployee(null);
+                                                        setSelectedEmployeeData(null);
+                                                    }
                                                 }}
-                                                onKeyDown={handleEmployeeIdKeyDown}
-                                                placeholder="Ingrese el ID del empleado"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        const term = searchTerm.trim();
+                                                        if (!term) {
+                                                            setError('POR FAVOR INGRESE UN ID O NOMBRE DE EMPLEADO');
+                                                            return;
+                                                        }
+                                                        searchEmployeeByTerm(term);
+                                                    }
+                                                }}
+                                                placeholder="Ingrese el ID o nombre del empleado"
                                                 className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
                                                     employeeNotFound ? 'border-red-500' : 'border-gray-400'
                                                 }`}
-                                                disabled={selectedEmployee !== null}
                                             />
-                                            {!selectedEmployee && employeeIdInput && !employeeNotFound && (
+                                            {!selectedEmployee && (
                                                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
                                                     ENTER PARA BUSCAR
                                                 </div>
                                             )}
+
                                             {selectedEmployee && (
                                                 <button
                                                     onClick={clearEmployeeSearch}
@@ -861,6 +899,27 @@ export default function EmployeeIncidencePage() {
                                                 </button>
                                             )}
                                         </div>
+
+                                        {/* Lista de resultados cuando hay múltiples coincidencias */}
+                                        {showResults && searchResults.length > 0 && (
+                                        <div className="mt-2 bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto z-20 relative">
+                                            {searchResults.map((emp) => (
+                                            <button
+                                                key={emp.EmployeeID}
+                                                onClick={() => selectEmployee(emp)}
+                                                className="w-full px-3 py-2 text-left hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
+                                            >
+                                                <div className="text-sm font-medium text-gray-900">
+                                                {emp.EmployeeID} - {emp.FirstName} {emp.LastName} {emp.MiddleName || ''}
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                {emp.Position} | {emp.tipo}
+                                                </div>
+                                            </button>
+                                            ))}
+                                        </div>
+                                        )}
+
                                         {searchingEmployee && (
                                             <div className="mt-2 text-sm text-gray-600 flex items-center">
                                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#3a6ea5] mr-2"></div>
@@ -869,7 +928,7 @@ export default function EmployeeIncidencePage() {
                                         )}
                                         {employeeNotFound && (
                                             <p className="mt-2 text-sm text-red-600">
-                                                No se encontró un empleado con ese ID
+                                                No se encontró un empleado con ese ID o nombre
                                             </p>
                                         )}
                                     </div>
