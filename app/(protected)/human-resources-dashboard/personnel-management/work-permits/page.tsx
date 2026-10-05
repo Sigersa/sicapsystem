@@ -4,7 +4,7 @@ import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
-import { useState, useEffect, ChangeEvent, useRef, KeyboardEvent } from 'react';
+import { useState, useEffect, ChangeEvent, useRef } from 'react';
 import { Search, ChevronLeft, ChevronRight, Edit, Trash2, X, RefreshCw, CheckCircle, AlertCircle, FileText, Download, Eye } from 'lucide-react';
 
 // Interface para permisos de empleados
@@ -196,31 +196,6 @@ const formatTime = (timeString: string | null): string => {
   }
 };
 
-// Función para descargar documento
-const downloadDocument = (url: string, fileName: string) => {
-  fetch(url)
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('Error al descargar el documento');
-      }
-      return response.blob();
-    })
-    .then(blob => {
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-    })
-    .catch(error => {
-      console.error('Error:', error);
-      alert('Error al descargar el documento. Por favor, intente nuevamente.');
-    });
-};
-
 export default function EmployeePermissionsPage() {
   const { user, loading: sessionLoading } = useSessionManager();
   useInactivityManager();
@@ -255,6 +230,11 @@ export default function EmployeePermissionsPage() {
   const [saving, setSaving] = useState(false);
   const [recordToEdit, setRecordToEdit] = useState<EmployeePermission | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ show: boolean; id: number | null }>({ show: false, id: null });
+
+  // Agregar un estado para el término de búsqueda general
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<EmployeeSearchResult[]>([]);
+  const [showResults, setShowResults] = useState(false);
 
   // Estado para el modal de éxito con vista previa del PDF
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -400,58 +380,39 @@ export default function EmployeePermissionsPage() {
     });
   };
 
-  // Función para buscar empleado por ID al presionar Enter
-  const handleEmployeeIdKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const id = employeeIdInput.trim();
-      
-      if (!id) {
-        setError('POR FAVOR INGRESE UN ID DE EMPLEADO');
-        return;
-      }
-
-      await searchEmployeeById(id);
-    }
-  };
-
-  // Función para buscar empleado por ID
-  const searchEmployeeById = async (id: string) => {
+  // Función para buscar empleado por término
+  const searchEmployeeByTerm = async (term: string) => {
     try {
       setSearchingEmployee(true);
       setEmployeeNotFound(false);
       setError('');
 
-      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeepermissions/search?term=${encodeURIComponent(id)}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeepermissions/search?term=${encodeURIComponent(term)}`);
       
       if (response.ok) {
         const data = await response.json();
+
+        if (/^\d+$/.test(term)) {
         const employee = data.employees?.find((emp: EmployeeSearchResult) => 
-          emp.EmployeeID.toString() === id
+          emp.EmployeeID.toString() === term
         );
         
         if (employee) {
-          setSelectedEmployee(employee);
-          setSelectedEmployeeData(employee);
-          setFormData(prev => ({
-            ...prev,
-            EmployeeID: employee.EmployeeID.toString()
-          }));
+          selectEmployee(employee);
+          return;
+          }
+        } 
+
+        if (data.employees && data.employees.length > 0) {
+          setSearchResults(data.employees);
+          setShowResults(true);
           setEmployeeNotFound(false);
-        } else {
-          setSelectedEmployee(null);
-          setSelectedEmployeeData(null);
-          setFormData(prev => ({
-            ...prev,
-            EmployeeID: ''
-          }));
-          setEmployeeNotFound(true);
-          setError('NO SE ENCONTRÓ UN EMPLEADO CON ESE ID');
-        }
-      } else {
-        setError('ERROR AL BUSCAR EL EMPLEADO');
-      }
-    } catch (error) {
+          } else {
+            setEmployeeNotFound(true);
+            setError('NO SE ENCONTRÓ UN EMPLEADO');
+          }
+         }
+      } catch (error) {
       console.error('Error al buscar empleado:', error);
       setError('ERROR DE CONEXIÓN AL BUSCAR EMPLEADO');
     } finally {
@@ -459,9 +420,27 @@ export default function EmployeePermissionsPage() {
     }
   };
 
+  // Función auxiliar para seleccionar empleado
+  const selectEmployee = (employee: EmployeeSearchResult) => {
+    setSelectedEmployee(employee);
+    setSelectedEmployeeData(employee);
+    setEmployeeIdInput(employee.EmployeeID.toString());
+    setSearchTerm(`${employee.FirstName} ${employee.LastName} ${employee.MiddleName || ''}`.trim());
+    setFormData(prev => ({
+      ...prev,
+      EmployeeID: employee.EmployeeID.toString(),
+    }));
+    setShowResults(false);
+    setSearchResults([]);
+    setEmployeeNotFound(false);
+  };
+
   // Función para limpiar la búsqueda de empleado
   const clearEmployeeSearch = () => {
     setEmployeeIdInput('');
+    setSearchTerm('');
+    setSearchResults([]);
+    setShowResults(false);
     setSelectedEmployee(null);
     setSelectedEmployeeData(null);
     setFormData(prev => ({
@@ -494,6 +473,9 @@ export default function EmployeePermissionsPage() {
     setSelectedEmployee(null);
     setSelectedEmployeeData(null);
     setEmployeeIdInput('');
+    setSearchTerm('');
+    setSearchResults([]);
+    setShowResults(false);
     setEmployeeNotFound(false);
     setError('');
     setShowModal(true);
@@ -519,6 +501,9 @@ export default function EmployeePermissionsPage() {
           setSelectedEmployeeData(employeeData);
           setSelectedEmployee(employeeData);
           setEmployeeIdInput(record.EmployeeID.toString());
+          setSearchTerm(
+            `${employeeData.FirstName} ${employeeData.LastName} ${employeeData.MiddleName || ''}`.trim()
+          );
         }
       }
     } catch (error) {
@@ -550,6 +535,9 @@ export default function EmployeePermissionsPage() {
     setSelectedEmployeeData(null);
     setSelectedEmployee(null);
     setEmployeeIdInput('');
+    setSearchTerm('');
+    setSearchResults([]);
+    setShowResults(false);
     setEmployeeNotFound(false);
     setShowDateRange(false);
     setError('');
@@ -1081,17 +1069,30 @@ export default function EmployeePermissionsPage() {
                       <input
                         ref={employeeIdInputRef}
                         type="text"
-                        value={employeeIdInput}
+                        value={searchTerm}
                         onChange={(e) => {
-                          setEmployeeIdInput(normalizarMayusculas(e.target.value));
+                          setSearchTerm(normalizarMayusculas(e.target.value));
                           if (employeeNotFound) setEmployeeNotFound(false);
+                          if (selectedEmployee) {
+                            setSelectedEmployee(null);
+                            setSelectedEmployeeData(null);
+                          }
                         }}
-                        onKeyDown={handleEmployeeIdKeyDown}
-                        placeholder="Ingrese el ID del empleado"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const term = searchTerm.trim();
+                            if (!term) {
+                              setError('POR FAVOR INGRESE UN ID O NOMBRE DEL EMPLEADO');
+                              return;
+                          }
+                          searchEmployeeByTerm(term);
+                        }
+                      }}
+                        placeholder="Ingrese el ID o nombre del empleado"
                         className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
                           employeeNotFound ? 'border-red-500' : 'border-gray-400'
                         }`}
-                        disabled={modalMode === 'edit' || selectedEmployee !== null}
                       />
                       {!selectedEmployee && (
                         <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
@@ -1108,6 +1109,27 @@ export default function EmployeePermissionsPage() {
                         </button>
                       )}
                     </div>
+
+                    {/* Lista de resultados cuando hay múltiples coincidencias */}
+                    {showResults && searchResults.length > 0 && (
+                      <div className="mt-2 bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto z-20 relative">
+                        {searchResults.map((emp) => (
+                          <button
+                            key={emp.EmployeeID}
+                            onClick={() => selectEmployee(emp)}
+                            className="w-full px-3 py-2 text-left hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="text-sm font-medium text-gray-900">
+                              {emp.EmployeeID} - {emp.FirstName} {emp.LastName} {emp.MiddleName || ''}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {emp.Position} | {emp.tipo}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
                     {searchingEmployee && (
                       <div className="mt-2 text-sm text-gray-600 flex items-center">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#3a6ea5] mr-2"></div>
