@@ -82,7 +82,6 @@ async function getEmployeeContractIDs(connection: any, employeeId: number): Prom
   return { baseContractId, projectContractId };
 }
 
-// Función para actualizar el salario IMSS y NCI en la base de datos
 async function updateEmployeeSalaryAndNCI(
   connection: any,
   employeeId: number,
@@ -138,7 +137,6 @@ async function updateEmployeeSalaryAndNCI(
   }
 }
 
-// Función para obtener el ALTA activa (Status = 1) de un empleado
 async function getActiveAltaMovement(connection: any, employeeId: number, excludeBatchId?: number): Promise<any | null> {
   let query = `
     SELECT em.MovementID, em.BatchID
@@ -162,7 +160,6 @@ async function getActiveAltaMovement(connection: any, employeeId: number, exclud
   return (rows as any[])[0] || null;
 }
 
-// Función para obtener el último movimiento de un empleado (para restaurar status)
 async function getLastMovement(connection: any, employeeId: number, excludeBatchId?: number): Promise<any | null> {
   let query = `
     SELECT em.MovementID, em.Status, emb.MovementType
@@ -202,7 +199,6 @@ async function generateUpdatedMovementPDF(
       `SELECT 
         emb.BatchID,
         emb.MovementType,
-        emb.DateMovement,
         emb.ReasonForWithdrawal,
         pj.NameProject,
         pj.AdminProjectID,
@@ -231,6 +227,7 @@ async function generateUpdatedMovementPDF(
         em.EmployeeID,
         em.BaseContractID,
         em.ProjectContractID,
+        em.DateMovement,
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
         COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
@@ -273,7 +270,8 @@ async function generateUpdatedMovementPDF(
           return {
             ...row,
             SalaryIMSS: editedEmp.SalaryIMSS !== undefined && editedEmp.SalaryIMSS !== null ? editedEmp.SalaryIMSS : row.SalaryIMSS,
-            NCI: editedEmp.NCI !== undefined && editedEmp.NCI !== null ? editedEmp.NCI : row.NCI
+            NCI: editedEmp.NCI !== undefined && editedEmp.NCI !== null ? editedEmp.NCI : row.NCI,
+            DateMovement: editedEmp.DateMovement !== undefined && editedEmp.DateMovement !== null ? editedEmp.DateMovement : row.DateMovement
           };
         }
       }
@@ -335,7 +333,7 @@ async function generateUpdatedMovementPDF(
       ws.getCell(`F${rowNumber}`).value = mov.SalaryIMSS || 'NO ESPECIFICADO';
       ws.getCell(`G${rowNumber}`).value = mov.CURP || 'NO ESPECIFICADO';
       ws.getCell(`H${rowNumber}`).value = batch.MovementType || 'NO ESPECIFICADO';
-      ws.getCell(`I${rowNumber}`).value = formatDate(batch.DateMovement);
+      ws.getCell(`I${rowNumber}`).value = formatDate(mov.DateMovement);
       ws.getCell(`J${rowNumber}`).value = mov.NCI || 'NO ESPECIFICADO';
       ws.getCell(`K${rowNumber}`).value = mov.UMF || 'NO ESPECIFICADO';
       ws.getCell(`L${rowNumber}`).value = mov.tipo || 'NO ESPECIFICADO';
@@ -429,7 +427,6 @@ export async function GET(
       `SELECT 
         BatchID,
         MovementType,
-        DateMovement,
         ReasonForWithdrawal,
         FileURL
       FROM employee_movement_batches 
@@ -450,6 +447,7 @@ export async function GET(
         em.BaseContractID,
         em.ProjectContractID,
         em.Status,
+        em.DateMovement,
         COALESCE(bp.FirstName, pp.FirstName) as FirstName,
         COALESCE(bp.LastName, pp.LastName) as LastName,
         COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
@@ -543,7 +541,6 @@ export async function PUT(
     const { 
       Employees, 
       MovementType,
-      DateMovement,
       ReasonForWithdrawal,
     } = body;
 
@@ -568,11 +565,14 @@ export async function PUT(
       );
     }
 
-    if (!DateMovement) {
-      return NextResponse.json(
-        { success: false, message: 'La fecha del movimiento es requerida' },
-        { status: 400 }
-      );
+    // Validar que todos los empleados tengan fecha de movimiento
+    for (const emp of Employees) {
+      if (!emp.DateMovement) {
+        return NextResponse.json(
+          { success: false, message: `La fecha de movimiento es requerida para el empleado ${emp.EmployeeID}` },
+          { status: 400 }
+        );
+      }
     }
 
     if (MovementType.toUpperCase() === 'BAJA' && !ReasonForWithdrawal) {
@@ -629,6 +629,7 @@ export async function PUT(
         const employeeId = typeof emp === 'object' ? emp.EmployeeID : emp;
         const salaryIMSS = typeof emp === 'object' ? emp.SalaryIMSS : null;
         const nci = typeof emp === 'object' ? emp.NCI : null;
+        const dateMovement = typeof emp === 'object' ? formatearFechaMySQL(emp.DateMovement) : null;
 
         const { baseContractId, projectContractId } = await getEmployeeContractIDs(connection, employeeId);
         
@@ -657,18 +658,20 @@ export async function PUT(
             ProjectContractID: projectContractId,
             Status: newStatus,
             SalaryIMSS: salaryIMSS,
-            NCI: nci
+            NCI: nci,
+            DateMovement: dateMovement
           });
           
+          // Actualizar el movimiento existente con la nueva fecha
           await connection.execute(
             `UPDATE employeeimssinfonavitmovements 
-             SET Status = ? 
+             SET Status = ?, DateMovement = ? 
              WHERE BatchID = ? AND EmployeeID = ?`,
-            [newStatus, BatchID, employeeId]
+            [newStatus, dateMovement, BatchID, employeeId]
           );
         } else {
           if (MovementType === 'ALTA') {
-            const activeAlta = await getActiveAltaMovement(connection, employeeId);
+            const activeAlta = await getActiveAltaMovement(connection, employeeId, BatchID);
             
             if (activeAlta) {
               throw new Error(`El empleado ${employeeId} ya tiene un ALTA activa (MovementID: ${activeAlta.MovementID}). Debe realizar una BAJA primero.`);
@@ -680,11 +683,12 @@ export async function PUT(
               ProjectContractID: projectContractId,
               Status: 1,
               SalaryIMSS: salaryIMSS,
-              NCI: nci
+              NCI: nci,
+              DateMovement: dateMovement
             });
             
           } else if (MovementType === 'BAJA') {
-            const activeAlta = await getActiveAltaMovement(connection, employeeId);
+            const activeAlta = await getActiveAltaMovement(connection, employeeId, BatchID);
             
             if (!activeAlta) {
               throw new Error(`El empleado ${employeeId} no tiene un ALTA activa. No se puede dar de BAJA.`);
@@ -703,21 +707,19 @@ export async function PUT(
               ProjectContractID: projectContractId,
               Status: 0,
               SalaryIMSS: salaryIMSS,
-              NCI: nci
+              NCI: nci,
+              DateMovement: dateMovement
             });
           }
         }
       }
 
-      const dateMovementFormatted = DateMovement ? formatearFechaMySQL(DateMovement) : null;
-
       await connection.execute(
         `UPDATE employee_movement_batches 
-         SET MovementType = ?, DateMovement = ?, ReasonForWithdrawal = ?
+         SET MovementType = ?, ReasonForWithdrawal = ?
          WHERE BatchID = ?`,
         [
           MovementType || null,
-          dateMovementFormatted,
           ReasonForWithdrawal || null,
           BatchID
         ]
@@ -736,14 +738,15 @@ export async function PUT(
         if (!currentEmployeeIds.includes(emp.EmployeeID)) {
           await connection.execute(
             `INSERT INTO employeeimssinfonavitmovements 
-             (BatchID, EmployeeID, BaseContractID, ProjectContractID, Status) 
-             VALUES (?, ?, ?, ?, ?)`,
+             (BatchID, EmployeeID, BaseContractID, ProjectContractID, Status, DateMovement) 
+             VALUES (?, ?, ?, ?, ?, ?)`,
             [
               BatchID,
               emp.EmployeeID,
               emp.BaseContractID,
               emp.ProjectContractID,
-              emp.Status
+              emp.Status,
+              emp.DateMovement
             ]
           );
         }
