@@ -953,7 +953,6 @@ const handleCloseModal = () => {
                         className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
                           employeeNotFound ? 'border-red-500' : 'border-gray-400'
                         }`}
-                        // YA NO deshabilitar en edición
                       />
                       {!selectedEmployee && (
                         <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
@@ -1000,7 +999,7 @@ const handleCloseModal = () => {
                     
                     {employeeNotFound && (
                       <p className="mt-2 text-sm text-red-600">
-                        No se encontró un empleado con ese ID
+                        No se encontró un empleado con ese ID o nombre
                       </p>
                     )}
                   </div>
