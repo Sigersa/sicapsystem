@@ -1,5 +1,3 @@
-// app/api/download/pdf/FT-RH-05/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import path from "path";
@@ -64,7 +62,6 @@ export async function GET(request: NextRequest) {
       `SELECT 
         emb.BatchID,
         emb.MovementType,
-        emb.DateMovement,
         emb.ReasonForWithdrawal,
         emb.FileURL
       FROM employee_movement_batches emb
@@ -88,6 +85,7 @@ export async function GET(request: NextRequest) {
         em.EmployeeID,
         em.BaseContractID,
         em.ProjectContractID,
+        em.DateMovement,
         -- Datos del empleado (BASE)
         bp.FirstName as BaseFirstName,
         bp.LastName as BaseLastName,
@@ -259,7 +257,7 @@ export async function GET(request: NextRequest) {
       ws.getCell(`F${rowNumber}`).value = salaryIMSS || 'NO ESPECIFICADO';
       ws.getCell(`G${rowNumber}`).value = curp || 'NO ESPECIFICADO';
       ws.getCell(`H${rowNumber}`).value = batch.MovementType || 'NO ESPECIFICADO';
-      ws.getCell(`I${rowNumber}`).value = formatDate(batch.DateMovement);
+      ws.getCell(`I${rowNumber}`).value = formatDate(mov.DateMovement);
       ws.getCell(`J${rowNumber}`).value = nci || 'NO ESPECIFICADO';
       ws.getCell(`K${rowNumber}`).value = umf || 'NO ESPECIFICADO';
       ws.getCell(`L${rowNumber}`).value = mov.tipo || 'NO ESPECIFICADO';
