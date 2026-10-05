@@ -156,7 +156,6 @@ async function generateMovementPDF(
       `SELECT 
         emb.BatchID,
         emb.MovementType,
-        emb.DateMovement,
         emb.ReasonForWithdrawal,
         pj.NameProject,
         pj.AdminProjectID,
@@ -189,6 +188,7 @@ async function generateMovementPDF(
           em.EmployeeID,
           em.BaseContractID,
           em.ProjectContractID,
+          em.DateMovement,
           COALESCE(bp.FirstName, pp.FirstName) as FirstName,
           COALESCE(bp.LastName, pp.LastName) as LastName,
           COALESCE(bp.MiddleName, pp.MiddleName) as MiddleName,
@@ -217,6 +217,7 @@ async function generateMovementPDF(
         // Sobrescribir con los valores editados si se proporcionaron
         row.SalaryIMSS = emp.SalaryIMSS !== undefined && emp.SalaryIMSS !== null ? emp.SalaryIMSS : row.SalaryIMSS;
         row.NCI = emp.NCI !== undefined && emp.NCI !== null ? emp.NCI : row.NCI;
+        row.DateMovement = emp.DateMovement !== undefined && emp.DateMovement !== null ? emp.DateMovement : row.DateMovement;
         finalEmployeesData.push(row);
       }
     }
@@ -280,7 +281,7 @@ async function generateMovementPDF(
       ws.getCell(`F${rowNumber}`).value = mov.SalaryIMSS || 'NO ESPECIFICADO';
       ws.getCell(`G${rowNumber}`).value = mov.CURP || 'NO ESPECIFICADO';
       ws.getCell(`H${rowNumber}`).value = batch.MovementType || 'NO ESPECIFICADO';
-      ws.getCell(`I${rowNumber}`).value = formatDate(batch.DateMovement);
+      ws.getCell(`I${rowNumber}`).value = formatDate(mov.DateMovement);
       ws.getCell(`J${rowNumber}`).value = mov.NCI || 'NO ESPECIFICADO';
       ws.getCell(`K${rowNumber}`).value = mov.UMF || 'NO ESPECIFICADO';
       ws.getCell(`L${rowNumber}`).value = mov.tipo || 'NO ESPECIFICADO';
@@ -365,7 +366,6 @@ export async function GET(request: NextRequest) {
       SELECT 
           emb.BatchID,
           emb.MovementType,
-          emb.DateMovement,
           emb.ReasonForWithdrawal,
           emb.FileURL,
           GROUP_CONCAT(DISTINCT 
@@ -379,7 +379,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN employees e ON e.EmployeeID = em.EmployeeID
       LEFT JOIN basepersonnel bp ON em.EmployeeID = bp.EmployeeID
       LEFT JOIN projectpersonnel pp ON em.EmployeeID = pp.EmployeeID
-      GROUP BY emb.BatchID, emb.MovementType, emb.DateMovement, emb.ReasonForWithdrawal, emb.FileURL
+      GROUP BY emb.BatchID, emb.MovementType, emb.ReasonForWithdrawal, emb.FileURL
       HAVING COUNT(*) = SUM(CASE WHEN e.Status = 1 THEN 1 ELSE 0 END)
       ORDER BY emb.BatchID DESC;
     `);
@@ -445,7 +445,6 @@ export async function POST(request: NextRequest) {
     const { 
       Employees, 
       MovementType,
-      DateMovement,
       ReasonForWithdrawal,
     } = body;
 
@@ -470,27 +469,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!DateMovement) {
-      return NextResponse.json(
-        { success: false, message: 'La fecha del movimiento es requerida' },
-        { status: 400 }
-      );
+    // Validar que todos los empleados tengan fecha de movimiento
+    for (const emp of Employees) {
+      if (!emp.DateMovement) {
+        return NextResponse.json(
+          { success: false, message: `La fecha de movimiento es requerida para el empleado ${emp.EmployeeID}` },
+          { status: 400 }
+        );
+      }
     }
     
     connection = await getConnection();
     await connection.beginTransaction();
 
     try {
-      const dateMovementFormatted = DateMovement ? formatearFechaMySQL(DateMovement) : null;
-      
-      // Insertar en employee_movement_batches
+      // Insertar en employee_movement_batches (sin DateMovement)
       const [batchResult] = await connection.execute(
         `INSERT INTO employee_movement_batches 
-         (MovementType, DateMovement, ReasonForWithdrawal) 
-         VALUES (?, ?, ?)`,
+         (MovementType, ReasonForWithdrawal) 
+         VALUES (?, ?)`,
         [
           MovementType || null,
-          dateMovementFormatted,
           ReasonForWithdrawal || null
         ]
       );
@@ -502,6 +501,7 @@ export async function POST(request: NextRequest) {
         const employeeId = typeof emp === 'object' ? emp.EmployeeID : emp;
         const salaryIMSS = typeof emp === 'object' ? emp.SalaryIMSS : null;
         const nci = typeof emp === 'object' ? emp.NCI : null;
+        const dateMovement = typeof emp === 'object' ? formatearFechaMySQL(emp.DateMovement) : null;
 
         // Obtener ambos IDs de contrato
         const { baseContractId, projectContractId } = await getEmployeeContractIDs(connection, employeeId);
@@ -530,16 +530,17 @@ export async function POST(request: NextRequest) {
             throw new Error(`El empleado ${employeeId} ya tiene un ALTA activa (MovementID: ${activeAlta.MovementID}). Debe realizar una BAJA primero.`);
           }
           
-          // Crear nuevo ALTA con Status = 1
+          // Crear nuevo ALTA con Status = 1 y DateMovement individual
           await connection.execute(
             `INSERT INTO employeeimssinfonavitmovements 
-             (BatchID, EmployeeID, BaseContractID, ProjectContractID, Status) 
-             VALUES (?, ?, ?, ?, 1)`,
+             (BatchID, EmployeeID, BaseContractID, ProjectContractID, Status, DateMovement) 
+             VALUES (?, ?, ?, ?, 1, ?)`,
             [
               BatchID,
               employeeId,
               baseContractId,
-              projectContractId
+              projectContractId,
+              dateMovement
             ]
           );
           
@@ -559,16 +560,17 @@ export async function POST(request: NextRequest) {
             [activeAlta.MovementID]
           );
           
-          // 2. Crear el registro de BAJA con Status = 0
+          // 2. Crear el registro de BAJA con Status = 0 y DateMovement individual
           await connection.execute(
             `INSERT INTO employeeimssinfonavitmovements 
-             (BatchID, EmployeeID, BaseContractID, ProjectContractID, Status) 
-             VALUES (?, ?, ?, ?, 0)`,
+             (BatchID, EmployeeID, BaseContractID, ProjectContractID, Status, DateMovement) 
+             VALUES (?, ?, ?, ?, 0, ?)`,
             [
               BatchID,
               employeeId,
               baseContractId,
-              projectContractId
+              projectContractId,
+              dateMovement
             ]
           );
         }
@@ -576,7 +578,8 @@ export async function POST(request: NextRequest) {
         employeesToSave.push({ 
           EmployeeID: employeeId,
           SalaryIMSS: salaryIMSS,
-          NCI: nci
+          NCI: nci,
+          DateMovement: dateMovement
         });
       }
 
