@@ -1284,7 +1284,7 @@ export default function EmployeePermissionsPage() {
                     {/* HORA DE SALIDA */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                        HORA DE SALIDA *
+                        HORA DE SALIDA 
                       </label>
                       <div className="relative">
                         <input
@@ -1293,7 +1293,6 @@ export default function EmployeePermissionsPage() {
                           value={formData.DepartureTime}
                           onChange={handleFormChange}
                           className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          required
                         />
                       </div>
                     </div>
@@ -1301,7 +1300,7 @@ export default function EmployeePermissionsPage() {
                     {/* HORA DE ENTRADA */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">
-                        HORA DE ENTRADA *
+                        HORA DE ENTRADA
                       </label>
                       <div className="relative">
                         <input
@@ -1310,7 +1309,6 @@ export default function EmployeePermissionsPage() {
                           value={formData.CheckInTime}
                           onChange={handleFormChange}
                           className="w-full px-3 py-2.5 text-sm bg-white border border-gray-400 rounded focus:outline-none focus:border-[#3a6ea5] font-medium"
-                          required
                         />
                       </div>
                     </div>
