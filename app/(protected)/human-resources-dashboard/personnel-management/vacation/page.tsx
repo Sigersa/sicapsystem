@@ -3,8 +3,8 @@ import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
-import { useState, useEffect, ChangeEvent, FormEvent, useRef, KeyboardEvent } from 'react';
-import { Edit, Trash2, Search, X, CheckCircle, AlertCircle, Eye, ChevronLeft, ChevronRight, RefreshCw, Download, FileText, FileSpreadsheet } from 'lucide-react';
+import { useState, useEffect, ChangeEvent, FormEvent, useRef } from 'react';
+import { Edit, Trash2, Search, X, CheckCircle, AlertCircle, Eye, ChevronLeft, ChevronRight, RefreshCw, Download, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // Interface de empleados
@@ -155,7 +155,6 @@ export default function SystemAdminDashboard() {
   
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
 
   // Estados para el formulario
   const [formData, setFormData] = useState({
@@ -173,6 +172,13 @@ export default function SystemAdminDashboard() {
     years: number;
     days: number;
   } | null>(null);
+
+  // Agregar un estado para el término de búsqueda general
+  const [modalsearchTerm, modalSetSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<EmployeeSearchResult[]>([]);
+  const [showResults, setShowResults] = useState(false);
+
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Estados para operaciones
   const [isEditing, setIsEditing] = useState(false);
@@ -445,66 +451,58 @@ export default function SystemAdminDashboard() {
     }
   };
 
-  // Función para buscar empleado por ID al presionar Enter
-  const handleEmployeeIdKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const id = employeeIdInput.trim();
-      
-      if (!id) {
-        setError('POR FAVOR INGRESE UN ID DE EMPLEADO');
-        return;
-      }
-
-      await searchEmployeeById(id);
-    }
-  };
-
-  // Función para buscar empleado por ID
-  const searchEmployeeById = async (id: string) => {
+  // Función para buscar empleado por termino
+  const searchEmployeeByTerm = async (term: string) => {
     try {
       setSearchingEmployee(true);
       setEmployeeNotFound(false);
       setError('');
 
-      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeemovements/search?term=${encodeURIComponent(id)}`);
+      const response = await fetch(`/api/human-resources-dashboard/employee-management/employeemovements/search?term=${encodeURIComponent(term)}`);
       
       if (response.ok) {
         const data = await response.json();
+
+        if (/^\d+$/.test(term)) {
         const employee = data.employees?.find((emp: EmployeeSearchResult) => 
-          emp.EmployeeID.toString() === id
+          emp.EmployeeID.toString() === term
         );
-        
         if (employee) {
-          setSelectedEmployee(employee);
-          setSelectedEmployeeData(employee);
-          setFormData(prev => ({
-            ...prev,
-            EmployeeID: employee.EmployeeID.toString()
-          }));
-          setEmployeeNotFound(false);
-          
-          await fetchEmployeeSeniority(employee.EmployeeID);
-          await fetchTotalUsedDays(employee.EmployeeID);
-        } else {
-          setSelectedEmployee(null);
-          setSelectedEmployeeData(null);
-          setFormData(prev => ({
-            ...prev,
-            EmployeeID: ''
-          }));
-          setEmployeeNotFound(true);
-          setError('NO SE ENCONTRÓ UN EMPLEADO CON ESE ID');
+          selectEmployee(employee);
+          return;
         }
-      } else {
-        setError('ERROR AL BUSCAR EL EMPLEADO');
       }
+
+      if (data.employees && data.employees.length > 0) {
+        setSearchResults(data.employees);
+        setShowResults(true);
+        setEmployeeNotFound(false);
+      } else {
+        setEmployeeNotFound(true);
+        setError('NO SE ENCONTRÓ UN EMPLEADO');
+      }
+    }
     } catch (error) {
       console.error('Error al buscar empleado:', error);
       setError('ERROR DE CONEXIÓN AL BUSCAR EMPLEADO');
     } finally {
       setSearchingEmployee(false);
     }
+  };
+
+  // Función auxiliar para seleccionar empleado
+  const selectEmployee = (employee: EmployeeSearchResult) => {
+    setSelectedEmployee(employee);
+    setSelectedEmployeeData(employee);
+    setEmployeeIdInput(employee.EmployeeID.toString());
+    setSearchTerm(`${employee.FirstName} ${employee.LastName} ${employee.MiddleName || ''}`.trim());
+    setFormData(prev => ({
+      ...prev,
+      EmployeeID: employee.EmployeeID.toString(),
+    }));
+    setShowResults(false);
+    setSearchResults([]);
+    setEmployeeNotFound(false);
   };
 
   // Función para obtener la antigüedad del empleado
@@ -548,6 +546,9 @@ export default function SystemAdminDashboard() {
   // Función para limpiar la búsqueda de empleados
   const clearEmployeeSearch = () => {
     setEmployeeIdInput('');
+    setSearchTerm('');
+    setSearchResults([]);
+    setShowResults(false);
     setSelectedEmployee(null);
     setSelectedEmployeeData(null);
     setSelectedEmployeeSeniority(null);
@@ -669,7 +670,7 @@ export default function SystemAdminDashboard() {
             setSelectedEmployee(employee);
             setSelectedEmployeeData(employee);
             setEmployeeIdInput(employee.EmployeeID.toString());
-            
+            setSearchTerm(`${employee.FirstName} ${employee.LastName} ${employee.MiddleName || ''}`.trim());
             await fetchEmployeeSeniority(employee.EmployeeID);
             await fetchTotalUsedDays(employee.EmployeeID);
           }
@@ -932,6 +933,10 @@ export default function SystemAdminDashboard() {
     setEmployeeIdInput('');
     setSelectedEmployee(null);
     setSelectedEmployeeData(null);
+    setSearchTerm('');
+    setSearchResults([]);
+    setShowResults(false);
+    setError('');
     setEmployeeNotFound(false);
     setCurrentEditRecord(null);
 
@@ -957,6 +962,14 @@ export default function SystemAdminDashboard() {
   // Cerrar modal
   const closeModal = () => {
     setShowModal(false);
+    setSelectedEmployeeData(null);
+    setSelectedEmployee(null);
+    setEmployeeIdInput('');
+    modalSetSearchTerm('');
+    setSearchResults([]);
+    setShowResults(false);
+    setEmployeeNotFound(false);
+    setError('');
     resetForm();
   };
 
@@ -1293,19 +1306,32 @@ export default function SystemAdminDashboard() {
                         <input
                           ref={employeeIdInputRef}
                           type="text"
-                          value={employeeIdInput}
+                          value={modalsearchTerm}
                           onChange={(e) => {
-                            setEmployeeIdInput(normalizarMayusculas(e.target.value));
+                            modalSetSearchTerm(normalizarMayusculas(e.target.value));
                             if (employeeNotFound) setEmployeeNotFound(false);
+                            if (selectedEmployee) {
+                              setSelectedEmployee(null);
+                              setSelectedEmployeeData(null);
+                            }
                           }}
-                          onKeyDown={handleEmployeeIdKeyDown}
-                          placeholder="Ingrese el ID del empleado"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const term = modalsearchTerm.trim();
+                              if (!term) {
+                                setError('POR FAVOR INGRESE UN ID O NOMBRE DE EMPLEADO');
+                                return;
+                              }
+                              searchEmployeeByTerm(term);
+                            }
+                          }}
+                          placeholder="Ingrese el ID o nombre del empleado"
                           className={`w-full px-3 py-2.5 text-sm bg-white border rounded focus:outline-none focus:border-[#3a6ea5] font-medium ${
                             employeeNotFound ? 'border-red-500' : 'border-gray-400'
                           }`}
-                          disabled={modalMode === 'edit' || selectedEmployee !== null}
                         />
-                        {!selectedEmployee && employeeIdInput && (
+                        {!selectedEmployee && (
                           <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
                             ENTER PARA BUSCAR
                           </div>
@@ -1321,6 +1347,27 @@ export default function SystemAdminDashboard() {
                           </button>
                         )}
                       </div>
+
+                      {/* Lista de resultados cuando hay múltiples coincidencias */}
+                      {showResults && searchResults.length > 0 && (
+                        <div className="mt-2 bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto z-20 relative">
+                          {searchResults.map((emp) => (
+                            <button
+                              key={emp.EmployeeID}
+                              onClick={() => selectEmployee(emp)}
+                              className="w-full px-3 py-2 text-left hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="text-sm font-medium text-gray-900">
+                                {emp.EmployeeID} - {emp.FirstName} {emp.LastName} {emp.MiddleName || ''}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {emp.Position} | {emp.tipo}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
                       {searchingEmployee && (
                         <div className="mt-2 text-sm text-gray-600 flex items-center">
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#3a6ea5] mr-2"></div>
