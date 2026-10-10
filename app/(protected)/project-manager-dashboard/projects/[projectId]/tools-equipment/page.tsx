@@ -1600,7 +1600,7 @@ export default function ToolsEquipmentPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <AppHeader title="GESTIÓN DE HERRAMIENTAS Y/O EQUIPOS" />
+      <AppHeader title="PANEL DE ADMINISTRACIÓN DE PROYECTOS" />
 
       {/* Modal de confirmación para eliminar */}
       <DeleteModal
