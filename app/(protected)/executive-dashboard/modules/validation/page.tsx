@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { X, CheckCircle, AlertCircle, Search, FileText, Check, XCircle } from 'lucide-react';
 import AppHeader from '@/components/header/4/4.1';
@@ -982,7 +982,7 @@ export default function ValidationPage() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
-      <AppHeader title="EJECUTIVO" />
+      <AppHeader title="PANEL DE CONTROL EJECUTIVO" />
 
       <main className="pt-[72px] pb-[80px] min-h-screen bg-gray-100">
         <div className="w-full px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 max-w-7xl mx-auto">
