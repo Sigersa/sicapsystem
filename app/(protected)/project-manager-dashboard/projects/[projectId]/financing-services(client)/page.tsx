@@ -640,7 +640,6 @@ const EditModal: React.FC<EditModalProps> = ({
               </div>
             </div>
 
-            
                 {archivos.length > 0 && (
                   <div className="mt-3 space-y-2">
                     {archivos.map((file, index) => (
@@ -1613,7 +1612,7 @@ export default function FinancingServicesPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <AppHeader title="GESTIÓN DE SERVICIOS DE FINANCIAMIENTO" />
+      <AppHeader title="PANEL DE ADMINISTRACIÓN DE PROYECTOS" />
 
       {/* Modal de confirmación para eliminar */}
       <DeleteModal
