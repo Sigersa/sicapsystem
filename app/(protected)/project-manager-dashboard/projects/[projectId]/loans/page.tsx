@@ -1697,7 +1697,7 @@ export default function LoansPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <AppHeader title="GESTIÓN DE PRÉSTAMOS" />
+      <AppHeader title="PANEL DE ADMINISTRACIÓN DE PROYECTOS" />
 
       {/* Modal de confirmación para eliminar */}
       <DeleteModal
