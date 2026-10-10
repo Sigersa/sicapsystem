@@ -1654,7 +1654,7 @@ export default function InfrastructureTransferPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <AppHeader title="GESTIÓN DE TRASLADOS DE INFRAESTRUCTURA" />
+      <AppHeader title="PANEL DE ADMINISTRACIÓN DE PROYECTOS" />
 
       {/* Modal de confirmación para eliminar */}
       <DeleteModal
