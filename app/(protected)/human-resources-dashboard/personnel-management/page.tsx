@@ -2,16 +2,7 @@
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/header/2/2.1';
 import Footer from '@/components/footer';
-import { 
-  Users, 
-  FileText, 
-  HandCoins,
-  CalendarClock,
-  AlertCircle,
-  UserCog,
-  Building2,
-  FileCheck
-} from 'lucide-react';
+import { Users, FileText, HandCoins, CalendarClock, AlertCircle, UserCog, Building2, FileCheck } from 'lucide-react';
 import { useSessionManager } from '@/hooks/useSessionManager/2';
 import { useInactivityManager } from '@/hooks/useInactivityManager';
 
