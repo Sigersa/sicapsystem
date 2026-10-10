@@ -622,7 +622,7 @@ export default function ReportsPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <AppHeader title="REPORTES DE GASTOS" />
+      <AppHeader title="PANEL DE ADMINISTRACIÓN DE PROYECTOS" />
 
       <PreviewModal
         isOpen={showPreview}
